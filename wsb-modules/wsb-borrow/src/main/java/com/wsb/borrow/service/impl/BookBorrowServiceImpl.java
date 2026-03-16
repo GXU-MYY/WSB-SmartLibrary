@@ -113,7 +113,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
 
         // 使用 Converter 转换
-        List<BookBorrowRecordVO> voList = bookBorrowConverter.toRecordVOList(borrows);
+        List<BookBorrowRecordVO> voList = bookBorrowConverter.toBookBorrowRecordVOList(borrows);
 
         // 设置书籍信息
         final Map<Long, BookRemoteDTO> finalBookMap = bookMap;
@@ -145,7 +145,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
 
         // 使用 Converter 更新
-        bookBorrowConverter.updateFromDto(dto, borrow);
+        bookBorrowConverter.updateBookBorrowFromDto(dto, borrow);
 
         this.updateById(borrow);
     }

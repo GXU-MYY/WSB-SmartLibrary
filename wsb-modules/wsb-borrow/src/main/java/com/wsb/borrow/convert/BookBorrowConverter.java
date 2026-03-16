@@ -42,12 +42,12 @@ public interface BookBorrowConverter {
      */
     @Mapping(target = "title", ignore = true)
     @Mapping(target = "coverUrl", ignore = true)
-    BookBorrowRecordVO toRecordVO(BookBorrow entity);
+    BookBorrowRecordVO toBookBorrowRecordVO(BookBorrow entity);
 
     /**
      * 实体列表转换为记录 VO 列表
      */
-    List<BookBorrowRecordVO> toRecordVOList(List<BookBorrow> entities);
+    List<BookBorrowRecordVO> toBookBorrowRecordVOList(List<BookBorrow> entities);
 
     /**
      * 更新实体（从 DTO）
@@ -63,5 +63,5 @@ public interface BookBorrowConverter {
     @Mapping(target = "isDeleted", ignore = true)
     @Mapping(target = "createTime", ignore = true)
     @Mapping(target = "updateTime", ignore = true)
-    void updateFromDto(BookBorrowUpdateDTO dto, @MappingTarget BookBorrow entity);
+    void updateBookBorrowFromDto(BookBorrowUpdateDTO dto, @MappingTarget BookBorrow entity);
 }
