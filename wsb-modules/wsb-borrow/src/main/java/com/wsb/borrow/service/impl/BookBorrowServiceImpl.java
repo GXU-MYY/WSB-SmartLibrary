@@ -10,12 +10,13 @@ import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
 import com.wsb.borrow.api.dto.BookReturnDTO;
 import com.wsb.borrow.api.vo.BookBorrowRecordVO;
 import com.wsb.borrow.api.vo.BookBorrowVO;
+import com.wsb.borrow.convert.BookBorrowConverter;
 import com.wsb.borrow.domain.BookBorrow;
 import com.wsb.borrow.mapper.BookBorrowMapper;
 import com.wsb.borrow.service.BookBorrowService;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,10 +26,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBorrow> implements BookBorrowService {
 
     private final RemoteBookService remoteBookService;
+    private final BookBorrowConverter bookBorrowConverter;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -43,28 +45,21 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
         BookRemoteDTO book = bookResult.getData();
 
-        // 创建借书记录
-        BookBorrow borrow = new BookBorrow();
-        borrow.setBookId(bookId);
+        // 使用 Converter 转换并设置额外字段
+        BookBorrow borrow = bookBorrowConverter.toBookBorrow(dto);
         borrow.setUserId(currentUserId);
-        borrow.setBorrowerName(dto.getBorrowerName());
-        borrow.setBorrowType(dto.getBorrowType());
-        borrow.setBorrowTime(dto.getBorrowTime());
         borrow.setBookName(book.getTitle());
         borrow.setCoverUrl(book.getCoverUrl());
         borrow.setIsDeleted(false);
 
         this.save(borrow);
 
-        // 转换为VO返回
-        return toVO(borrow);
+        return bookBorrowConverter.toBookBorrowVO(borrow);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BookBorrowVO returning(BookReturnDTO dto) {
-        Long currentUserId = StpUtil.getLoginIdAsLong();
-
         Long bookId = Long.valueOf(dto.getBookId());
         Integer borrowType = Integer.valueOf(dto.getBorrowType());
 
@@ -86,8 +81,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
 
         this.updateById(borrow);
 
-        // 转换为VO返回
-        return toVO(borrow);
+        return bookBorrowConverter.toBookBorrowVO(borrow);
     }
 
     @Override
@@ -118,26 +112,20 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
                     .collect(Collectors.toMap(BookRemoteDTO::getId, b -> b));
         }
 
-        final Map<Long, BookRemoteDTO> finalBookMap = bookMap;
-        return borrows.stream().map(borrow -> {
-            BookBorrowRecordVO vo = new BookBorrowRecordVO();
-            vo.setId(borrow.getId());
-            vo.setBookId(borrow.getBookId());
-            vo.setUserId(borrow.getUserId());
-            vo.setBorrowerName(borrow.getBorrowerName());
-            vo.setBorrowTime(borrow.getBorrowTime());
-            vo.setReturnTime(borrow.getReturnTime());
-            vo.setBorrowType(borrow.getBorrowType());
+        // 使用 Converter 转换
+        List<BookBorrowRecordVO> voList = bookBorrowConverter.toRecordVOList(borrows);
 
-            // 设置书籍信息
-            BookRemoteDTO book = finalBookMap.get(borrow.getBookId());
+        // 设置书籍信息
+        final Map<Long, BookRemoteDTO> finalBookMap = bookMap;
+        voList.forEach(vo -> {
+            BookRemoteDTO book = finalBookMap.get(vo.getBookId());
             if (book != null) {
                 vo.setTitle(book.getTitle());
                 vo.setCoverUrl(book.getCoverUrl());
             }
+        });
 
-            return vo;
-        }).collect(Collectors.toList());
+        return voList;
     }
 
     @Override
@@ -156,26 +144,9 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
             throw new ServiceException("无权限修改他人借书记录");
         }
 
-        // 更新借书人姓名
-        borrow.setBorrowerName(dto.getBorrowerName());
-
-        // 更新借书时间（如果提供）
-        if (dto.getBorrowTime() != null) {
-            borrow.setBorrowTime(dto.getBorrowTime());
-        }
+        // 使用 Converter 更新
+        bookBorrowConverter.updateFromDto(dto, borrow);
 
         this.updateById(borrow);
-    }
-
-    private BookBorrowVO toVO(BookBorrow borrow) {
-        BookBorrowVO vo = new BookBorrowVO();
-        vo.setId(borrow.getId());
-        vo.setBookId(borrow.getBookId());
-        vo.setUserId(borrow.getUserId());
-        vo.setBorrowerName(borrow.getBorrowerName());
-        vo.setBorrowTime(borrow.getBorrowTime());
-        vo.setReturnTime(borrow.getReturnTime());
-        vo.setBorrowType(borrow.getBorrowType());
-        return vo;
     }
 }
