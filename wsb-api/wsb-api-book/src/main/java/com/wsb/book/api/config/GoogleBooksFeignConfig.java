@@ -1,0 +1,40 @@
+package com.wsb.book.api.config;
+
+import feign.Client;
+import feign.Logger;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+
+/**
+ * Google Books API Feign 配置
+ * 配置 HTTP 代理访问 Google
+ */
+@Slf4j
+public class GoogleBooksFeignConfig {
+
+    @Value("${google.books.proxy.host:}")
+    private String proxyHost;
+
+    @Value("${google.books.proxy.port:0}")
+    private int proxyPort;
+
+    @Bean
+    public Client feignClient() {
+        if (proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0) {
+            log.info("Google Books API 使用代理: {}:{}", proxyHost, proxyPort);
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            return new Client.Proxied(null, null, proxy);
+        }
+        log.info("Google Books API 未配置代理，使用直连");
+        return new Client.Default(null, null);
+    }
+
+    @Bean
+    public Logger.Level feignLoggerLevel() {
+        return Logger.Level.FULL;
+    }
+}

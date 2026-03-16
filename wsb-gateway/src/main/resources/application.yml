@@ -1,0 +1,110 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: wsb-gateway
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      discovery:
+        locator:
+          enabled: true # 开启从注册中心动态创建路由的功能
+      routes:
+        - id: wsb-auth
+          uri: lb://wsb-auth
+          predicates:
+            - Path=/v1/admin/login,/v1/admin/logout
+        # 用户模块
+        - id: wsb-user
+          uri: lb://wsb-user
+          predicates:
+            - Path=/v1/admin/user/**,/v1/admin/register,/v1/admin/passwd,/v1/admin/phone/**
+        # 书籍模块
+        - id: wsb-book
+          uri: lb://wsb-book
+          predicates:
+            - Path=/v1/book/**,/v1/shelf/**,/v1/bookshelf/**
+        # 借阅模块
+        - id: wsb-borrow
+          uri: lb://wsb-borrow
+          predicates:
+            - Path=/v1/admin/borrow/**
+        # 社交模块
+        - id: wsb-social
+          uri: lb://wsb-social
+          predicates:
+            - Path=/v1/group/**
+
+        # --- Swagger API Docs Routes ---
+        - id: wsb-user-swagger
+          uri: lb://wsb-user
+          predicates:
+            - Path=/wsb-user/v3/api-docs
+          filters:
+            - RewritePath=/wsb-user/v3/api-docs, /v3/api-docs
+        - id: wsb-book-swagger
+          uri: lb://wsb-book
+          predicates:
+            - Path=/wsb-book/v3/api-docs
+          filters:
+            - RewritePath=/wsb-book/v3/api-docs, /v3/api-docs
+        - id: wsb-borrow-swagger
+          uri: lb://wsb-borrow
+          predicates:
+            - Path=/wsb-borrow/v3/api-docs
+          filters:
+            - RewritePath=/wsb-borrow/v3/api-docs, /v3/api-docs
+        - id: wsb-social-swagger
+          uri: lb://wsb-social
+          predicates:
+            - Path=/wsb-social/v3/api-docs
+          filters:
+            - RewritePath=/wsb-social/v3/api-docs, /v3/api-docs
+
+knife4j:
+  gateway:
+    enabled: true
+    strategy: manual
+    routes:
+      - name: 用户服务
+        url: /wsb-user/v3/api-docs
+        service-name: wsb-user
+        order: 1
+      - name: 书籍服务
+        url: /wsb-book/v3/api-docs
+        service-name: wsb-book
+        order: 2
+      - name: 借阅服务
+        url: /wsb-borrow/v3/api-docs
+        service-name: wsb-borrow
+        order: 3
+      - name: 社交服务
+        url: /wsb-social/v3/api-docs
+        service-name: wsb-social
+        order: 4
+
+sa-token:
+  # token名称 (同时也是cookie名称)
+  token-name: satoken
+  # token有效期，单位s 默认30天
+  timeout: 2592000
+  # token临时有效期 (指定时间内无操作就视为token过期) 单位: 秒
+  active-timeout: -1
+  # 是否允许同一账号并发登录 (为true时允许一起登录, 为false时新登录挤掉旧登录)
+  is-concurrent: true
+  # 在多人登录同一账号时，是否共用一个token (为true时所有登录共用一个token, 为false时每次登录新建一个token)
+  is-share: true
+  # token风格
+  token-style: uuid
+  # 是否输出操作日志
+  is-log: false
+  # jwt秘钥
+  jwt-secret-key: wsbbackendsecretkeywsbbackendsecretkey32bits

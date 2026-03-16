@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.wsb</groupId>
+        <artifactId>wsb-backend</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>wsb-api</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>wsb-api-user</module>
+        <module>wsb-api-book</module>
+        <module>wsb-api-borrow</module>
+        <module>wsb-api-social</module>
+        <module>wsb-api-community</module>
+    </modules>
+    
+    <dependencies>
+         <!-- API模块通常需要核心类(Result, DTO等) -->
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+    </dependencies>
+</project>
