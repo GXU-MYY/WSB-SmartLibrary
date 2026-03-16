@@ -14,7 +14,6 @@ import com.wsb.book.api.response.AliyunIsbnResponse;
 import com.wsb.book.api.response.AliyunIsbnResponse.BookDetail;
 import com.wsb.book.api.response.GoogleBooksResponse;
 import com.wsb.book.api.response.GoogleBooksResponse.VolumeInfo;
-import com.wsb.book.api.response.GoogleBooksResponse.IndustryIdentifier;
 import com.wsb.book.api.vo.BookAddVO;
 import com.wsb.book.api.vo.BookVO;
 import com.wsb.book.api.vo.IsbnBookVO;
@@ -192,29 +191,8 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 return null;
             }
 
-            // 映射到 VO
-            IsbnBookVO vo = new IsbnBookVO();
-            vo.setTitle(detail.getTitle());
-            vo.setAuthor(detail.getAuthor());
-            vo.setPublisher(detail.getPublisher());
-            vo.setPublishDate(detail.getPubDate());
-            vo.setPageCount(detail.getPage());
-            vo.setPrice(detail.getPrice());
-            vo.setSummary(detail.getGist());
-            vo.setCoverUrl(detail.getImg());
-            vo.setIsbn(detail.getIsbn());
-            vo.setIsbn10(detail.getIsbn10());
-            vo.setBinding(detail.getBinding());
-            vo.setPubplace(detail.getPubPlace());
-            vo.setCip(detail.getCipTxt());
-            vo.setEdition(detail.getEdition());
-            vo.setImpression(detail.getYinci());
-            vo.setBookFormat(detail.getFormat());
-            vo.setClc(detail.getGenus());
-            vo.setLanguage(detail.getLanguage());
-            vo.setKeyword(cleanKeyword(detail.getKeyword()));
-
-            return vo;
+            // 使用 MapStruct 转换器映射到 VO
+            return bookConverter.toIsbnBookVO(detail);
         } catch (Exception e) {
             log.warn("调用阿里云 ISBN API 失败: {}", e.getMessage());
             return null;
@@ -240,60 +218,12 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 return null;
             }
 
-            // 映射到 VO
-            IsbnBookVO vo = new IsbnBookVO();
-            vo.setTitle(volumeInfo.getTitle());
-            vo.setSubtitle(volumeInfo.getSubtitle());
-            vo.setAuthor(joinList(volumeInfo.getAuthors()));
-            vo.setPublisher(volumeInfo.getPublisher());
-            vo.setPublishDate(volumeInfo.getPublishedDate());
-            vo.setSummary(volumeInfo.getDescription());
-            vo.setPageCount(volumeInfo.getPageCount() != null ? String.valueOf(volumeInfo.getPageCount()) : null);
-            vo.setLanguage(volumeInfo.getLanguage());
-            vo.setKeyword(joinList(volumeInfo.getCategories()));
-
-            // 封面图片
-            if (volumeInfo.getImageLinks() != null) {
-                vo.setCoverUrl(volumeInfo.getImageLinks().getThumbnail());
-            }
-
-            // ISBN 解析
-            if (volumeInfo.getIndustryIdentifiers() != null) {
-                for (IndustryIdentifier identifier : volumeInfo.getIndustryIdentifiers()) {
-                    if ("ISBN_13".equals(identifier.getType())) {
-                        vo.setIsbn(identifier.getIdentifier());
-                    } else if ("ISBN_10".equals(identifier.getType())) {
-                        vo.setIsbn10(identifier.getIdentifier());
-                    }
-                }
-            }
-
-            return vo;
+            // 使用 MapStruct 转换器映射到 VO
+            return bookConverter.toIsbnBookVO(volumeInfo);
         } catch (Exception e) {
             log.warn("调用 Google Books API 失败: {}", e.getMessage());
             return null;
         }
-    }
-
-    /**
-     * 清理关键词字符串（去除前后竖线）
-     */
-    private String cleanKeyword(String keyword) {
-        if (StringUtils.isBlank(keyword)) {
-            return null;
-        }
-        // 去除前后的竖线和空格，如 "|小学语文课|习题集" -> "小学语文课,习题集"
-        return keyword.replaceAll("^\\|+|\\|+$", "").replace("|", ",");
-    }
-
-    /**
-     * 将字符串列表用逗号拼接
-     */
-    private String joinList(List<String> list) {
-        if (list == null || list.isEmpty()) {
-            return null;
-        }
-        return String.join(",", list);
     }
 
     @Override
