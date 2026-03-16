@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 /**
  * 阿里云 ISBN 图书查询 API Feign 客户端
  */
-@FeignClient(name = "aliyun-isbn", url = "https://jmisbn.market.alicloudapi.com")
+@FeignClient(name = "aliyun-isbn", url = "${aliyun.isbn.base-url}")
 public interface AliyunIsbnClient {
 
     /**
