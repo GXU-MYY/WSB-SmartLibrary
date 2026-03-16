@@ -27,16 +27,16 @@ spring:
           uri: lb://wsb-user
           predicates:
             - Path=/v1/admin/user/**,/v1/admin/register,/v1/admin/passwd,/v1/admin/phone/**
+        # 借阅模块 - 优先匹配借阅相关路径
+        - id: wsb-borrow
+          uri: lb://wsb-borrow
+          predicates:
+            - Path=/v1/admin/borrow/**,/v1/book/borrow,/v1/book/returning
         # 书籍模块
         - id: wsb-book
           uri: lb://wsb-book
           predicates:
             - Path=/v1/book/**,/v1/shelf/**,/v1/bookshelf/**
-        # 借阅模块
-        - id: wsb-borrow
-          uri: lb://wsb-borrow
-          predicates:
-            - Path=/v1/admin/borrow/**
         # 社交模块
         - id: wsb-social
           uri: lb://wsb-social

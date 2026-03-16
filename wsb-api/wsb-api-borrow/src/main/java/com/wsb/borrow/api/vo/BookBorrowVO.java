@@ -1,6 +1,7 @@
-package com.wsb.book.api.vo;
+package com.wsb.borrow.api.vo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.io.Serial;
@@ -16,28 +17,27 @@ public class BookBorrowVO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private Long id;
+
+    @JsonProperty("book_id")
     private Long bookId;
+
+    @JsonProperty("user_id")
     private Long userId;
+
+    @JsonProperty("borrow_name")
     private String borrowerName;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
+    @JsonProperty("borrowing_time")
     private LocalDate borrowTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
+    @JsonProperty("return_time")
     private LocalDate returnTime;
 
     /**
      * 借书类型：1=借入，2=借出
      */
+    @JsonProperty("borrow_type")
     private Integer borrowType;
-
-    /**
-     * 图书名称（冗余）
-     */
-    private String bookName;
-
-    /**
-     * 封面URL（冗余）
-     */
-    private String coverUrl;
 }
