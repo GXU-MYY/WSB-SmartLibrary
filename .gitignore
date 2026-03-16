@@ -69,3 +69,55 @@ Thumbs.db
 # Claude
 .claude/
 .trae/
+
+# ==========================================
+# 敏感配置（⚠️ 安全关键 - 必须添加）
+# ==========================================
+
+# 生产环境配置（含数据库密码）
+application-prod.yml
+application-prod.properties
+application-local.yml
+application-local.properties
+
+# 环境变量（含API密钥）
+.env
+.env.local
+.env.*.local
+
+# 密钥和证书
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*secret*
+*token*
+
+# 数据库配置
+db-config.yml
+database.properties
+
+# ==========================================
+# 临时文件（推荐添加）
+# ==========================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+
+# ==========================================
+# 数据文件（推荐添加）
+# ==========================================
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 上传文件
+uploads/
+files/

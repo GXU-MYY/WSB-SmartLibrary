@@ -39,7 +39,7 @@ public class BookController {
     return Result.success(bookService.getMyBooks());
   }
 
-  @Operation(summary = "书籍按书架查询")
+  @Operation(summary = "书籍查询")
   @GetMapping
   public Result<Page<BookVO>> list(@RequestParam(value = "page", defaultValue = "1") Integer page,
                                    @RequestParam(value = "page_size", defaultValue = "10") Integer page_size,
