@@ -157,4 +157,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return dto;
         }).collect(Collectors.toList());
     }
+
+    @Override
+    public List<UserNicknameDTO> getAllUserNicknames() {
+        List<User> users = this.list();
+        return users.stream().map(user -> {
+            UserNicknameDTO dto = new UserNicknameDTO();
+            dto.setId(user.getId());
+            dto.setNickName(user.getNickName());
+            return dto;
+        }).collect(Collectors.toList());
+    }
 }

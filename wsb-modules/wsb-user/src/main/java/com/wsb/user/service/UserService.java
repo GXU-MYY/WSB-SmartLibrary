@@ -31,4 +31,6 @@ public interface UserService extends IService<User> {
   void existsByIds(List<Long> userIds);
 
   List<UserNicknameDTO> getUserNicknamesByIds(List<Long> userIds);
+
+  List<UserNicknameDTO> getAllUserNicknames();
 }

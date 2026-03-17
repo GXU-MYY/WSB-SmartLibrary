@@ -86,4 +86,10 @@ public class UserController {
   public Result<List<UserNicknameDTO>> getUserNicknamesByIds(@RequestParam("ids") List<Long> userIds) {
     return Result.success(userService.getUserNicknamesByIds(userIds));
   }
+
+  @Operation(summary = "Internal call - get all user nicknames", hidden = true)
+  @GetMapping("/inner/nicknames/all")
+  public Result<List<UserNicknameDTO>> getAllUserNicknames() {
+    return Result.success(userService.getAllUserNicknames());
+  }
 }
