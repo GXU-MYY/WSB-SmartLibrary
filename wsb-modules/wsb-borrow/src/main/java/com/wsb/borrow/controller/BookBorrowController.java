@@ -1,40 +1,51 @@
 package com.wsb.borrow.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.wsb.borrow.domain.BookBorrow;
+import com.wsb.borrow.api.dto.BookBorrowDTO;
+import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
+import com.wsb.borrow.api.dto.BookReturnDTO;
+import com.wsb.borrow.api.vo.BookBorrowRecordVO;
+import com.wsb.borrow.api.vo.BookBorrowVO;
 import com.wsb.borrow.service.BookBorrowService;
 import com.wsb.common.core.domain.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Tag(name = "借阅管理")
 @RestController
-@RequestMapping("/v1/admin/borrow")
+@RequestMapping("/v1/book")
 @RequiredArgsConstructor
 public class BookBorrowController {
 
-  private final BookBorrowService bookBorrowService;
+    private final BookBorrowService bookBorrowService;
 
-  @Operation(summary = "查询借阅记录")
-  @GetMapping
-  public Result<Page<BookBorrow>> list(@RequestParam(defaultValue = "1") Integer page,
-      @RequestParam(defaultValue = "10") Integer page_size,
-      @RequestParam(required = false) Long user_id) {
-    Page<BookBorrow> pageParam = new Page<>(page, page_size);
-    LambdaQueryWrapper<BookBorrow> wrapper = new LambdaQueryWrapper<>();
-    if (user_id != null) {
-      wrapper.eq(BookBorrow::getUserId, user_id);
+    @Operation(summary = "书籍借阅")
+    @PostMapping("/borrow")
+    public Result<BookBorrowVO> borrow(@Valid @RequestBody BookBorrowDTO dto) {
+        return Result.success(bookBorrowService.borrow(dto));
     }
-    return Result.success(bookBorrowService.page(pageParam, wrapper));
-  }
 
-  @Operation(summary = "新增借阅记录")
-  @PostMapping
-  public Result<BookBorrow> add(@RequestBody BookBorrow bookBorrow) {
-    bookBorrowService.save(bookBorrow);
-    return Result.success(bookBorrow);
-  }
+    @Operation(summary = "还书")
+    @PostMapping("/returning")
+    public Result<BookBorrowVO> returning(@Valid @RequestBody BookReturnDTO dto) {
+        return Result.success(bookBorrowService.returning(dto));
+    }
+
+    @Operation(summary = "借书记录")
+    @GetMapping("/borrow")
+    public Result<List<BookBorrowRecordVO>> getBorrowRecords(
+            @RequestParam(value = "borrow_type", required = false) Integer borrowType) {
+        return Result.success(bookBorrowService.getRecords(borrowType));
+    }
+
+    @Operation(summary = "修改借书信息")
+    @PutMapping("/borrow")
+    public Result<Void> updateBorrow(@Valid @RequestBody BookBorrowUpdateDTO dto) {
+        bookBorrowService.updateBorrow(dto);
+        return Result.success();
+    }
 }
