@@ -34,7 +34,7 @@ public class BookInnerController {
     }
 
     @GetMapping("/batch")
-    public Result<List<BookRemoteDTO>> getBooksByIds(@RequestParam("ids") List<Long> bookIds) {
+    public Result<List<BookRemoteDTO>> getBooksByIds(@RequestParam(value = "ids", required = false) List<Long> bookIds) {
         if (bookIds == null || bookIds.isEmpty()) {
             return Result.success(List.of());
         }

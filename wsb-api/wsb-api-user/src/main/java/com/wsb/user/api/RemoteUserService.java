@@ -1,6 +1,7 @@
 package com.wsb.user.api;
 
 import com.wsb.common.core.domain.Result;
+import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,4 +24,10 @@ public interface RemoteUserService {
    */
   @GetMapping("/inner/exists")
   Result<Void> checkUserExists(@RequestParam("user_ids") List<Long> userIds);
+
+  /**
+   * 根据用户ID列表批量获取用户昵称信息
+   */
+  @GetMapping("/inner/nicknames")
+  Result<List<UserNicknameDTO>> getUserNicknamesByIds(@RequestParam("ids") List<Long> userIds);
 }
