@@ -16,6 +16,7 @@ import com.wsb.community.api.vo.BorrowStatsVO;
 import com.wsb.community.api.vo.CollectStatsVO;
 import com.wsb.community.api.vo.PersonalStatsVO;
 import com.wsb.community.api.vo.UserRankVO;
+import com.wsb.community.convert.StatisticsConverter;
 import com.wsb.community.service.StatisticsService;
 import com.wsb.social.api.RemoteCollectService;
 import com.wsb.social.api.dto.BookCollectCountDTO;
@@ -25,10 +26,8 @@ import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +41,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final RemoteBorrowService remoteBorrowService;
     private final RemoteCollectService remoteCollectService;
     private final RemoteUserService remoteUserService;
+    private final StatisticsConverter statisticsConverter;
 
     @Override
     public Page<BookRankVO> getBookRank(Integer page, Integer pageSize) {
@@ -75,18 +75,12 @@ public class StatisticsServiceImpl implements StatisticsService {
                 : Map.of();
 
         // 组装VO
-        List<BookRankVO> voList = new ArrayList<>();
+        List<BookRankVO> voList = new java.util.ArrayList<>();
         int rank = fromIndex + 1;
         for (BookCollectCountDTO dto : pageList) {
             BookRemoteDTO book = bookMap.get(dto.getBookId());
             if (book != null) {
-                BookRankVO vo = new BookRankVO();
-                vo.setBookId(dto.getBookId());
-                vo.setTitle(book.getTitle());
-                vo.setPic(book.getCoverUrl());
-                vo.setCollectCount(dto.getCollectCount());
-                vo.setRanking(rank++);
-                voList.add(vo);
+                voList.add(statisticsConverter.toBookRankVO(dto.getBookId(), book, dto.getCollectCount(), rank++));
             }
         }
 
@@ -127,18 +121,12 @@ public class StatisticsServiceImpl implements StatisticsService {
                 : Map.of();
 
         // 组装VO
-        List<UserRankVO> voList = new ArrayList<>();
+        List<UserRankVO> voList = new java.util.ArrayList<>();
         int rank = fromIndex + 1;
         for (UserBookCountDTO dto : pageList) {
             UserNicknameDTO user = userMap.get(dto.getUserId());
             if (user != null) {
-                UserRankVO vo = new UserRankVO();
-                vo.setId(dto.getUserId());
-                vo.setUserName(user.getNickName());
-                vo.setNickName(user.getNickName());
-                vo.setBookCount(dto.getBookCount());
-                vo.setRanking(rank++);
-                voList.add(vo);
+                voList.add(statisticsConverter.toUserRankVO(dto.getUserId(), user, dto.getBookCount(), rank++));
             }
         }
 
@@ -166,23 +154,13 @@ public class StatisticsServiceImpl implements StatisticsService {
             return createEmptyBorrowStats();
         }
 
+        List<BorrowStatsVO.CategoryStatsVO> categoryList = statisticsConverter.toBorrowCategoryStatsVOList(statsResult.getData());
+
+        int totalSum = categoryList.stream().mapToInt(c -> c.getTotal() != null ? c.getTotal() : 0).sum();
+        int readingSum = categoryList.stream().mapToInt(c -> c.getReading() != null ? c.getReading() : 0).sum();
+        int readSum = categoryList.stream().mapToInt(c -> c.getRead() != null ? c.getRead() : 0).sum();
+
         BorrowStatsVO vo = new BorrowStatsVO();
-        int totalSum = 0, readingSum = 0, readSum = 0;
-        List<BorrowStatsVO.CategoryStatsVO> categoryList = new ArrayList<>();
-
-        for (BorrowCategoryStatsDTO dto : statsResult.getData()) {
-            BorrowStatsVO.CategoryStatsVO categoryVO = new BorrowStatsVO.CategoryStatsVO();
-            categoryVO.setCategory(dto.getCategory());
-            categoryVO.setTotal(dto.getTotal());
-            categoryVO.setReading(dto.getReading());
-            categoryVO.setRead(dto.getRead());
-            categoryList.add(categoryVO);
-
-            totalSum += dto.getTotal() != null ? dto.getTotal() : 0;
-            readingSum += dto.getReading() != null ? dto.getReading() : 0;
-            readSum += dto.getRead() != null ? dto.getRead() : 0;
-        }
-
         vo.setTotal(totalSum);
         vo.setReading(readingSum);
         vo.setRead(readSum);
@@ -209,21 +187,12 @@ public class StatisticsServiceImpl implements StatisticsService {
             return createEmptyCollectStats();
         }
 
+        List<CollectStatsVO.CategoryCollectVO> categoryList = statisticsConverter.toCollectCategoryCollectVOList(statsResult.getData());
+
+        int totalSum = categoryList.stream().mapToInt(c -> c.getTotal() != null ? c.getTotal() : 0).sum();
+        int collectSum = categoryList.stream().mapToInt(c -> c.getCollect() != null ? c.getCollect() : 0).sum();
+
         CollectStatsVO vo = new CollectStatsVO();
-        int totalSum = 0, collectSum = 0;
-        List<CollectStatsVO.CategoryCollectVO> categoryList = new ArrayList<>();
-
-        for (CollectCategoryStatsDTO dto : statsResult.getData()) {
-            CollectStatsVO.CategoryCollectVO categoryVO = new CollectStatsVO.CategoryCollectVO();
-            categoryVO.setCategory(dto.getCategory());
-            categoryVO.setTotal(dto.getTotal());
-            categoryVO.setCollect(dto.getCollect());
-            categoryList.add(categoryVO);
-
-            totalSum += dto.getTotal() != null ? dto.getTotal() : 0;
-            collectSum += dto.getCollect() != null ? dto.getCollect() : 0;
-        }
-
         vo.setTotal(totalSum);
         vo.setCollect(collectSum);
         vo.setClassifyList(categoryList);
@@ -264,16 +233,11 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         // 按分类统计
         Result<List<CategoryCountDTO>> categoryResult = remoteBookService.countBooksByCategory(currentUserId);
-        List<PersonalStatsVO.CategoryCount> categoryList = new ArrayList<>();
         if (categoryResult != null && categoryResult.getData() != null) {
-            for (CategoryCountDTO dto : categoryResult.getData()) {
-                PersonalStatsVO.CategoryCount cc = new PersonalStatsVO.CategoryCount();
-                cc.setCategory(dto.getCategory());
-                cc.setCount(dto.getCount());
-                categoryList.add(cc);
-            }
+            owned.setBooksByCategory(statisticsConverter.toCategoryCountList(categoryResult.getData()));
+        } else {
+            owned.setBooksByCategory(List.of());
         }
-        owned.setBooksByCategory(categoryList);
         vo.setOwned(owned);
 
         // 我借阅的书籍统计
