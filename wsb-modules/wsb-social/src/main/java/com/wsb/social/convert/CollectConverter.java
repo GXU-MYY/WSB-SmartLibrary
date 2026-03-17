@@ -10,8 +10,6 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 
-import java.util.List;
-
 /**
  * 收藏转换器
  */
@@ -22,8 +20,6 @@ public interface CollectConverter {
 
     @Mapping(target = "collectTime", source = "createTime")
     CollectVO toCollectVO(Collect collect);
-
-    List<CollectVO> toCollectVOList(List<Collect> collects);
 
     // ========== BookRemoteDTO -> CollectBookVO ==========
 
