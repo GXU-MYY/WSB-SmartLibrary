@@ -156,4 +156,45 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
                 .eq(GroupUser::getUserId, userId)
                 .eq(GroupUser::getIsDeleted, false));
     }
+
+    @Override
+    public List<GroupUserVO> getNonGroupUsers(Long groupId) {
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+
+        // 校验群组存在
+        Group group = groupService.getById(groupId);
+        if (group == null || group.getIsDeleted()) {
+            throw new ServiceException("群组不存在");
+        }
+
+        // 校验当前用户是否在群组中
+        if (!isInGroup(groupId, currentUserId)) {
+            throw new ServiceException("您不在该群组中，无权查看非成员列表");
+        }
+
+        // 获取群组已存在的成员ID
+        java.util.Set<Long> existingUserIds = this.list(Wrappers.<GroupUser>lambdaQuery()
+                .eq(GroupUser::getGroupId, groupId)
+                .eq(GroupUser::getIsDeleted, false))
+                .stream()
+                .map(GroupUser::getUserId)
+                .collect(Collectors.toSet());
+
+        // 获取所有用户
+        Result<List<UserNicknameDTO>> allUsersResult = remoteUserService.getAllUserNicknames();
+        if (allUsersResult == null || allUsersResult.getData() == null) {
+            return List.of();
+        }
+
+        // 过滤出非群组成员
+        return allUsersResult.getData().stream()
+                .filter(user -> !existingUserIds.contains(user.getId()))
+                .map(user -> {
+                    GroupUserVO vo = new GroupUserVO();
+                    vo.setUserId(user.getId());
+                    vo.setNickname(user.getNickName());
+                    return vo;
+                })
+                .collect(Collectors.toList());
+    }
 }

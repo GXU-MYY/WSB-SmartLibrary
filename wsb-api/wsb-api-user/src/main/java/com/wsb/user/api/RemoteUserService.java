@@ -30,4 +30,10 @@ public interface RemoteUserService {
    */
   @GetMapping("/inner/nicknames")
   Result<List<UserNicknameDTO>> getUserNicknamesByIds(@RequestParam("ids") List<Long> userIds);
+
+  /**
+   * 获取所有用户昵称信息
+   */
+  @GetMapping("/inner/nicknames/all")
+  Result<List<UserNicknameDTO>> getAllUserNicknames();
 }

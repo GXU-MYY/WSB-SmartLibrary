@@ -29,12 +29,15 @@ public class GroupUserController {
     public Result<List<GroupUserVO>> getGroupUsers(
             @Parameter(description = "群组ID")
             @RequestParam("group_id") Long groupId,
-            @Parameter(description = "类型：in-群组成员")
+            @Parameter(description = "类型：in-群组成员，out-非群组成员")
             @RequestParam("type") String type) {
-        if (!"in".equals(type)) {
-            return Result.error("type参数错误，目前仅支持in");
+        if ("in".equals(type)) {
+            return Result.success(groupUserService.getGroupUsers(groupId));
+        } else if ("out".equals(type)) {
+            return Result.success(groupUserService.getNonGroupUsers(groupId));
+        } else {
+            return Result.error("type参数错误，可选值：in、out");
         }
-        return Result.success(groupUserService.getGroupUsers(groupId));
     }
 
     @Operation(summary = "群组成员操作", description = "拉用户进群(type=add)或踢用户出群(type=minus)")

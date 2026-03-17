@@ -42,4 +42,12 @@ public interface GroupUserService extends IService<GroupUser> {
      * @return 是否在群组中
      */
     boolean isInGroup(Long groupId, Long userId);
+
+    /**
+     * 获取非群组成员列表（全站用户 - 群组已存在成员）
+     *
+     * @param groupId 群组ID
+     * @return 非成员列表
+     */
+    List<GroupUserVO> getNonGroupUsers(Long groupId);
 }
