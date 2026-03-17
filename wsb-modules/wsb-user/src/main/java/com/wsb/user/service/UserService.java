@@ -2,6 +2,7 @@ package com.wsb.user.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import com.wsb.user.domain.User;
 import com.wsb.user.api.dto.UserRegisterDTO;
@@ -28,4 +29,6 @@ public interface UserService extends IService<User> {
   void sendCaptcha(String telphone);
 
   void existsByIds(List<Long> userIds);
+
+  List<UserNicknameDTO> getUserNicknamesByIds(List<Long> userIds);
 }

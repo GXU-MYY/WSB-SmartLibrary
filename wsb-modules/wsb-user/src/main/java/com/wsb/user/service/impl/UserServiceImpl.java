@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
+import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import com.wsb.user.api.vo.UserInfoVO;
 import com.wsb.user.convert.UserConverter;
@@ -26,6 +27,7 @@ import com.wsb.common.core.utils.SmsUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -140,5 +142,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (count != userIds.size()) {
             throw new ServiceException("部分被邀请用户不存在，请检查后重试");
         }
+    }
+
+    @Override
+    public List<UserNicknameDTO> getUserNicknamesByIds(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        List<User> users = this.listByIds(userIds);
+        return users.stream().map(user -> {
+            UserNicknameDTO dto = new UserNicknameDTO();
+            dto.setId(user.getId());
+            dto.setNickName(user.getNickName());
+            return dto;
+        }).collect(Collectors.toList());
     }
 }
