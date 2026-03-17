@@ -1,7 +1,9 @@
 package com.wsb.book.api;
 
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CategoryCountDTO;
 import com.wsb.book.api.dto.ShelfRemoteDTO;
+import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.common.core.domain.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,4 +41,24 @@ public interface RemoteBookService {
      */
     @GetMapping("/shelf/batch")
     Result<List<ShelfRemoteDTO>> getShelfByIds(@RequestParam("ids") List<Long> shelfIds);
+
+    // ========== 统计相关接口 ==========
+
+    /**
+     * 统计用户拥书数量（批量）
+     */
+    @GetMapping("/book/stats/user-count")
+    Result<List<UserBookCountDTO>> countBooksByUsers(@RequestParam("user_ids") List<Long> userIds);
+
+    /**
+     * 按分类统计书籍数量（指定用户）
+     */
+    @GetMapping("/book/stats/category")
+    Result<List<CategoryCountDTO>> countBooksByCategory(@RequestParam("user_id") Long userId);
+
+    /**
+     * 获取用户拥有的书籍ID列表
+     */
+    @GetMapping("/book/stats/user-books")
+    Result<List<Long>> getBookIdsByOwner(@RequestParam("user_id") Long userId);
 }
