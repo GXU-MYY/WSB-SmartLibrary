@@ -4,12 +4,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
-import com.wsb.borrow.api.RemoteBorrowService;
-import com.wsb.borrow.api.dto.BookBorrowCountDTO;
-import com.wsb.borrow.api.dto.BorrowCategoryStatsDTO;
-import com.wsb.borrow.api.dto.UserBorrowStatsDTO;
+import com.wsb.book.api.dto.UserBorrowStatsDTO;
 import com.wsb.common.core.domain.Result;
 import com.wsb.community.api.vo.BookRankVO;
 import com.wsb.community.api.vo.BorrowStatsVO;
@@ -38,7 +36,6 @@ import java.util.stream.Collectors;
 public class StatisticsServiceImpl implements StatisticsService {
 
     private final RemoteBookService remoteBookService;
-    private final RemoteBorrowService remoteBorrowService;
     private final RemoteCollectService remoteCollectService;
     private final RemoteUserService remoteUserService;
     private final StatisticsConverter statisticsConverter;
@@ -149,7 +146,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         }
 
         // 获取借阅分类统计
-        Result<List<BorrowCategoryStatsDTO>> statsResult = remoteBorrowService.getBorrowStatsByCategory(bookIds);
+        Result<List<BorrowCategoryStatsDTO>> statsResult = remoteBookService.getBorrowStatsByCategory(bookIds);
         if (statsResult == null || statsResult.getData() == null) {
             return createEmptyBorrowStats();
         }
@@ -214,7 +211,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         owned.setTotalBooks(myBookIds.size());
 
         // 借出未归还数
-        Result<Integer> unreturnedResult = remoteBorrowService.countUnreturnedByOwner(currentUserId);
+        Result<Integer> unreturnedResult = remoteBookService.countUnreturnedByOwner(currentUserId);
         owned.setBooksLentUnreturned(unreturnedResult != null ? unreturnedResult.getData() : 0);
 
         // 被收藏数
@@ -242,7 +239,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         // 我借阅的书籍统计
         PersonalStatsVO.BorrowedStats borrowed = new PersonalStatsVO.BorrowedStats();
-        Result<UserBorrowStatsDTO> borrowResult = remoteBorrowService.getUserBorrowStats(currentUserId);
+        Result<UserBorrowStatsDTO> borrowResult = remoteBookService.getUserBorrowStats(currentUserId);
         if (borrowResult != null && borrowResult.getData() != null) {
             UserBorrowStatsDTO stats = borrowResult.getData();
             borrowed.setTotalBorrowed(stats.getTotalBorrowed() != null ? stats.getTotalBorrowed() : 0);

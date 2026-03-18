@@ -1,4 +1,4 @@
-package com.wsb.borrow.api.vo;
+package com.wsb.book.api.vo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;

@@ -1,10 +1,10 @@
-package com.wsb.borrow.convert;
+package com.wsb.book.convert;
 
-import com.wsb.borrow.api.dto.BookBorrowDTO;
-import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
-import com.wsb.borrow.api.vo.BookBorrowRecordVO;
-import com.wsb.borrow.api.vo.BookBorrowVO;
-import com.wsb.borrow.domain.BookBorrow;
+import com.wsb.book.api.dto.BookBorrowDTO;
+import com.wsb.book.api.dto.BookBorrowUpdateDTO;
+import com.wsb.book.api.vo.BookBorrowRecordVO;
+import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.domain.BookBorrow;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

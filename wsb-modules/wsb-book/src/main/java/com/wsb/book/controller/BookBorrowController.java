@@ -1,11 +1,11 @@
-package com.wsb.borrow.controller;
+package com.wsb.book.controller;
 
-import com.wsb.borrow.api.dto.BookBorrowDTO;
-import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
-import com.wsb.borrow.api.dto.BookReturnDTO;
-import com.wsb.borrow.api.vo.BookBorrowRecordVO;
-import com.wsb.borrow.api.vo.BookBorrowVO;
-import com.wsb.borrow.service.BookBorrowService;
+import com.wsb.book.api.dto.BookBorrowDTO;
+import com.wsb.book.api.dto.BookBorrowUpdateDTO;
+import com.wsb.book.api.dto.BookReturnDTO;
+import com.wsb.book.api.vo.BookBorrowRecordVO;
+import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.service.BookBorrowService;
 import com.wsb.common.core.domain.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 借阅管理控制器
+ */
 @Tag(name = "借阅管理")
 @RestController
 @RequestMapping("/v1/book")

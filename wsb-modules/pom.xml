@@ -15,7 +15,6 @@
     <modules>
         <module>wsb-user</module>
         <module>wsb-book</module>
-        <module>wsb-borrow</module>
         <module>wsb-social</module>
         <module>wsb-community</module>
     </modules>
