@@ -1,4 +1,4 @@
-package com.wsb.borrow.api.dto;
+package com.wsb.book.api.dto;
 
 import lombok.Data;
 

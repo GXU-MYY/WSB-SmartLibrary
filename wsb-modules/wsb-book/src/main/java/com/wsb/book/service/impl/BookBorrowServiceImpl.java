@@ -1,20 +1,19 @@
-package com.wsb.borrow.service.impl;
+package com.wsb.book.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.wsb.book.api.RemoteBookService;
-import com.wsb.book.api.dto.BookRemoteDTO;
-import com.wsb.borrow.api.dto.BookBorrowDTO;
-import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
-import com.wsb.borrow.api.dto.BookReturnDTO;
-import com.wsb.borrow.api.vo.BookBorrowRecordVO;
-import com.wsb.borrow.api.vo.BookBorrowVO;
-import com.wsb.borrow.convert.BookBorrowConverter;
-import com.wsb.borrow.domain.BookBorrow;
-import com.wsb.borrow.mapper.BookBorrowMapper;
-import com.wsb.borrow.service.BookBorrowService;
-import com.wsb.common.core.domain.Result;
+import com.wsb.book.api.dto.BookBorrowDTO;
+import com.wsb.book.api.dto.BookBorrowUpdateDTO;
+import com.wsb.book.api.dto.BookReturnDTO;
+import com.wsb.book.api.vo.BookBorrowRecordVO;
+import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.convert.BookBorrowConverter;
+import com.wsb.book.domain.Book;
+import com.wsb.book.domain.BookBorrow;
+import com.wsb.book.mapper.BookBorrowMapper;
+import com.wsb.book.mapper.BookMapper;
+import com.wsb.book.service.BookBorrowService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,11 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 借阅服务实现类
+ */
 @Service
 @RequiredArgsConstructor
 public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBorrow> implements BookBorrowService {
 
-    private final RemoteBookService remoteBookService;
+    private final BookMapper bookMapper;
     private final BookBorrowConverter bookBorrowConverter;
 
     @Override
@@ -37,13 +39,12 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
     public BookBorrowVO borrow(BookBorrowDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
-        // 远程调用获取书籍信息
+        // 获取书籍信息
         Long bookId = dto.getBookId();
-        Result<BookRemoteDTO> bookResult = remoteBookService.getBookById(bookId);
-        if (bookResult == null || bookResult.getData() == null) {
+        Book book = bookMapper.selectById(bookId);
+        if (book == null) {
             throw new ServiceException("书籍不存在");
         }
-        BookRemoteDTO book = bookResult.getData();
 
         // 使用 Converter 转换并设置额外字段
         BookBorrow borrow = bookBorrowConverter.toBookBorrow(dto);
@@ -105,20 +106,16 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
 
         // 批量获取书籍信息
         List<Long> bookIds = borrows.stream().map(BookBorrow::getBookId).distinct().collect(Collectors.toList());
-        Result<List<BookRemoteDTO>> booksResult = remoteBookService.getBooksByIds(bookIds);
-        Map<Long, BookRemoteDTO> bookMap = Map.of();
-        if (booksResult != null && booksResult.getData() != null) {
-            bookMap = booksResult.getData().stream()
-                    .collect(Collectors.toMap(BookRemoteDTO::getId, b -> b));
-        }
+        List<Book> books = bookMapper.selectBatchIds(bookIds);
+        Map<Long, Book> bookMap = books.stream()
+                .collect(Collectors.toMap(Book::getId, b -> b));
 
         // 使用 Converter 转换
         List<BookBorrowRecordVO> voList = bookBorrowConverter.toBookBorrowRecordVOList(borrows);
 
         // 设置书籍信息
-        final Map<Long, BookRemoteDTO> finalBookMap = bookMap;
         voList.forEach(vo -> {
-            BookRemoteDTO book = finalBookMap.get(vo.getBookId());
+            Book book = bookMap.get(vo.getBookId());
             if (book != null) {
                 vo.setTitle(book.getTitle());
                 vo.setCoverUrl(book.getCoverUrl());

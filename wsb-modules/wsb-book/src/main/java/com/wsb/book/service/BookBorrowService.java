@@ -1,15 +1,18 @@
-package com.wsb.borrow.service;
+package com.wsb.book.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.wsb.borrow.api.dto.BookBorrowDTO;
-import com.wsb.borrow.api.dto.BookBorrowUpdateDTO;
-import com.wsb.borrow.api.dto.BookReturnDTO;
-import com.wsb.borrow.api.vo.BookBorrowRecordVO;
-import com.wsb.borrow.api.vo.BookBorrowVO;
-import com.wsb.borrow.domain.BookBorrow;
+import com.wsb.book.api.dto.BookBorrowDTO;
+import com.wsb.book.api.dto.BookBorrowUpdateDTO;
+import com.wsb.book.api.dto.BookReturnDTO;
+import com.wsb.book.api.vo.BookBorrowRecordVO;
+import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.domain.BookBorrow;
 
 import java.util.List;
 
+/**
+ * 借阅服务接口
+ */
 public interface BookBorrowService extends IService<BookBorrow> {
 
     /**

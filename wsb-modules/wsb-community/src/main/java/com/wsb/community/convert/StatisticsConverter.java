@@ -1,8 +1,8 @@
 package com.wsb.community.convert;
 
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
-import com.wsb.borrow.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.community.api.vo.BookRankVO;
 import com.wsb.community.api.vo.BorrowStatsVO;
 import com.wsb.community.api.vo.CollectStatsVO;
