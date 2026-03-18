@@ -9,7 +9,7 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients(basePackages = {"com.wsb.user.api", "com.wsb.book.api"})
+@EnableFeignClients(basePackages = {"com.wsb.user.api", "com.wsb.book.api", "com.wsb.borrow.api", "com.wsb.social.api"})
 @MapperScan("com.wsb.community.mapper")
 @ComponentScan(basePackages = "com.wsb")
 public class WsbCommunityApplication {
