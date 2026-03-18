@@ -1,6 +1,7 @@
 package com.wsb.user.service.impl;
 
 import cn.dev33.satoken.secure.BCrypt;
+import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -8,6 +9,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
+import com.wsb.user.api.dto.UserLoginDTO;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import com.wsb.user.api.vo.UserInfoVO;
@@ -167,5 +169,33 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             dto.setNickName(user.getNickName());
             return dto;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    public SaTokenInfo login(UserLoginDTO dto) {
+        // 1. 查询用户
+        User user = this.getOne(new LambdaQueryWrapper<User>().eq(User::getUserName, dto.getUsername()));
+        if (user == null) {
+            throw new ServiceException("用户不存在");
+        }
+
+        // 2. 校验密码
+        if (!BCrypt.checkpw(dto.getPassword(), user.getPassword())) {
+            throw new ServiceException("密码错误");
+        }
+
+        // 3. 校验状态
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new ServiceException("账号未激活");
+        }
+
+        // 4. 登录
+        StpUtil.login(user.getId());
+        return StpUtil.getTokenInfo();
+    }
+
+    @Override
+    public void logout() {
+        StpUtil.logout();
     }
 }

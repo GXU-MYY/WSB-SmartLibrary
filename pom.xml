@@ -13,7 +13,6 @@
         <module>wsb-common</module>
         <module>wsb-api</module>
         <module>wsb-gateway</module>
-        <module>wsb-auth</module>
         <module>wsb-modules</module>
     </modules>
 
@@ -188,11 +187,6 @@
             <dependency>
                 <groupId>com.wsb</groupId>
                 <artifactId>wsb-api-book</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.wsb</groupId>
-                <artifactId>wsb-api-borrow</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

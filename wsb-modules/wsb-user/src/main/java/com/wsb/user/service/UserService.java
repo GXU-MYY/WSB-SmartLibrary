@@ -1,7 +1,9 @@
 package com.wsb.user.service;
 
+import cn.dev33.satoken.stp.SaTokenInfo;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.wsb.user.api.dto.UserLoginDTO;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import com.wsb.user.domain.User;
@@ -33,4 +35,14 @@ public interface UserService extends IService<User> {
   List<UserNicknameDTO> getUserNicknamesByIds(List<Long> userIds);
 
   List<UserNicknameDTO> getAllUserNicknames();
+
+  /**
+   * 用户登录
+   */
+  SaTokenInfo login(UserLoginDTO dto);
+
+  /**
+   * 用户注销
+   */
+  void logout();
 }
