@@ -18,21 +18,12 @@ spring:
         locator:
           enabled: true # 开启从注册中心动态创建路由的功能
       routes:
-        - id: wsb-auth
-          uri: lb://wsb-auth
-          predicates:
-            - Path=/v1/admin/login,/v1/admin/logout
-        # 用户模块
+        # 用户模块 (含认证)
         - id: wsb-user
           uri: lb://wsb-user
           predicates:
-            - Path=/v1/admin/user/**,/v1/admin/register,/v1/admin/passwd,/v1/admin/phone/**
-        # 借阅模块 - 优先匹配借阅相关路径
-        - id: wsb-borrow
-          uri: lb://wsb-borrow
-          predicates:
-            - Path=/v1/admin/borrow/**,/v1/book/borrow,/v1/book/returning
-        # 书籍模块
+            - Path=/v1/admin/login,/v1/admin/logout,/v1/admin/user/**,/v1/admin/register,/v1/admin/passwd,/v1/admin/phone/**
+        # 书籍模块 (含借阅)
         - id: wsb-book
           uri: lb://wsb-book
           predicates:
@@ -41,7 +32,12 @@ spring:
         - id: wsb-social
           uri: lb://wsb-social
           predicates:
-            - Path=/v1/group/**
+            - Path=/v1/collect/**,/v1/stars,/v1/social/**
+        # 社区模块
+        - id: wsb-community
+          uri: lb://wsb-community
+          predicates:
+            - Path=/v1/group/**,/v1/community/**
 
         # --- Swagger API Docs Routes ---
         - id: wsb-user-swagger
@@ -56,18 +52,18 @@ spring:
             - Path=/wsb-book/v3/api-docs
           filters:
             - RewritePath=/wsb-book/v3/api-docs, /v3/api-docs
-        - id: wsb-borrow-swagger
-          uri: lb://wsb-borrow
-          predicates:
-            - Path=/wsb-borrow/v3/api-docs
-          filters:
-            - RewritePath=/wsb-borrow/v3/api-docs, /v3/api-docs
         - id: wsb-social-swagger
           uri: lb://wsb-social
           predicates:
             - Path=/wsb-social/v3/api-docs
           filters:
             - RewritePath=/wsb-social/v3/api-docs, /v3/api-docs
+        - id: wsb-community-swagger
+          uri: lb://wsb-community
+          predicates:
+            - Path=/wsb-community/v3/api-docs
+          filters:
+            - RewritePath=/wsb-community/v3/api-docs, /v3/api-docs
 
 knife4j:
   gateway:
@@ -82,13 +78,13 @@ knife4j:
         url: /wsb-book/v3/api-docs
         service-name: wsb-book
         order: 2
-      - name: 借阅服务
-        url: /wsb-borrow/v3/api-docs
-        service-name: wsb-borrow
-        order: 3
       - name: 社交服务
         url: /wsb-social/v3/api-docs
         service-name: wsb-social
+        order: 3
+      - name: 社区服务
+        url: /wsb-community/v3/api-docs
+        service-name: wsb-community
         order: 4
 
 sa-token:
