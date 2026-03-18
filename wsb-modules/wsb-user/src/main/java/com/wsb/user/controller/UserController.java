@@ -6,8 +6,6 @@ import com.wsb.user.api.dto.*;
 import com.wsb.user.convert.UserConverter;
 import com.wsb.user.api.dto.UserRegisterDTO;
 import com.wsb.user.api.vo.UserInfoVO;
-import com.wsb.user.api.dto.UserRemoteDTO;
-import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,12 +32,6 @@ public class UserController {
   @PutMapping("/user")
   public Result<UserInfoVO> update(@RequestBody UserUpdateDTO dto) {
     return Result.success(userService.updateUserInfo(dto));
-  }
-
-  @Operation(summary = "Internal call - get user info by username", hidden = true)
-  @GetMapping("/inner/info/{username}")
-  public Result<UserRemoteDTO> getUserInfoByUsername(@PathVariable("username") String username) {
-    return Result.success(userService.getUserInfoByUsername(username));
   }
 
   @Operation(summary = "Query user list/detail")
@@ -72,24 +64,5 @@ public class UserController {
   public Result<Void> sendCaptcha(@RequestParam("phone") String phone) {
     userService.sendCaptcha(phone);
     return Result.success();
-  }
-
-  @Operation(summary = "Internal call - check if users exist by id", hidden = true)
-  @GetMapping("/inner/exists")
-  public Result<Void> checkUserExists(@RequestParam("user_ids") List<Long> userIds) {
-    userService.existsByIds(userIds);
-    return Result.success();
-  }
-
-  @Operation(summary = "Internal call - get user nicknames by ids", hidden = true)
-  @GetMapping("/inner/nicknames")
-  public Result<List<UserNicknameDTO>> getUserNicknamesByIds(@RequestParam("ids") List<Long> userIds) {
-    return Result.success(userService.getUserNicknamesByIds(userIds));
-  }
-
-  @Operation(summary = "Internal call - get all user nicknames", hidden = true)
-  @GetMapping("/inner/nicknames/all")
-  public Result<List<UserNicknameDTO>> getAllUserNicknames() {
-    return Result.success(userService.getAllUserNicknames());
   }
 }

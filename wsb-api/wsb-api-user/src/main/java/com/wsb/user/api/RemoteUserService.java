@@ -10,30 +10,30 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
-@FeignClient(value = "wsb-user", path = "/v1/admin")
+@FeignClient(value = "wsb-user", path = "/v1/inner")
 public interface RemoteUserService {
 
   /**
    * Get user info by username (includes sensitive info like password, internal only)
    */
-  @GetMapping("/inner/info/{username}")
+  @GetMapping("/info/{username}")
   Result<UserRemoteDTO> getUserInfoByUsername(@PathVariable("username") String username);
 
   /**
    * Check if users exist by user ID list
    */
-  @GetMapping("/inner/exists")
+  @GetMapping("/exists")
   Result<Void> checkUserExists(@RequestParam("user_ids") List<Long> userIds);
 
   /**
    * 根据用户ID列表批量获取用户昵称信息
    */
-  @GetMapping("/inner/nicknames")
+  @GetMapping("/nicknames")
   Result<List<UserNicknameDTO>> getUserNicknamesByIds(@RequestParam("ids") List<Long> userIds);
 
   /**
    * 获取所有用户昵称信息
    */
-  @GetMapping("/inner/nicknames/all")
+  @GetMapping("/nicknames/all")
   Result<List<UserNicknameDTO>> getAllUserNicknames();
 }
