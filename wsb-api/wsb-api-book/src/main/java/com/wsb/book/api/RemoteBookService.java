@@ -11,6 +11,7 @@ import com.wsb.common.core.domain.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
@@ -96,4 +97,30 @@ public interface RemoteBookService {
      */
     @GetMapping("/borrow/stats/summary")
     Result<BorrowCategoryStatsDTO> getBorrowSummary(@RequestParam("book_ids") List<Long> bookIds);
+
+    // ========== RAG 相关接口 ==========
+
+    /**
+     * 获取摘要为空的书籍ID列表
+     */
+    @GetMapping("/book/rag/summary-null")
+    Result<List<Long>> getBooksWithNullSummary();
+
+    /**
+     * 获取未生成向量的书籍ID列表
+     */
+    @GetMapping("/book/rag/embedding-pending")
+    Result<List<Long>> getBooksPendingEmbedding();
+
+    /**
+     * 更新书籍摘要
+     */
+    @PutMapping("/book/rag/{bookId}/summary")
+    Result<Void> updateSummary(@PathVariable("bookId") Long bookId, @RequestParam("summary") String summary);
+
+    /**
+     * 更新书籍向量状态
+     */
+    @PutMapping("/book/rag/{bookId}/embedding-status")
+    Result<Void> updateEmbeddingStatus(@PathVariable("bookId") Long bookId, @RequestParam("status") Integer status);
 }

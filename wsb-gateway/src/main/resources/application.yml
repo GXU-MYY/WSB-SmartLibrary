@@ -38,6 +38,16 @@ spring:
           uri: lb://wsb-community
           predicates:
             - Path=/v1/group/**,/v1/community/**
+        # 文件模块
+        - id: wsb-file
+          uri: lb://wsb-file
+          predicates:
+            - Path=/v1/picture/**
+        # RAG模块
+        - id: wsb-rag
+          uri: lb://wsb-rag
+          predicates:
+            - Path=/v1/rag/**
 
         # --- Swagger API Docs Routes ---
         - id: wsb-user-swagger
@@ -64,6 +74,18 @@ spring:
             - Path=/wsb-community/v3/api-docs
           filters:
             - RewritePath=/wsb-community/v3/api-docs, /v3/api-docs
+        - id: wsb-file-swagger
+          uri: lb://wsb-file
+          predicates:
+            - Path=/wsb-file/v3/api-docs
+          filters:
+            - RewritePath=/wsb-file/v3/api-docs, /v3/api-docs
+        - id: wsb-rag-swagger
+          uri: lb://wsb-rag
+          predicates:
+            - Path=/wsb-rag/v3/api-docs
+          filters:
+            - RewritePath=/wsb-rag/v3/api-docs, /v3/api-docs
 
 knife4j:
   gateway:
@@ -86,6 +108,14 @@ knife4j:
         url: /wsb-community/v3/api-docs
         service-name: wsb-community
         order: 4
+      - name: 文件服务
+        url: /wsb-file/v3/api-docs
+        service-name: wsb-file
+        order: 5
+      - name: RAG服务
+        url: /wsb-rag/v3/api-docs
+        service-name: wsb-rag
+        order: 6
 
 sa-token:
   # token名称 (同时也是cookie名称)
