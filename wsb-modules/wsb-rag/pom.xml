@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.wsb</groupId>
+        <artifactId>wsb-modules</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>wsb-rag</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-log</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-doc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-auth</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-api-book</artifactId>
+        </dependency>
+
+        <!-- RabbitMQ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- OkHttp for external API calls -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
+    </dependencies>
+</project>

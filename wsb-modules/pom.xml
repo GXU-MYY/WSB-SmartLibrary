@@ -18,6 +18,7 @@
         <module>wsb-social</module>
         <module>wsb-community</module>
         <module>wsb-file</module>
+        <module>wsb-rag</module>
     </modules>
 
     <dependencies>

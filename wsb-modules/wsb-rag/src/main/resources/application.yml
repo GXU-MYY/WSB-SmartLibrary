@@ -1,0 +1,40 @@
+server:
+  port: 9700
+
+spring:
+  application:
+    name: wsb-rag
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+# DeepSeek API
+deepseek:
+  embedding-url: ${DEEPSEEK_EMBEDDING_URL}
+  chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
+  api-key: ${DEEPSEEK_API_KEY}
+
+# Supabase
+supabase:
+  url: ${SUPABASE_URL}
+  anon-key: ${SUPABASE_ANON_KEY}
+
+# Tavily
+tavily:
+  api-key: ${TAVILY_API_KEY}
+
+# RabbitMQ Queue Config
+rag:
+  queue:
+    summary: wsb.summary.queue
+    embedding: wsb.embedding.queue
+  exchange: wsb.rag.exchange
+  routing:
+    summary: wsb.summary
+    embedding: wsb.embedding
