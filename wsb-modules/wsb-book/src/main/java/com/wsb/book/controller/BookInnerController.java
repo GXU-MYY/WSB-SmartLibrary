@@ -41,7 +41,13 @@ public class BookInnerController {
         BookRemoteDTO dto = new BookRemoteDTO();
         dto.setId(book.getId());
         dto.setTitle(book.getTitle());
+        dto.setSubtitle(book.getSubtitle());
+        dto.setAuthor(book.getAuthor());
+        dto.setSummary(book.getSummary());
+        dto.setKeyword(book.getKeyword());
+        dto.setLabel(book.getLabel());
         dto.setCoverUrl(book.getCoverUrl());
+        dto.setEmbeddingStatus(book.getEmbeddingStatus());
         return Result.success(dto);
     }
 
@@ -55,7 +61,13 @@ public class BookInnerController {
             BookRemoteDTO dto = new BookRemoteDTO();
             dto.setId(book.getId());
             dto.setTitle(book.getTitle());
+            dto.setSubtitle(book.getSubtitle());
+            dto.setAuthor(book.getAuthor());
+            dto.setSummary(book.getSummary());
+            dto.setKeyword(book.getKeyword());
+            dto.setLabel(book.getLabel());
             dto.setCoverUrl(book.getCoverUrl());
+            dto.setEmbeddingStatus(book.getEmbeddingStatus());
             return dto;
         }).collect(Collectors.toList());
         return Result.success(dtos);
@@ -242,5 +254,65 @@ public class BookInnerController {
         dto.setRead(read);
 
         return Result.success(dto);
+    }
+
+    // ========== RAG 接口 ==========
+
+    /**
+     * 获取摘要为空的书籍ID列表
+     */
+    @GetMapping("/book/rag/summary-null")
+    public Result<List<Long>> getBooksWithNullSummary() {
+        List<Book> books = bookService.list(Wrappers.<Book>lambdaQuery()
+                .eq(Book::getIsDeleted, false)
+                .and(w -> w.isNull(Book::getSummary).or().eq(Book::getSummary, ""))
+                .select(Book::getId));
+
+        List<Long> bookIds = books.stream()
+                .map(Book::getId)
+                .collect(Collectors.toList());
+
+        return Result.success(bookIds);
+    }
+
+    /**
+     * 获取未生成向量的书籍ID列表
+     */
+    @GetMapping("/book/rag/embedding-pending")
+    public Result<List<Long>> getBooksPendingEmbedding() {
+        List<Book> books = bookService.list(Wrappers.<Book>lambdaQuery()
+                .eq(Book::getIsDeleted, false)
+                .and(w -> w.isNull(Book::getEmbeddingStatus).or().eq(Book::getEmbeddingStatus, 0))
+                .select(Book::getId));
+
+        List<Long> bookIds = books.stream()
+                .map(Book::getId)
+                .collect(Collectors.toList());
+
+        return Result.success(bookIds);
+    }
+
+    /**
+     * 更新书籍摘要
+     */
+    @PutMapping("/book/rag/{bookId}/summary")
+    public Result<Void> updateSummary(@PathVariable Long bookId, @RequestParam("summary") String summary) {
+        Book book = new Book();
+        book.setId(bookId);
+        book.setSummary(summary);
+        bookService.updateById(book);
+        return Result.success();
+    }
+
+    /**
+     * 更新书籍向量状态
+     */
+    @PutMapping("/book/rag/{bookId}/embedding-status")
+    public Result<Void> updateEmbeddingStatus(@PathVariable Long bookId, @RequestParam("status") Integer status) {
+        Book book = new Book();
+        book.setId(bookId);
+        book.setEmbeddingStatus(status);
+        bookService.updateById(book);
+        return Result.success();
     }
 }
