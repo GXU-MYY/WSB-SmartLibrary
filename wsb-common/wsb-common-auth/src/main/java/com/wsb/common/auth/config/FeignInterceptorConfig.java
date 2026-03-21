@@ -1,16 +1,18 @@
 package com.wsb.common.auth.config;
 
-import cn.dev33.satoken.same.SaSameUtil;
 import cn.dev33.satoken.stp.StpUtil;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
  * Feign拦截器，自动传递鉴权Token
+ * 仅在 Feign 存在时生效
  */
 @Configuration
+@ConditionalOnClass(RequestInterceptor.class)
 public class FeignInterceptorConfig {
 
   @Bean
