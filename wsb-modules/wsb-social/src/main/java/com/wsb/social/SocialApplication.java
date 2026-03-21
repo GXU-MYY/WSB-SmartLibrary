@@ -11,7 +11,7 @@ import org.springframework.context.annotation.ComponentScan;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.wsb.user.api", "com.wsb.book.api"})
 @MapperScan("com.wsb.social.mapper")
-@ComponentScan(basePackages = "com.wsb")
+@ComponentScan(basePackages = "com.wsb.social")
 public class SocialApplication {
   public static void main(String[] args) {
     SpringApplication.run(SocialApplication.class, args);
