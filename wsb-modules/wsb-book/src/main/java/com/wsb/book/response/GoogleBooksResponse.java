@@ -1,4 +1,4 @@
-package com.wsb.book.api.response;
+package com.wsb.book.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;

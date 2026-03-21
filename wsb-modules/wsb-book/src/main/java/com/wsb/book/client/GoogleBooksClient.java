@@ -1,7 +1,7 @@
-package com.wsb.book.api.client;
+package com.wsb.book.client;
 
-import com.wsb.book.api.config.GoogleBooksFeignConfig;
-import com.wsb.book.api.response.GoogleBooksResponse;
+import com.wsb.book.config.GoogleBooksFeignConfig;
+import com.wsb.book.response.GoogleBooksResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;

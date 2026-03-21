@@ -1,4 +1,4 @@
-package com.wsb.book.api.config;
+package com.wsb.book.config;
 
 import feign.Logger;
 import feign.Request;
