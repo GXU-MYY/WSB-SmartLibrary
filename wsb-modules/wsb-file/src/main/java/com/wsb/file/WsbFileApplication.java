@@ -7,6 +7,7 @@ import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
 @EnableDiscoveryClient
+@ComponentScan(basePackages = {"com.wsb.file", "com.wsb.common"})
 public class WsbFileApplication {
     public static void main(String[] args) {
         SpringApplication.run(WsbFileApplication.class, args);

@@ -11,7 +11,7 @@ import org.springframework.context.annotation.ComponentScan;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = "com.wsb.book.client")
 @MapperScan("com.wsb.book.mapper")
-@ComponentScan(basePackages = "com.wsb.book")
+@ComponentScan(basePackages = {"com.wsb.book", "com.wsb.common"})
 public class BookApplication {
   public static void main(String[] args) {
     SpringApplication.run(BookApplication.class, args);

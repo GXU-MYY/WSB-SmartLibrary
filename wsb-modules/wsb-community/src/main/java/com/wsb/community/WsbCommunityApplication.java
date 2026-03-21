@@ -11,7 +11,7 @@ import org.springframework.context.annotation.ComponentScan;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = {"com.wsb.user.api", "com.wsb.book.api", "com.wsb.social.api"})
 @MapperScan("com.wsb.community.mapper")
-@ComponentScan(basePackages = "com.wsb.community")
+@ComponentScan(basePackages = {"com.wsb.community", "com.wsb.common"})
 public class WsbCommunityApplication {
     public static void main(String[] args) {
         SpringApplication.run(WsbCommunityApplication.class, args);

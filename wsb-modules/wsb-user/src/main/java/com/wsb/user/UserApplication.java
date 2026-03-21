@@ -9,7 +9,7 @@ import org.springframework.context.annotation.ComponentScan;
 @SpringBootApplication
 @EnableDiscoveryClient
 @MapperScan("com.wsb.user.mapper")
-@ComponentScan(basePackages = "com.wsb.user")
+@ComponentScan(basePackages = {"com.wsb.user", "com.wsb.common"})
 public class UserApplication {
   public static void main(String[] args) {
     SpringApplication.run(UserApplication.class, args);
