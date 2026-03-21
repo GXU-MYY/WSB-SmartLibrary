@@ -39,10 +39,6 @@
         </dependency>
         <dependency>
             <groupId>com.wsb</groupId>
-            <artifactId>wsb-common-mybatis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.wsb</groupId>
             <artifactId>wsb-common-log</artifactId>
         </dependency>
         <dependency>

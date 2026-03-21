@@ -17,6 +17,10 @@
             <artifactId>wsb-api-book</artifactId>
             <version>1.0.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.wsb</groupId>
+            <artifactId>wsb-common-mybatis</artifactId>
+        </dependency>
 
         <!-- Test dependencies -->
         <dependency>
