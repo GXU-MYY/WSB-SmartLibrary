@@ -1,6 +1,6 @@
-package com.wsb.book.api.client;
+package com.wsb.book.client;
 
-import com.wsb.book.api.response.AliyunIsbnResponse;
+import com.wsb.book.response.AliyunIsbnResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

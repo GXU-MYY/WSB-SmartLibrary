@@ -10,8 +10,8 @@ import com.wsb.community.api.vo.GroupUserVO;
 import com.wsb.community.convert.GroupUserConverter;
 import com.wsb.community.domain.Group;
 import com.wsb.community.domain.GroupUser;
+import com.wsb.community.mapper.GroupMapper;
 import com.wsb.community.mapper.GroupUserMapper;
-import com.wsb.community.service.GroupService;
 import com.wsb.community.service.GroupUserService;
 import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser> implements GroupUserService {
 
     private final GroupUserConverter groupUserConverter;
-    private final GroupService groupService;
+    private final GroupMapper groupMapper;
     private final RemoteUserService remoteUserService;
 
     @Override
@@ -39,7 +39,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
         // 校验群组存在
-        Group group = groupService.getById(groupId);
+        Group group = groupMapper.selectById(groupId);
         if (group == null || group.getIsDeleted()) {
             throw new ServiceException("群组不存在");
         }
@@ -83,7 +83,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
         // 校验群组存在
-        Group group = groupService.getById(dto.getGroupId());
+        Group group = groupMapper.selectById(dto.getGroupId());
         if (group == null || group.getIsDeleted()) {
             throw new ServiceException("群组不存在");
         }
@@ -131,7 +131,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
         // 校验群组存在
-        Group group = groupService.getById(dto.getGroupId());
+        Group group = groupMapper.selectById(dto.getGroupId());
         if (group == null || group.getIsDeleted()) {
             throw new ServiceException("群组不存在");
         }
@@ -162,7 +162,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
         // 校验群组存在
-        Group group = groupService.getById(groupId);
+        Group group = groupMapper.selectById(groupId);
         if (group == null || group.getIsDeleted()) {
             throw new ServiceException("群组不存在");
         }

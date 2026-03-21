@@ -9,8 +9,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients(basePackages = "com.wsb")
-@ComponentScan(basePackages = "com.wsb")
+@EnableFeignClients(basePackages = "com.wsb.book.api")
+@ComponentScan(basePackages = "com.wsb.rag")
 @EnableScheduling
 public class WsbRagApplication {
     public static void main(String[] args) {
