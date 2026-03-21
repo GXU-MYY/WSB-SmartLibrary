@@ -16,18 +16,18 @@ spring:
 
 # DeepSeek API
 deepseek:
-  embedding-url: ${DEEPSEEK_EMBEDDING_URL}
+  embedding-url: ${DEEPSEEK_EMBEDDING_URL:}
   chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
-  api-key: ${DEEPSEEK_API_KEY}
+  api-key: ${DEEPSEEK_API_KEY:}
 
 # Supabase
 supabase:
-  url: ${SUPABASE_URL}
-  anon-key: ${SUPABASE_ANON_KEY}
+  url: ${SUPABASE_URL:}
+  anon-key: ${SUPABASE_ANON_KEY:}
 
 # Tavily
 tavily:
-  api-key: ${TAVILY_API_KEY}
+  api-key: ${TAVILY_API_KEY:}
 
 # RabbitMQ Queue Config
 rag:
