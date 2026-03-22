@@ -49,9 +49,9 @@ const handleSubmit = async () => {
 <template>
   <section class="auth-view">
     <div class="auth-view__copy">
-      <span class="eyebrow">Login</span>
-      <h2>登录你的书库工作台</h2>
-      <p>登录后即可继续整理图书、查看借阅动态和使用 AI 阅读功能。</p>
+      <span class="eyebrow">登录</span>
+      <h2>登录</h2>
+      <p>使用用户名或手机号继续。</p>
     </div>
 
     <form class="auth-view__form" @submit.prevent="handleSubmit">
@@ -67,7 +67,7 @@ const handleSubmit = async () => {
 
       <div class="inline-actions">
         <button class="button button--primary" type="submit" :disabled="loading">
-          {{ loading ? '登录中...' : '进入工作台' }}
+          {{ loading ? '登录中...' : '登录' }}
         </button>
         <RouterLink class="button button--ghost" to="/register">创建账号</RouterLink>
       </div>
@@ -92,12 +92,12 @@ const handleSubmit = async () => {
 }
 
 .auth-view__copy h2 {
-  font-size: 2.2rem;
+  font-size: clamp(2.2rem, 5vw, 3rem);
 }
 
 .auth-view__copy p {
   color: var(--sl-ink-soft);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .auth-view__form {

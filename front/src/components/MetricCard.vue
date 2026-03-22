@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import InfoHint from '@/components/InfoHint.vue'
+
 withDefaults(
   defineProps<{
     label: string
     value: string | number
     detail?: string
+    hint?: string
     tone?: 'brand' | 'accent' | 'plain'
   }>(),
   {
     detail: '',
+    hint: '',
     tone: 'plain',
   },
 )
@@ -15,7 +19,10 @@ withDefaults(
 
 <template>
   <article class="surface-card metric-card" :class="`metric-card--${tone}`">
-    <span>{{ label }}</span>
+    <div class="metric-card__head">
+      <span>{{ label }}</span>
+      <InfoHint v-if="hint" :content="hint" />
+    </div>
     <strong>{{ value }}</strong>
     <p v-if="detail">{{ detail }}</p>
   </article>
@@ -26,6 +33,12 @@ withDefaults(
   display: grid;
   gap: 10px;
   padding: 22px;
+}
+
+.metric-card__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .metric-card span {
@@ -48,10 +61,10 @@ withDefaults(
 }
 
 .metric-card--brand {
-  background: linear-gradient(180deg, rgba(31, 95, 107, 0.1), rgba(255, 253, 248, 0.92));
+  background: linear-gradient(180deg, var(--sl-metric-brand-start), var(--sl-metric-brand-end));
 }
 
 .metric-card--accent {
-  background: linear-gradient(180deg, rgba(201, 119, 46, 0.12), rgba(255, 253, 248, 0.92));
+  background: linear-gradient(180deg, var(--sl-metric-accent-start), var(--sl-metric-accent-end));
 }
 </style>

@@ -11,6 +11,7 @@ import {
   operateGroupUsers,
   shareToGroup,
 } from '@/api/community'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import { getUsers } from '@/api/user'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
@@ -100,6 +101,14 @@ const loadGroups = async () => {
     }
   } finally {
     loading.value = false
+  }
+}
+
+const loadPage = async () => {
+  await Promise.all([loadBaseResources(), loadGroups()])
+
+  if (selectedGroupId.value) {
+    await loadWorkspace(selectedGroupId.value)
   }
 }
 
@@ -207,12 +216,9 @@ watch(selectedGroupId, (groupId) => {
   }
 })
 
-onMounted(async () => {
-  await Promise.all([loadBaseResources(), loadGroups()])
-  if (selectedGroupId.value) {
-    await loadWorkspace(selectedGroupId.value)
-  }
-})
+useRegisterPageRefresh(loadPage)
+
+onMounted(loadPage)
 </script>
 
 <template>
@@ -221,16 +227,12 @@ onMounted(async () => {
       eyebrow="Community Desk"
       title="把群组协作和内容流转放进同一个社区工作区"
       description="这里关注的是谁在一起、分享了什么、内容如何在小群里流动，而不是单纯的聊天入口。"
-    >
-      <template #actions>
-        <button class="button button--ghost" type="button" @click="loadGroups">刷新群组</button>
-      </template>
-    </PageIntro>
+    />
 
     <section class="page-grid community-layout">
       <SectionPanel
         title="创建与选择群组"
-        description="先把一组读者和书架关系组织起来，再逐步往群里放内容。"
+        hint="先把一组读者和书架关系组织起来，再逐步往群里放内容。"
       >
         <div class="field">
           <label>群组名称</label>
@@ -273,7 +275,7 @@ onMounted(async () => {
 
       <SectionPanel
         title="群组工作区"
-        description="这里会显示当前群组的成员和最新分享记录。"
+        hint="这里会显示当前群组的成员和最新分享记录。"
       >
         <LoadingState v-if="loading && groups.length === 0" />
         <template v-else-if="selectedGroup">
@@ -323,16 +325,12 @@ onMounted(async () => {
             </article>
           </div>
         </template>
-        <EmptyState
-          v-else
-          title="还没有可用群组"
-          description="先创建一个群组，把第一批成员组织起来，后面的分享和协作才有落点。"
-        />
+        <EmptyState v-else title="还没有可用群组" />
       </SectionPanel>
 
       <SectionPanel
         title="分享工作台"
-        description="把一本书或一个书架推入当前群组，让群内内容开始形成共同上下文。"
+        hint="把一本书或一个书架推入当前群组，让群内内容开始形成共同上下文。"
       >
         <div class="field">
           <label>分享类型</label>

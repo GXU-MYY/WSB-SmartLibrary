@@ -40,8 +40,8 @@ withDefaults(
   height: 48px;
   padding: 6px;
   border-radius: 16px;
-  background: linear-gradient(135deg, var(--sl-brand-strong), var(--sl-brand));
-  box-shadow: 0 18px 30px rgba(31, 95, 107, 0.24);
+  background: linear-gradient(135deg, var(--sl-logo-start), var(--sl-logo-end));
+  box-shadow: var(--sl-logo-shadow);
 }
 
 .logo__mark span {

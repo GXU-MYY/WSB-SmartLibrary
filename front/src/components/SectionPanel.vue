@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import InfoHint from '@/components/InfoHint.vue'
+
 defineProps<{
   title: string
   description?: string
+  hint?: string
 }>()
 </script>
 
@@ -9,7 +12,10 @@ defineProps<{
   <section class="surface-card section-panel">
     <header class="section-panel__head">
       <div>
-        <h2>{{ title }}</h2>
+        <div class="section-panel__title">
+          <h2>{{ title }}</h2>
+          <InfoHint v-if="hint" :content="hint" />
+        </div>
         <p v-if="description">{{ description }}</p>
       </div>
 
@@ -41,6 +47,12 @@ defineProps<{
 .section-panel__head h2,
 .section-panel__head p {
   margin: 0;
+}
+
+.section-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .section-panel__head h2 {

@@ -21,6 +21,7 @@ import {
   getMyBookCollects,
 } from '@/api/social'
 import BookCard from '@/components/BookCard.vue'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
@@ -269,6 +270,8 @@ const handleAttachShelf = async () => {
   }
 }
 
+useRegisterPageRefresh(loadPage)
+
 watch(
   () => route.params.id,
   () => {
@@ -289,7 +292,6 @@ onMounted(loadPage)
       :description="book?.summary || '查看图书元数据、评论反馈、阅读状态、AI 摘要和相似书籍。'"
     >
       <template #actions>
-        <button class="button button--ghost" type="button" @click="loadPage">刷新</button>
         <button class="button button--secondary" type="button" :disabled="collectLoading" @click="toggleCollect">
           {{ collectRecord ? '取消收藏' : '加入收藏' }}
         </button>
@@ -377,7 +379,7 @@ onMounted(loadPage)
       <section class="page-grid detail-grid">
         <SectionPanel
           title="AI 阅读助手"
-          description="这里集中展示摘要、聚合书评与延展阅读结果。"
+          hint="这里集中展示摘要、聚合书评与延展阅读结果。"
         >
           <div class="inline-actions">
             <button class="button button--secondary" type="button" :disabled="summaryLoading" @click="handleGenerateSummary">
@@ -401,7 +403,7 @@ onMounted(loadPage)
 
         <SectionPanel
           title="借阅登记"
-          description="当你要把这本书借出或借入时，可以在这里直接登记。"
+          hint="当你要把这本书借出或借入时，可以在这里直接登记。"
         >
           <div class="field">
             <label>借阅对象</label>
@@ -427,7 +429,7 @@ onMounted(loadPage)
 
         <SectionPanel
           title="评论与评分"
-          description="书评既是你的阅读回声，也是社区关系的一部分。"
+          hint="书评既是你的阅读回声，也是社区关系的一部分。"
         >
           <div class="field">
             <label>评分</label>
@@ -461,16 +463,12 @@ onMounted(loadPage)
               <p class="comment-list__body">{{ item.comment }}</p>
             </li>
           </ul>
-          <EmptyState
-            v-else
-            title="还没有评论"
-            description="成为第一个留下阅读感受的人，让这本书开始积累公共评价。"
-          />
+          <EmptyState v-else title="还没有评论" />
         </SectionPanel>
 
         <SectionPanel
           title="相似图书"
-          description="来自 RAG 相似检索结果，适合继续扩展阅读链路。"
+          hint="来自 RAG 相似检索结果，适合继续扩展阅读链路。"
         >
           <div class="similar-grid">
             <BookCard
@@ -494,11 +492,7 @@ onMounted(loadPage)
               </template>
             </BookCard>
 
-            <EmptyState
-              v-if="similarBooks.length === 0"
-              title="暂时还没有相似图书"
-              description="等向量链路完善后，这里会自动呈现可继续追读的候选。"
-            />
+            <EmptyState v-if="similarBooks.length === 0" title="暂时还没有相似图书" />
           </div>
         </SectionPanel>
       </section>

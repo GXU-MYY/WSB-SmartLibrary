@@ -15,6 +15,7 @@ import {
 } from '@/api/book'
 import { uploadPicture } from '@/api/file'
 import BookCard from '@/components/BookCard.vue'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
@@ -286,6 +287,8 @@ const handleAttachToShelf = async () => {
   }
 }
 
+useRegisterPageRefresh(loadPage)
+
 onMounted(loadPage)
 </script>
 
@@ -295,16 +298,12 @@ onMounted(loadPage)
       eyebrow="Library Desk"
       title="把图书、书架和补录动作集中在一张桌面"
       description="这里不是传统表格后台，而是一块围绕录书和整理过程设计的纸感操作台。"
-    >
-      <template #actions>
-        <button class="button button--ghost" type="button" @click="loadPage">刷新</button>
-      </template>
-    </PageIntro>
+    />
 
     <section class="page-grid books-layout">
       <SectionPanel
         title="筛选与录入"
-        description="先用筛选看清现有藏书，再通过 ISBN 或手动表单新增。"
+        hint="先用筛选看清现有藏书，再通过 ISBN 或手动表单新增。"
       >
         <div class="field-grid">
           <div class="field">
@@ -418,7 +417,7 @@ onMounted(loadPage)
 
       <SectionPanel
         title="图书清单"
-        description="点击卡片可以去详情页，或把某一本拉到快速编辑与入架工作台。"
+        hint="点击卡片可以去详情页，或把某一本拉到快速编辑与入架工作台。"
       >
         <LoadingState v-if="loading && books.length === 0" />
         <div v-else class="books-grid">
@@ -445,17 +444,13 @@ onMounted(loadPage)
             </template>
           </BookCard>
 
-          <EmptyState
-            v-if="!loading && books.length === 0"
-            title="当前筛选下没有图书"
-            description="可以清空筛选条件，或直接在左侧录入新的图书记录。"
-          />
+          <EmptyState v-if="!loading && books.length === 0" title="当前筛选下没有图书" />
         </div>
       </SectionPanel>
 
       <SectionPanel
         title="快速编辑与入架"
-        description="后端目前开放的是轻量编辑接口，所以这里专注改价格、备注和书架关联。"
+        hint="后端目前开放的是轻量编辑接口，所以这里专注改价格、备注和书架关联。"
       >
         <div class="field-grid">
           <div class="field">

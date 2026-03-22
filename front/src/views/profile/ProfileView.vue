@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 
 import { uploadPicture } from '@/api/file'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import PageIntro from '@/components/PageIntro.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -60,9 +61,13 @@ const handleSave = async () => {
   }
 }
 
-onMounted(() => {
-  userStore.fetchProfile(true)
-})
+const loadProfile = async () => {
+  await userStore.fetchProfile(true)
+}
+
+useRegisterPageRefresh(loadProfile)
+
+onMounted(loadProfile)
 </script>
 
 <template>
@@ -76,7 +81,7 @@ onMounted(() => {
     <section class="page-grid profile-layout">
       <SectionPanel
         title="身份卡片"
-        description="当前会话信息、头像和公开展示资料都会在这里集中呈现。"
+        hint="当前会话信息、头像和公开展示资料都会在这里集中呈现。"
       >
         <div class="profile-card surface-card">
           <UserAvatar
@@ -109,7 +114,7 @@ onMounted(() => {
 
       <SectionPanel
         title="编辑公开资料"
-        description="这些信息会影响你在群组、评论和个人主页中的展示方式。"
+        hint="这些信息会影响你在群组、评论和个人主页中的展示方式。"
       >
         <div class="field">
           <label>昵称</label>
@@ -171,7 +176,7 @@ onMounted(() => {
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid var(--sl-line);
-  background: rgba(255, 255, 255, 0.54);
+  background: var(--sl-soft-panel-bg);
 }
 
 .detail-list dt {

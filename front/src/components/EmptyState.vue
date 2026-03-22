@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   title: string
-  description: string
+  description?: string
 }>()
 </script>
 
@@ -15,7 +15,7 @@ defineProps<{
 
     <div class="empty-state__copy">
       <h3>{{ title }}</h3>
-      <p>{{ description }}</p>
+      <p v-if="description">{{ description }}</p>
     </div>
 
     <slot />

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { deleteComment, getMyBookCollects, getMyComments, getMyShelfCollects, getTopRatedBooks } from '@/api/social'
 import BookCard from '@/components/BookCard.vue'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
@@ -46,6 +47,8 @@ const handleDeleteComment = async (commentId: number) => {
   await loadPage()
 }
 
+useRegisterPageRefresh(loadPage)
+
 onMounted(loadPage)
 </script>
 
@@ -55,16 +58,12 @@ onMounted(loadPage)
       eyebrow="Social Pulse"
       title="把评论、收藏和社区热度放到同一块反馈面板"
       description="社交页不是单独的一条时间线，而是你与社区之间所有互动信号的聚合结果。"
-    >
-      <template #actions>
-        <button class="button button--ghost" type="button" @click="loadPage">刷新</button>
-      </template>
-    </PageIntro>
+    />
 
     <section class="page-grid social-layout">
       <SectionPanel
         title="社区高分图书"
-        description="最容易被讨论和认可的书，通常也是你可以优先跟进的内容。"
+        hint="最容易被讨论和认可的书，通常也是你可以优先跟进的内容。"
       >
         <LoadingState v-if="loading && topRatedBooks.length === 0" />
         <div v-else class="books-grid">
@@ -92,7 +91,7 @@ onMounted(loadPage)
 
       <SectionPanel
         title="我的评论"
-        description="这些是你在平台上留下的阅读判断，它们也是个人阅读轨迹的一部分。"
+        hint="这些是你在平台上留下的阅读判断，它们也是个人阅读轨迹的一部分。"
       >
         <div v-if="myComments.length" class="comment-list">
           <article v-for="item in myComments" :key="item.id" class="comment-list__item">
@@ -109,16 +108,12 @@ onMounted(loadPage)
             <p class="comment-list__body">{{ item.comment }}</p>
           </article>
         </div>
-        <EmptyState
-          v-else
-          title="你还没有发布评论"
-          description="当你在图书详情页写下评价，这里就会慢慢变成你的公共阅读切片。"
-        />
+        <EmptyState v-else title="你还没有发布评论" />
       </SectionPanel>
 
       <SectionPanel
         title="我的收藏"
-        description="你主动保存下来的图书与书架，通常就是下一阶段值得继续扩展的方向。"
+        hint="你主动保存下来的图书与书架，通常就是下一阶段值得继续扩展的方向。"
       >
         <div class="collect-grid">
           <article v-for="item in myBookCollects" :key="item.id" class="collect-card">
@@ -132,11 +127,7 @@ onMounted(loadPage)
           </article>
         </div>
 
-        <EmptyState
-          v-if="!myBookCollects.length && !myShelfCollects.length"
-          title="你还没有收藏任何内容"
-          description="收藏能帮你把社区里值得二次阅读的线索重新带回自己的书桌。"
-        />
+        <EmptyState v-if="!myBookCollects.length && !myShelfCollects.length" title="你还没有收藏任何内容" />
       </SectionPanel>
     </section>
   </div>

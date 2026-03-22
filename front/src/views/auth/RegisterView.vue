@@ -86,9 +86,9 @@ const handleSubmit = async () => {
 <template>
   <section class="auth-view">
     <div class="auth-view__copy">
-      <span class="eyebrow">Register</span>
-      <h2>为你的数字书房开一个新入口</h2>
-      <p>注册完成后，你就可以录入藏书、加入群组，并逐步沉淀自己的阅读网络。</p>
+      <span class="eyebrow">注册</span>
+      <h2>创建账号</h2>
+      <p>使用手机号完成注册。</p>
     </div>
 
     <form class="auth-view__form" @submit.prevent="handleSubmit">
@@ -144,12 +144,12 @@ const handleSubmit = async () => {
 }
 
 .auth-view__copy h2 {
-  font-size: 2.2rem;
+  font-size: clamp(2.2rem, 5vw, 3rem);
 }
 
 .auth-view__copy p {
   color: var(--sl-ink-soft);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .auth-view__form {

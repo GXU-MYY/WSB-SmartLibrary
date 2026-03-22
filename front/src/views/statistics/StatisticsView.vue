@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import { getBookRank, getBorrowSummary, getCollectSummary, getPersonalStats, getUserRank } from '@/api/community'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
@@ -20,10 +21,10 @@ const userRank = ref<UserRank[]>([])
 const overviewCards = computed(() => {
   const stats = personalStats.value
   return [
-    { label: '总藏书', value: stats?.owned.totalBooks ?? 0, detail: '当前账号持有的图书总量。', tone: 'brand' as const },
-    { label: '借阅总数', value: stats?.borrowed.totalBorrowed ?? 0, detail: '参与过的借阅总次数。', tone: 'plain' as const },
-    { label: '未归还', value: stats?.borrowed.unreturned ?? 0, detail: '仍在流转中的借阅条目。', tone: 'accent' as const },
-    { label: '收藏总数', value: stats?.collected.totalCollected ?? 0, detail: '主动收藏下来的内容数量。', tone: 'plain' as const },
+    { label: '总藏书', value: stats?.owned.totalBooks ?? 0, hint: '当前账号持有的图书总量。', tone: 'brand' as const },
+    { label: '借阅总数', value: stats?.borrowed.totalBorrowed ?? 0, hint: '参与过的借阅总次数。', tone: 'plain' as const },
+    { label: '未归还', value: stats?.borrowed.unreturned ?? 0, hint: '仍在流转中的借阅条目。', tone: 'accent' as const },
+    { label: '收藏总数', value: stats?.collected.totalCollected ?? 0, hint: '主动收藏下来的内容数量。', tone: 'plain' as const },
   ]
 })
 
@@ -49,6 +50,8 @@ const loadStatistics = async () => {
   }
 }
 
+useRegisterPageRefresh(loadStatistics)
+
 onMounted(loadStatistics)
 </script>
 
@@ -58,11 +61,7 @@ onMounted(loadStatistics)
       eyebrow="Statistics"
       title="把阅读、借阅和收藏转成能被观察的趋势"
       description="统计页不是为了装点后台，而是帮你判断哪些分类增长快、哪些内容更有公共吸引力。"
-    >
-      <template #actions>
-        <button class="button button--ghost" type="button" @click="loadStatistics">刷新</button>
-      </template>
-    </PageIntro>
+    />
 
     <section class="page-grid metrics-grid">
       <MetricCard
@@ -70,7 +69,7 @@ onMounted(loadStatistics)
         :key="item.label"
         :label="item.label"
         :value="item.value"
-        :detail="item.detail"
+        :hint="item.hint"
         :tone="item.tone"
       />
     </section>
@@ -78,7 +77,7 @@ onMounted(loadStatistics)
     <section class="page-grid statistics-layout">
       <SectionPanel
         title="我的分类分布"
-        description="从个人书库视角观察，哪些类型已经累积得比较厚。"
+        hint="从个人书库视角观察，哪些类型已经累积得比较厚。"
       >
         <LoadingState v-if="loading && !personalStats" />
         <div v-else-if="personalStats?.owned.booksByCategory?.length" class="bar-list">
@@ -92,16 +91,12 @@ onMounted(loadStatistics)
             </div>
           </article>
         </div>
-        <EmptyState
-          v-else
-          title="还没有形成分类分布"
-          description="等你录入更多图书并补充分类后，这里会出现更有意义的结构变化。"
-        />
+        <EmptyState v-else title="还没有形成分类分布" />
       </SectionPanel>
 
       <SectionPanel
         title="借阅与收藏结构"
-        description="两个视角一起看，更容易判断哪些书在流动，哪些书在沉淀。"
+        hint="两个视角一起看，更容易判断哪些书在流动，哪些书在沉淀。"
       >
         <div class="mini-panels">
           <article class="surface-card mini-panel">
@@ -138,7 +133,7 @@ onMounted(loadStatistics)
 
       <SectionPanel
         title="热门图书排行"
-        description="哪些书最容易被收藏，也最值得在社区里二次扩散。"
+        hint="哪些书最容易被收藏，也最值得在社区里二次扩散。"
       >
         <div v-if="bookRank.length" class="rank-list">
           <article v-for="item in bookRank" :key="item.bookId" class="rank-list__item">
@@ -146,16 +141,12 @@ onMounted(loadStatistics)
             <p>收藏 {{ item.collectCount }} 次</p>
           </article>
         </div>
-        <EmptyState
-          v-else
-          title="图书排行还未生成"
-          description="等收藏数据逐步累积后，这里会显示更稳定的图书热度排行。"
-        />
+        <EmptyState v-else title="图书排行还未生成" />
       </SectionPanel>
 
       <SectionPanel
         title="用户排行"
-        description="从用户维度看，谁的书库已经形成了更明显的规模。"
+        hint="从用户维度看，谁的书库已经形成了更明显的规模。"
       >
         <div v-if="userRank.length" class="rank-list">
           <article v-for="item in userRank" :key="item.id" class="rank-list__item">
@@ -163,11 +154,7 @@ onMounted(loadStatistics)
             <p>书库规模 {{ item.bookCount }} 本</p>
           </article>
         </div>
-        <EmptyState
-          v-else
-          title="用户排行还未生成"
-          description="当更多用户开始录书，这里会更容易看见平台中的重度读者。"
-        />
+        <EmptyState v-else title="用户排行还未生成" />
       </SectionPanel>
     </section>
   </div>

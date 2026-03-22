@@ -8,6 +8,7 @@ import {
   returnBook,
   updateBorrowRecord,
 } from '@/api/book'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
@@ -45,10 +46,10 @@ const summaryCards = computed(() => {
   const unreturned = records.value.filter((item) => !item.return_time)
 
   return [
-    { label: '记录总数', value: records.value.length, detail: '当前视图下的借阅记录总量。', tone: 'brand' as const },
-    { label: '借入', value: borrowedIn.length, detail: '你从外部借入并仍在跟踪的图书。', tone: 'plain' as const },
-    { label: '借出', value: borrowedOut.length, detail: '你已借出的书以及对应对象。', tone: 'plain' as const },
-    { label: '未归还', value: unreturned.length, detail: '仍在流转中的记录，需要持续关注。', tone: 'accent' as const },
+    { label: '记录总数', value: records.value.length, hint: '当前视图下的借阅记录总量。', tone: 'brand' as const },
+    { label: '借入', value: borrowedIn.length, hint: '你从外部借入并仍在跟踪的图书。', tone: 'plain' as const },
+    { label: '借出', value: borrowedOut.length, hint: '你已借出的书以及对应对象。', tone: 'plain' as const },
+    { label: '未归还', value: unreturned.length, hint: '仍在流转中的记录，需要持续关注。', tone: 'accent' as const },
   ]
 })
 
@@ -137,6 +138,8 @@ const handleReturn = async (record: BorrowRecord) => {
   await loadRecords()
 }
 
+useRegisterPageRefresh(loadPage)
+
 onMounted(loadPage)
 </script>
 
@@ -146,11 +149,7 @@ onMounted(loadPage)
       eyebrow="Borrow Flow"
       title="把借入借出这件事留成可追踪的流转记录"
       description="这里关注的是流转过程，而不是单纯列表。你可以登记、修订和归还借阅，让书不会消失在口头约定里。"
-    >
-      <template #actions>
-        <button class="button button--ghost" type="button" @click="loadPage">刷新</button>
-      </template>
-    </PageIntro>
+    />
 
     <section class="page-grid metrics-grid">
       <MetricCard
@@ -158,7 +157,7 @@ onMounted(loadPage)
         :key="item.label"
         :label="item.label"
         :value="item.value"
-        :detail="item.detail"
+        :hint="item.hint"
         :tone="item.tone"
       />
     </section>
@@ -166,7 +165,7 @@ onMounted(loadPage)
     <section class="page-grid borrow-layout">
       <SectionPanel
         title="登记新借阅"
-        description="录入一本图书的借出或借入动作，并立即把它纳入后续跟踪。"
+        hint="录入一本图书的借出或借入动作，并立即把它纳入后续跟踪。"
       >
         <div class="field">
           <label>图书</label>
@@ -203,7 +202,7 @@ onMounted(loadPage)
 
       <SectionPanel
         title="借阅记录"
-        description="点击“修订”可以把该条记录送到左侧编辑区，点击“归还”会直接写入当天日期。"
+        hint="点击“修订”可以把该条记录送到左侧编辑区，点击“归还”会直接写入当天日期。"
       >
         <div class="inline-actions">
           <button class="button button--secondary" type="button" @click="borrowTypeFilter = 0; loadRecords()">全部</button>
@@ -241,16 +240,12 @@ onMounted(loadPage)
             </tbody>
           </table>
         </div>
-        <EmptyState
-          v-else
-          title="还没有借阅记录"
-          description="当一本书开始流转时，就在这里留下一条记录，这会比口头约定可靠得多。"
-        />
+        <EmptyState v-else title="还没有借阅记录" />
       </SectionPanel>
 
       <SectionPanel
         title="记录修订"
-        description="如果借阅对象写错了，或借出日期需要校正，可以在这里快速调整。"
+        hint="如果借阅对象写错了，或借出日期需要校正，可以在这里快速调整。"
       >
         <div class="field-grid">
           <div class="field">
