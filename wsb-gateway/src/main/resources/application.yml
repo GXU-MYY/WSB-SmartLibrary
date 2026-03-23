@@ -27,7 +27,7 @@ spring:
         - id: wsb-book
           uri: lb://wsb-book
           predicates:
-            - Path=/v1/book/**,/v1/shelf/**,/v1/bookshelf/**
+            - Path=/v1/book/**,/v1/shelf/**,/v1/bookshelf/**,/v1/isbn/**
         # 社交模块
         - id: wsb-social
           uri: lb://wsb-social
