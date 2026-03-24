@@ -45,6 +45,11 @@
   --sl-logo-end: var(--sl-brand);
   --sl-logo-shadow: 0 18px 30px rgba(31, 95, 107, 0.24);
   --sl-soft-panel-bg: rgba(255, 255, 255, 0.56);
+  --sl-detail-meta-bg: linear-gradient(180deg, rgba(255, 253, 248, 0.92), rgba(244, 237, 226, 0.8));
+  --sl-detail-meta-border: rgba(34, 48, 67, 0.12);
+  --sl-detail-meta-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --sl-detail-meta-label: #596677;
+  --sl-detail-meta-value: #223043;
 }
 
 [data-theme='dark'] {
@@ -87,6 +92,11 @@
   --sl-logo-end: #335c65;
   --sl-logo-shadow: 0 18px 30px rgba(0, 0, 0, 0.22);
   --sl-soft-panel-bg: rgba(20, 31, 41, 0.76);
+  --sl-detail-meta-bg: linear-gradient(180deg, rgba(23, 34, 45, 0.98), rgba(16, 25, 33, 0.94));
+  --sl-detail-meta-border: rgba(159, 217, 228, 0.14);
+  --sl-detail-meta-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --sl-detail-meta-label: #a8b5c7;
+  --sl-detail-meta-value: #f1f6ff;
 }
 
 * {

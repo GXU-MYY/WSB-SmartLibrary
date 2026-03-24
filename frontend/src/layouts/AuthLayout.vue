@@ -99,11 +99,16 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
   line-height: 0.92;
   letter-spacing: -0.05em;
   white-space: nowrap;
+  color: var(--sl-ink);
 }
 
 .auth-layout__brand-copy p {
   color: var(--sl-ink-soft);
   font-size: 1rem;
+}
+
+.auth-layout__brand .eyebrow {
+  color: var(--sl-brand-strong);
 }
 
 .auth-layout__visual {
@@ -193,6 +198,55 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
   display: grid;
   align-items: center;
   padding: 48px 44px 40px;
+}
+
+:global([data-theme='dark'] .auth-layout__brand) {
+  color: #f4f8ff;
+  background:
+    linear-gradient(180deg, rgba(26, 38, 48, 0.98), rgba(16, 24, 32, 0.97)),
+    #141d26;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .logo__copy strong) {
+  color: #f4f8ff;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .logo__copy span) {
+  color: #d4dfeb;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .eyebrow) {
+  color: #95d8e3;
+}
+
+:global([data-theme='dark'] .auth-layout__brand-copy h1) {
+  color: #f4f8ff;
+}
+
+:global([data-theme='dark'] .auth-layout__brand-copy p) {
+  color: #d4dfeb;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card) {
+  border-color: rgba(196, 210, 229, 0.12);
+  box-shadow: 0 24px 40px rgba(0, 0, 0, 0.22);
+}
+
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card span),
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card small) {
+  color: #bfd0e0;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card strong) {
+  color: #f2f7ff;
+}
+
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card--primary) {
+  background: rgba(29, 43, 54, 0.92);
+}
+
+:global([data-theme='dark'] .auth-layout__brand .auth-layout__card--secondary) {
+  background: rgba(45, 66, 78, 0.92);
 }
 
 @media (max-width: 900px) {

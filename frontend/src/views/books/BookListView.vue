@@ -153,6 +153,41 @@ const prefillAttach = (book: Book) => {
 
 const normalizeIsbnInput = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase()
 
+const normalizePublishDateInput = (value?: string | null) => {
+  const rawValue = value?.trim()
+
+  if (!rawValue) {
+    return ''
+  }
+
+  const normalized = rawValue
+    .replace(/[./]/g, '-')
+    .replace(/年/g, '-')
+    .replace(/月/g, '-')
+    .replace(/日/g, '')
+    .replace(/--+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  const fullDateMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (fullDateMatch) {
+    const [, year, month, day] = fullDateMatch
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
+  const yearMonthMatch = normalized.match(/^(\d{4})-(\d{1,2})$/)
+  if (yearMonthMatch) {
+    const [, year, month] = yearMonthMatch
+    return `${year}-${month.padStart(2, '0')}-01`
+  }
+
+  const yearMatch = normalized.match(/^(\d{4})$/)
+  if (yearMatch) {
+    return `${yearMatch[1]}-01-01`
+  }
+
+  return rawValue
+}
+
 const handleAutofillByIsbn = async () => {
   const normalizedIsbn = normalizeIsbnInput(createForm.isbn || '')
 
@@ -172,7 +207,7 @@ const handleAutofillByIsbn = async () => {
     createForm.publisher = result.publisher || createForm.publisher
     createForm.summary = result.summary || createForm.summary
     createForm.coverUrl = result.coverUrl || createForm.coverUrl
-    createForm.publishDate = result.publishDate || createForm.publishDate
+    createForm.publishDate = normalizePublishDateInput(result.publishDate) || createForm.publishDate
     createForm.isbn10 = result.isbn10 || createForm.isbn10
     createForm.classify = result.clc || createForm.classify
     createForm.pageCount = result.pageCount ? Number(result.pageCount) : createForm.pageCount
@@ -212,7 +247,13 @@ const handleCreateBook = async () => {
   creatingBook.value = true
 
   try {
-    await createBook(createForm)
+    const normalizedPublishDate = normalizePublishDateInput(createForm.publishDate)
+    createForm.publishDate = normalizedPublishDate
+
+    await createBook({
+      ...createForm,
+      publishDate: normalizedPublishDate || undefined,
+    })
     notifySuccess('图书已加入书库', '新的藏书已经出现在列表中。')
     resetCreateForm()
     await loadPage()

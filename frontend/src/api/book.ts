@@ -56,7 +56,7 @@ export const updateShelf = (payload: ShelfPayload) =>
   request.put<Shelf>('/v1/bookshelf', payload)
 
 export const deleteShelf = (shelfId: number) =>
-  request.delete<void>('/v1/bookshelf', { data: { shelfId } })
+  request.delete<void>('/v1/bookshelf', { data: { shelf_id: shelfId } })
 
 export const getIsbnBook = (isbn: string) =>
   request.get<IsbnBook>('/v1/isbn', { params: { isbn } })

@@ -6,6 +6,7 @@ export const uploadPicture = (file: File) => {
   formData.append('pic', file)
 
   return request.post<UploadPictureResult>('/v1/picture', formData, {
+    skipErrorToast: true,
     headers: {
       'Content-Type': 'multipart/form-data',
     },

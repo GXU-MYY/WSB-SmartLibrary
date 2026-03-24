@@ -11,6 +11,11 @@ import { notifyError } from './notify'
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retryCount?: number
+  skipErrorToast?: boolean
+}
+
+type AppRequestConfig = AxiosRequestConfig & {
+  skipErrorToast?: boolean
 }
 
 const service = axios.create({
@@ -65,7 +70,10 @@ service.interceptors.response.use(
           clearAuthSnapshot()
         }
 
-        notifyError('Request was rejected', message)
+        const requestConfig = response.config as RetryableRequestConfig
+        if (!requestConfig.skipErrorToast) {
+          notifyError('Request was rejected', message)
+        }
         return Promise.reject(new Error(message))
       }
 
@@ -93,7 +101,9 @@ service.interceptors.response.use(
       clearAuthSnapshot()
     }
 
-    notifyError('Network issue detected', message)
+    if (!originalRequest?.skipErrorToast) {
+      notifyError('Network issue detected', message)
+    }
     return Promise.reject(error)
   },
 )
@@ -101,16 +111,16 @@ service.interceptors.response.use(
 const unwrap = <T>(promise: Promise<AxiosResponse<T>>) => promise.then((response) => response.data)
 
 const request = {
-  get<T>(url: string, config?: AxiosRequestConfig) {
+  get<T>(url: string, config?: AppRequestConfig) {
     return unwrap(service.get<unknown, AxiosResponse<T>>(url, config))
   },
-  post<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+  post<T>(url: string, data?: unknown, config?: AppRequestConfig) {
     return unwrap(service.post<unknown, AxiosResponse<T>>(url, data, config))
   },
-  put<T>(url: string, data?: unknown, config?: AxiosRequestConfig) {
+  put<T>(url: string, data?: unknown, config?: AppRequestConfig) {
     return unwrap(service.put<unknown, AxiosResponse<T>>(url, data, config))
   },
-  delete<T>(url: string, config?: AxiosRequestConfig) {
+  delete<T>(url: string, config?: AppRequestConfig) {
     return unwrap(service.delete<unknown, AxiosResponse<T>>(url, config))
   },
 }

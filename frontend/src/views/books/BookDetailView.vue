@@ -564,18 +564,23 @@ onMounted(loadPage)
 .detail-hero__meta article {
   padding: 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--sl-detail-meta-border);
+  background: var(--sl-detail-meta-bg);
+  box-shadow: var(--sl-detail-meta-shadow);
 }
 
 .detail-hero__meta span {
   display: block;
-  color: var(--sl-ink-soft);
+  color: var(--sl-detail-meta-label);
   font-size: 0.82rem;
+  line-height: 1.2;
 }
 
 .detail-hero__meta strong {
   display: block;
   margin-top: 6px;
+  color: var(--sl-detail-meta-value);
+  line-height: 1.25;
 }
 
 .detail-hero__tools {
@@ -667,6 +672,17 @@ onMounted(loadPage)
 
   .detail-hero__attach {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 901px) {
+  .detail-hero__meta article {
+    padding: 11px 14px;
+  }
+
+  .detail-hero__meta strong {
+    margin-top: 4px;
+    font-size: 0.98rem;
   }
 }
 </style>

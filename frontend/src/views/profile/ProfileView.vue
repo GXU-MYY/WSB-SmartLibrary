@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import axios from 'axios'
 import { onMounted, reactive, ref, watch } from 'vue'
 
 import { uploadPicture } from '@/api/file'
@@ -8,7 +9,7 @@ import SectionPanel from '@/components/SectionPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { useUserStore } from '@/stores/user'
 import { formatDateTime } from '@/utils/format'
-import { notifySuccess } from '@/utils/notify'
+import { notifyError, notifySuccess } from '@/utils/notify'
 
 const userStore = useUserStore()
 
@@ -20,6 +21,22 @@ const form = reactive({
   signature: '',
   avatar: '',
 })
+
+const resolveUploadErrorMessage = (error: unknown) => {
+  const rawMessage = axios.isAxiosError(error)
+    ? ((error.response?.data as { message?: string; msg?: string } | undefined)?.message ||
+        (error.response?.data as { message?: string; msg?: string } | undefined)?.msg ||
+        error.message)
+    : error instanceof Error
+      ? error.message
+      : ''
+
+  if (/Bucket name only should contain lowercase characters, num and -/i.test(rawMessage)) {
+    return '头像上传暂时不可用，文件服务的存储桶配置不符合规范。你可以先直接填写头像 URL。'
+  }
+
+  return rawMessage || '头像上传失败，请稍后重试。'
+}
 
 watch(
   () => userStore.userInfo,
@@ -45,6 +62,8 @@ const handleAvatarUpload = async (event: Event) => {
     const result = await uploadPicture(file)
     form.avatar = result.pic
     notifySuccess('头像已上传', '保存资料后即可正式生效。')
+  } catch (error) {
+    notifyError('头像上传失败', resolveUploadErrorMessage(error))
   } finally {
     uploading.value = false
     input.value = ''
@@ -116,30 +135,34 @@ onMounted(loadProfile)
         title="编辑公开资料"
         hint="这些信息会影响你在群组、评论和个人主页中的展示方式。"
       >
-        <div class="field">
-          <label>昵称</label>
-          <input v-model="form.nickName" type="text" placeholder="输入你希望展示的名字" />
-        </div>
+        <div class="profile-form">
+          <div class="field">
+            <label>昵称</label>
+            <input v-model="form.nickName" type="text" placeholder="输入你希望展示的名字" />
+          </div>
 
-        <div class="field">
-          <label>签名</label>
-          <textarea v-model="form.signature" placeholder="用一句话介绍你的阅读兴趣或擅长方向" />
-        </div>
+          <div class="field">
+            <label>签名</label>
+            <textarea v-model="form.signature" placeholder="用一句话介绍你的阅读兴趣或擅长方向" />
+          </div>
 
-        <div class="field">
-          <label>头像地址</label>
-          <div class="avatar-row">
-            <input v-model="form.avatar" type="text" placeholder="可填图片 URL 或上传后的 key" />
-            <label class="button button--ghost upload-button">
-              {{ uploading ? '上传中...' : '上传头像' }}
-              <input type="file" accept="image/*" :disabled="uploading" @change="handleAvatarUpload" />
-            </label>
+          <div class="field">
+            <label>头像地址</label>
+            <div class="avatar-row">
+              <input v-model="form.avatar" type="text" placeholder="可填图片 URL 或上传后的 key" />
+              <label class="button button--ghost upload-button">
+                {{ uploading ? '上传中...' : '上传头像' }}
+                <input type="file" accept="image/*" :disabled="uploading" @change="handleAvatarUpload" />
+              </label>
+            </div>
+          </div>
+
+          <div class="profile-form__actions">
+            <button class="button button--primary" type="button" :disabled="saving" @click="handleSave">
+              {{ saving ? '保存中...' : '保存资料' }}
+            </button>
           </div>
         </div>
-
-        <button class="button button--primary" type="button" :disabled="saving" @click="handleSave">
-          {{ saving ? '保存中...' : '保存资料' }}
-        </button>
       </SectionPanel>
     </section>
   </div>
@@ -186,6 +209,15 @@ onMounted(loadProfile)
 
 .detail-list dd {
   margin: 8px 0 0;
+}
+
+.profile-form {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-form__actions {
+  padding-top: 4px;
 }
 
 .avatar-row {
