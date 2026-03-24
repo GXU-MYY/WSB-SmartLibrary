@@ -101,6 +101,13 @@ export interface MyBookList {
   books: Book[]
 }
 
+export interface RecentBook {
+  id: number
+  title: string
+  coverUrl?: string
+  updateTime?: string
+}
+
 export interface BookCardModel {
   id: number | string
   title: string

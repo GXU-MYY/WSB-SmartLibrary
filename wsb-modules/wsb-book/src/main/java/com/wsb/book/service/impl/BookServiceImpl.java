@@ -13,6 +13,7 @@ import com.wsb.book.api.vo.BookVO;
 import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.api.vo.MyBookListVO;
 import com.wsb.book.api.vo.MyBookVO;
+import com.wsb.book.api.vo.RecentBookVO;
 import com.wsb.book.client.AliyunIsbnClient;
 import com.wsb.book.client.GoogleBooksClient;
 import com.wsb.book.convert.BookConverter;
@@ -139,6 +140,22 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         result.setCount(books.size());
         result.setBooks(bookVOs);
         return result;
+    }
+
+    @Override
+    public List<RecentBookVO> getRecentBooks() {
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        Page<Book> pageParam = new Page<>(1, 6, false);
+        LambdaQueryWrapper<Book> wrapper = Wrappers.<Book>lambdaQuery()
+                .eq(Book::getUserId, currentUserId)
+                .orderByDesc(Book::getUpdateTime)
+                .orderByDesc(Book::getCreateTime);
+
+        return this.page(pageParam, wrapper)
+                .getRecords()
+                .stream()
+                .map(bookConverter::toRecentBookVO)
+                .collect(Collectors.toList());
     }
 
     @Override

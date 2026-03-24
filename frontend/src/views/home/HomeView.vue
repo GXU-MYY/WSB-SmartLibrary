@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getMyBooks, getReadingRecords } from '@/api/book'
+import { getReadingRecords, getRecentBooks } from '@/api/book'
 import { getPersonalStats } from '@/api/community'
 import { recommendBooks } from '@/api/rag'
 import { getTopRatedBooks } from '@/api/social'
@@ -12,7 +12,7 @@ import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
-import type { Book, BookCardModel, PersonalStats, ReadingRecord, TopRatedBook } from '@/types/models'
+import type { BookCardModel, PersonalStats, ReadingRecord, RecentBook, TopRatedBook } from '@/types/models'
 import { buildBookCard, formatDateTime, initialsFromName, readingStatusLabel, resolvePictureUrl } from '@/utils/format'
 
 const router = useRouter()
@@ -21,7 +21,7 @@ const loading = ref(false)
 const recommendationLoading = ref(false)
 
 const personalStats = ref<PersonalStats | null>(null)
-const recentBooks = ref<Book[]>([])
+const recentBooks = ref<RecentBook[]>([])
 const topRatedBooks = ref<TopRatedBook[]>([])
 const readingRecords = ref<ReadingRecord[]>([])
 const recommendedBooks = ref<BookCardModel[]>([])
@@ -61,22 +61,13 @@ const metricCards = computed(() => {
   ]
 })
 
-const toRecentTimestamp = (value?: string) => {
-  if (!value) {
-    return 0
-  }
-
-  const timestamp = new Date(value).getTime()
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
 const loadDashboard = async () => {
   loading.value = true
 
   try {
-    const [statsResult, booksResult, topRatedResult, readingResult] = await Promise.allSettled([
+    const [statsResult, recentBooksResult, topRatedResult, readingResult] = await Promise.allSettled([
       getPersonalStats(),
-      getMyBooks(),
+      getRecentBooks(),
       getTopRatedBooks(4),
       getReadingRecords(),
     ])
@@ -85,14 +76,8 @@ const loadDashboard = async () => {
       personalStats.value = statsResult.value
     }
 
-    if (booksResult.status === 'fulfilled') {
-      recentBooks.value = booksResult.value.books
-        .slice()
-        .sort(
-          (left, right) =>
-            toRecentTimestamp(right.updateTime || right.createTime) - toRecentTimestamp(left.updateTime || left.createTime),
-        )
-        .slice(0, 6)
+    if (recentBooksResult.status === 'fulfilled') {
+      recentBooks.value = recentBooksResult.value
     }
 
     if (topRatedResult.status === 'fulfilled') {
@@ -331,6 +316,8 @@ onMounted(loadDashboard)
   font-size: 0.98rem;
   line-height: 1.35;
   color: var(--sl-ink);
+  text-align: center;
+  font-family: "STSong", "SimSun", serif;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;

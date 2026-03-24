@@ -9,7 +9,10 @@ import com.wsb.book.api.vo.BookAddVO;
 import com.wsb.book.api.vo.BookVO;
 import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.api.vo.MyBookListVO;
+import com.wsb.book.api.vo.RecentBookVO;
 import com.wsb.book.domain.Book;
+
+import java.util.List;
 
 /**
  * 图书服务接口
@@ -18,6 +21,8 @@ public interface BookService extends IService<Book> {
     Page<BookVO> searchByCondition(Integer page, Integer pageSize, String shelfId, String bookName, String classify);
 
     MyBookListVO getMyBooks();
+
+    List<RecentBookVO> getRecentBooks();
 
     IsbnBookVO getBookByIsbn(String isbn);
 

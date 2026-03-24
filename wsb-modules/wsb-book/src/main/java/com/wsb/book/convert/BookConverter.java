@@ -7,6 +7,7 @@ import com.wsb.book.api.vo.BookAddVO;
 import com.wsb.book.api.vo.BookVO;
 import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.api.vo.MyBookVO;
+import com.wsb.book.api.vo.RecentBookVO;
 import com.wsb.book.domain.Book;
 import com.wsb.book.response.AliyunIsbnResponse;
 import com.wsb.book.response.GoogleBooksResponse;
@@ -34,6 +35,8 @@ public interface BookConverter {
     BookVO toBookVO(Book book);
 
     MyBookVO toMyBookVO(Book book);
+
+    RecentBookVO toRecentBookVO(Book book);
 
     default Page<BookVO> toVOPage(Page<Book> bookPage) {
         Page<BookVO> voPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());

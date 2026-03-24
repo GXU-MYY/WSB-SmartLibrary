@@ -9,6 +9,7 @@ import type {
   IsbnBook,
   MyBookList,
   PageResult,
+  RecentBook,
   ReadingPayload,
   ReadingRecord,
   ReturnPayload,
@@ -17,6 +18,8 @@ import type {
 } from '@/types/models'
 
 export const getMyBooks = () => request.get<MyBookList>('/v1/book/my')
+
+export const getRecentBooks = () => request.get<RecentBook[]>('/v1/book/recent')
 
 export const getBookList = (params: {
   page?: number

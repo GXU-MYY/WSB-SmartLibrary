@@ -8,6 +8,7 @@ import com.wsb.book.api.vo.BookAddVO;
 import com.wsb.book.api.vo.BookVO;
 import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.api.vo.MyBookListVO;
+import com.wsb.book.api.vo.RecentBookVO;
 import com.wsb.book.service.BookService;
 import com.wsb.common.core.domain.Result;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,6 +16,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Tag(name = "书籍管理")
 @RestController
@@ -28,6 +31,12 @@ public class BookController {
   @GetMapping("/my")
   public Result<MyBookListVO> myBooks() {
     return Result.success(bookService.getMyBooks());
+  }
+
+  @Operation(summary = "最近整理的图书")
+  @GetMapping("/recent")
+  public Result<List<RecentBookVO>> recentBooks() {
+    return Result.success(bookService.getRecentBooks());
   }
 
   @Operation(summary = "书籍查询")
