@@ -79,8 +79,28 @@ const createForm = reactive<BookFormPayload>({
 
 const editForm = reactive<BookUpdatePayload>({
   id: 0,
+  title: '',
+  author: '',
+  subtitle: '',
+  summary: '',
+  publisher: '',
+  publishDate: '',
+  pageCount: null,
   price: null,
+  binding: '',
+  isbn: '',
+  isbn10: '',
+  keyword: '',
+  edition: '',
+  impression: '',
+  language: '',
+  bookFormat: '',
+  classify: '',
+  cip: '',
+  clc: '',
+  label: '',
   remark: '',
+  coverUrl: '',
 })
 
 const shelfForm = reactive<ShelfPayload>({
@@ -102,9 +122,88 @@ const classifyOptions = computed(() =>
 
 const shelfPreview = computed(() => shelves.value.slice(0, 5))
 const editingBookTitle = computed(() => books.value.find((item) => item.id === editForm.id)?.title || '当前图书')
+const editCoverPreviewUrl = computed(() => resolvePictureUrl(editForm.coverUrl))
 const attachBookTitle = computed(() => books.value.find((item) => item.id === attachForm.bookId)?.title || '当前图书')
 const detailTagItems = computed(() => parseTagList(detailBook.value?.label))
+const detailKeywordItems = computed(() => parseTagList(detailBook.value?.keyword))
 const detailCoverUrl = computed(() => resolvePictureUrl(detailBook.value?.coverUrl))
+const detailMetaItems = computed(() => {
+  const book = detailBook.value
+
+  if (!book) {
+    return []
+  }
+
+  const hasText = (value?: string | number | null) => {
+    if (value === undefined || value === null) {
+      return false
+    }
+
+    if (typeof value === 'number') {
+      return !Number.isNaN(value)
+    }
+
+    return value.trim().length > 0
+  }
+
+  return [
+    {
+      label: '价格',
+      value: hasText(book.price) ? formatCurrency(book.price) : '',
+    },
+    {
+      label: '出版社',
+      value: hasText(book.publisher) ? book.publisher : '',
+    },
+    {
+      label: '出版时间',
+      value: hasText(book.publishDate) ? formatDate(book.publishDate) : '',
+    },
+    {
+      label: '页数',
+      value: hasText(book.pageCount) ? String(book.pageCount) : '',
+    },
+    {
+      label: 'ISBN',
+      value: hasText(book.isbn) ? book.isbn : '',
+    },
+    {
+      label: 'ISBN-10',
+      value: hasText(book.isbn10) ? book.isbn10 : '',
+    },
+    {
+      label: '装帧',
+      value: hasText(book.binding) ? book.binding : '',
+    },
+    {
+      label: '语言',
+      value: hasText(book.language) ? book.language : '',
+    },
+    {
+      label: '版次',
+      value: hasText(book.edition) ? book.edition : '',
+    },
+    {
+      label: '印次',
+      value: hasText(book.impression) ? book.impression : '',
+    },
+    {
+      label: '开本',
+      value: hasText(book.bookFormat) ? book.bookFormat : '',
+    },
+    {
+      label: 'CIP',
+      value: hasText(book.cip) ? book.cip : '',
+    },
+    {
+      label: '中图法分类',
+      value: hasText(book.clc) ? book.clc : '',
+    },
+  ].map((item) => ({
+    ...item,
+    empty: !item.value,
+  }))
+})
 const hasOpenDialog = computed(
   () =>
     showCreateDialog.value ||
@@ -176,7 +275,42 @@ const resetCreateForm = () => {
   createForm.isBorrowed = false
 }
 
+const resetEditForm = () => {
+  editForm.id = 0
+  editForm.title = ''
+  editForm.author = ''
+  editForm.subtitle = ''
+  editForm.summary = ''
+  editForm.publisher = ''
+  editForm.publishDate = ''
+  editForm.pageCount = null
+  editForm.price = null
+  editForm.binding = ''
+  editForm.isbn = ''
+  editForm.isbn10 = ''
+  editForm.keyword = ''
+  editForm.edition = ''
+  editForm.impression = ''
+  editForm.language = ''
+  editForm.bookFormat = ''
+  editForm.classify = ''
+  editForm.cip = ''
+  editForm.clc = ''
+  editForm.label = ''
+  editForm.remark = ''
+  editForm.coverUrl = ''
+}
+
 const normalizeIsbnInput = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase()
+
+const normalizeOptionalNumber = (value?: number | string | null) => {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+
+  const normalized = Number(value)
+  return Number.isFinite(normalized) ? normalized : null
+}
 
 const normalizePublishDateInput = (value?: string | null) => {
   const rawValue = value?.trim()
@@ -263,13 +397,34 @@ const closeDeleteDialog = () => {
 const openEditDialog = (book: Book) => {
   closeAllDialogs()
   editForm.id = book.id
+  editForm.title = book.title || ''
+  editForm.author = book.author || ''
+  editForm.subtitle = book.subtitle || ''
+  editForm.summary = book.summary || ''
+  editForm.publisher = book.publisher || ''
+  editForm.publishDate = normalizePublishDateInput(book.publishDate) || ''
+  editForm.pageCount = book.pageCount ?? null
   editForm.price = book.price ?? null
+  editForm.binding = book.binding || ''
+  editForm.isbn = normalizeIsbnInput(book.isbn || '')
+  editForm.isbn10 = normalizeIsbnInput(book.isbn10 || '')
+  editForm.keyword = book.keyword || ''
+  editForm.edition = book.edition || ''
+  editForm.impression = book.impression || ''
+  editForm.language = book.language || ''
+  editForm.bookFormat = book.bookFormat || ''
+  editForm.classify = book.classify || ''
+  editForm.cip = book.cip || ''
+  editForm.clc = book.clc || ''
+  editForm.label = book.label || ''
   editForm.remark = book.remark || ''
+  editForm.coverUrl = book.coverUrl || ''
   showEditDialog.value = true
 }
 
 const closeEditDialog = () => {
   showEditDialog.value = false
+  resetEditForm()
 }
 
 const openAttachDialog = (book: Book) => {
@@ -342,6 +497,26 @@ const handleCoverUpload = async (event: Event) => {
   }
 }
 
+const handleEditCoverUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+
+  if (!file) {
+    return
+  }
+
+  uploadingCover.value = true
+
+  try {
+    const result = await uploadPicture(file)
+    editForm.coverUrl = result.pic
+    notifySuccess('封面已上传', '保存修改后会同步更新图书卡片和详情。')
+  } finally {
+    uploadingCover.value = false
+    input.value = ''
+  }
+}
+
 const handleCreateBook = async () => {
   if (!createForm.title.trim()) {
     notifyError('图书标题不能为空', '请至少填写图书标题后再保存。')
@@ -374,11 +549,44 @@ const handleUpdateBook = async () => {
     return
   }
 
+  if (!(editForm.title || '').trim()) {
+    notifyError('图书标题不能为空', '请至少保留书名后再保存。')
+    return
+  }
+
   editingBook.value = true
 
   try {
-    await updateBook(editForm)
-    notifySuccess('图书信息已更新', '价格和备注已经同步回图书列表。')
+    const normalizedPublishDate = normalizePublishDateInput(editForm.publishDate)
+    const updatedBook = await updateBook({
+      ...editForm,
+      title: (editForm.title || '').trim(),
+      author: (editForm.author || '').trim(),
+      subtitle: (editForm.subtitle || '').trim(),
+      summary: (editForm.summary || '').trim(),
+      publisher: (editForm.publisher || '').trim(),
+      publishDate: normalizedPublishDate || undefined,
+      pageCount: normalizeOptionalNumber(editForm.pageCount),
+      price: normalizeOptionalNumber(editForm.price),
+      binding: (editForm.binding || '').trim(),
+      isbn: normalizeIsbnInput(editForm.isbn || ''),
+      isbn10: normalizeIsbnInput(editForm.isbn10 || ''),
+      keyword: (editForm.keyword || '').trim(),
+      edition: (editForm.edition || '').trim(),
+      impression: (editForm.impression || '').trim(),
+      language: (editForm.language || '').trim(),
+      bookFormat: (editForm.bookFormat || '').trim(),
+      classify: (editForm.classify || '').trim(),
+      cip: (editForm.cip || '').trim(),
+      clc: (editForm.clc || '').trim(),
+      label: (editForm.label || '').trim(),
+      remark: (editForm.remark || '').trim(),
+      coverUrl: (editForm.coverUrl || '').trim(),
+    })
+    notifySuccess('图书信息已更新', '图书元数据已经同步回图书列表。')
+    if (detailBook.value?.id === updatedBook.id) {
+      detailBook.value = updatedBook
+    }
     closeEditDialog()
     await loadBooks()
   } finally {
@@ -576,36 +784,28 @@ onMounted(() => {
                 <span v-else-if="detailBook.isOnShelf" class="badge">已上架</span>
               </div>
 
+              <section v-if="detailBook.subtitle" class="detail-card__section">
+                <h3>副标题</h3>
+                <p>{{ detailBook.subtitle }}</p>
+              </section>
+
               <div class="detail-card__meta">
-                <article>
-                  <span>价格</span>
-                  <strong>{{ formatCurrency(detailBook.price) }}</strong>
-                </article>
-                <article>
-                  <span>出版社</span>
-                  <strong>{{ detailBook.publisher || '未记录' }}</strong>
-                </article>
-                <article>
-                  <span>出版时间</span>
-                  <strong>{{ formatDate(detailBook.publishDate) }}</strong>
-                </article>
-                <article>
-                  <span>页数</span>
-                  <strong>{{ detailBook.pageCount || '未记录' }}</strong>
-                </article>
-                <article>
-                  <span>ISBN</span>
-                  <strong>{{ detailBook.isbn || '未记录' }}</strong>
-                </article>
-                <article>
-                  <span>ISBN-10</span>
-                  <strong>{{ detailBook.isbn10 || '未记录' }}</strong>
+                <article v-for="item in detailMetaItems" :key="item.label" :class="{ 'detail-card__meta-item--empty': item.empty }">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
                 </article>
               </div>
 
               <div v-if="detailTagItems.length" class="inline-actions">
                 <span v-for="item in detailTagItems" :key="item" class="badge">{{ item }}</span>
               </div>
+
+              <section v-if="detailKeywordItems.length" class="detail-card__section">
+                <h3>关键词</h3>
+                <div class="detail-card__chips">
+                  <span v-for="item in detailKeywordItems" :key="item" class="badge badge--soft">{{ item }}</span>
+                </div>
+              </section>
 
               <section class="detail-card__section">
                 <h3>图书简介</h3>
@@ -791,10 +991,10 @@ onMounted(() => {
       </div>
 
       <div v-if="showEditDialog" class="dialog-scrim" @click.self="closeEditDialog">
-        <section class="surface-card desk-dialog desk-dialog--compact">
+        <section class="surface-card desk-dialog desk-dialog--wide">
           <header class="desk-dialog__head">
             <div>
-              <span class="eyebrow">Quick Edit</span>
+              <span class="eyebrow">Book Metadata</span>
               <h2>编辑《{{ editingBookTitle }}》</h2>
             </div>
 
@@ -803,20 +1003,120 @@ onMounted(() => {
             </button>
           </header>
 
-          <div class="desk-dialog__body">
-            <div class="field-grid field-grid--single">
-              <div class="field">
-                <label>价格</label>
-                <input v-model.number="editForm.price" type="number" min="0" step="0.01" placeholder="价格" />
+          <div class="desk-dialog__body desk-dialog__body--split">
+            <div class="dialog-form">
+              <div class="field-grid">
+                <div class="field">
+                  <label>书名</label>
+                  <input v-model="editForm.title" type="text" placeholder="请输入书名" />
+                </div>
+                <div class="field">
+                  <label>作者</label>
+                  <input v-model="editForm.author" type="text" placeholder="作者姓名" />
+                </div>
+                <div class="field">
+                  <label>副标题</label>
+                  <input v-model="editForm.subtitle" type="text" placeholder="可选" />
+                </div>
+                <div class="field">
+                  <label>出版社</label>
+                  <input v-model="editForm.publisher" type="text" placeholder="出版社" />
+                </div>
+                <div class="field">
+                  <label>出版日期</label>
+                  <input v-model="editForm.publishDate" type="date" />
+                </div>
+                <div class="field">
+                  <label>页数</label>
+                  <input v-model.number="editForm.pageCount" type="number" min="1" step="1" placeholder="页数" />
+                </div>
+                <div class="field">
+                  <label>价格</label>
+                  <input v-model.number="editForm.price" type="number" min="0" step="0.01" placeholder="价格" />
+                </div>
+                <div class="field">
+                  <label>分类</label>
+                  <input v-model="editForm.classify" type="text" placeholder="如：文学 / 商业 / 设计" />
+                </div>
+                <div class="field">
+                  <label>标签</label>
+                  <input v-model="editForm.label" type="text" placeholder="多个标签用逗号分隔" />
+                </div>
+                <div class="field">
+                  <label>关键词</label>
+                  <input v-model="editForm.keyword" type="text" placeholder="多个关键词用逗号分隔" />
+                </div>
+                <div class="field">
+                  <label>ISBN-13</label>
+                  <input v-model="editForm.isbn" type="text" placeholder="13 位 ISBN" />
+                </div>
+                <div class="field">
+                  <label>ISBN-10</label>
+                  <input v-model="editForm.isbn10" type="text" placeholder="10 位 ISBN" />
+                </div>
+                <div class="field">
+                  <label>装帧</label>
+                  <input v-model="editForm.binding" type="text" placeholder="如：平装 / 精装" />
+                </div>
+                <div class="field">
+                  <label>语言</label>
+                  <input v-model="editForm.language" type="text" placeholder="如：中文 / 英文" />
+                </div>
+                <div class="field">
+                  <label>版次</label>
+                  <input v-model="editForm.edition" type="text" placeholder="如：第 2 版" />
+                </div>
+                <div class="field">
+                  <label>印次</label>
+                  <input v-model="editForm.impression" type="text" placeholder="如：2025 年第 3 次印刷" />
+                </div>
+                <div class="field">
+                  <label>开本</label>
+                  <input v-model="editForm.bookFormat" type="text" placeholder="如：16 开 / 32 开" />
+                </div>
+                <div class="field">
+                  <label>CIP</label>
+                  <input v-model="editForm.cip" type="text" placeholder="CIP 核字号" />
+                </div>
+                <div class="field">
+                  <label>中图法分类</label>
+                  <input v-model="editForm.clc" type="text" placeholder="如：I247.5" />
+                </div>
               </div>
+
+              <div class="field">
+                <label>简介</label>
+                <textarea v-model="editForm.summary" placeholder="输入简介、摘录或这本书的核心内容" />
+              </div>
+
               <div class="field">
                 <label>备注</label>
                 <textarea v-model="editForm.remark" placeholder="例如版本信息、购买备注或阅读计划" />
               </div>
             </div>
+
+            <aside class="dialog-aside">
+              <article class="dialog-note">
+                <strong>封面</strong>
+                <div class="edit-cover-preview">
+                  <img v-if="editCoverPreviewUrl" :src="editCoverPreviewUrl" :alt="editingBookTitle" />
+                  <div v-else class="edit-cover-preview__placeholder">封面待补充</div>
+                </div>
+                <div class="edit-cover-controls">
+                  <div class="field edit-cover-field">
+                    <label>封面链接</label>
+                    <input v-model="editForm.coverUrl" type="text" placeholder="粘贴图片 URL 或上传返回的 key" />
+                  </div>
+                  <label class="button button--ghost upload-button edit-cover-controls__upload">
+                    {{ uploadingCover ? '上传中...' : '上传封面' }}
+                    <input type="file" accept="image/*" :disabled="uploadingCover" @change="handleEditCoverUpload" />
+                  </label>
+                </div>
+              </article>
+            </aside>
           </div>
 
-          <footer class="desk-dialog__foot">
+          <footer class="desk-dialog__foot desk-dialog__foot--align-end">
             <button class="button button--ghost" type="button" @click="closeEditDialog">取消</button>
             <button class="button button--secondary" type="button" :disabled="editingBook" @click="handleUpdateBook">
               {{ editingBook ? '更新中...' : '保存修改' }}
@@ -982,6 +1282,10 @@ onMounted(() => {
   gap: 8px;
 }
 
+.books-grid :deep(.book-card__summary) {
+  -webkit-line-clamp: 1;
+}
+
 .books-grid :deep(.book-card__actions .book-card-action) {
   min-height: 36px;
   padding: 0 8px;
@@ -1115,6 +1419,12 @@ onMounted(() => {
   box-shadow: var(--sl-detail-meta-shadow);
 }
 
+.detail-card__meta article.detail-card__meta-item--empty {
+  opacity: 0.42;
+  filter: saturate(0.65);
+  box-shadow: none;
+}
+
 .detail-card__meta span {
   display: block;
   color: var(--sl-detail-meta-label);
@@ -1124,6 +1434,7 @@ onMounted(() => {
 .detail-card__meta strong {
   display: block;
   margin-top: 6px;
+  min-height: 1.35em;
   color: var(--sl-detail-meta-value);
   line-height: 1.35;
 }
@@ -1150,6 +1461,12 @@ onMounted(() => {
 .detail-card__section p {
   color: var(--sl-ink-soft);
   line-height: 1.8;
+}
+
+.detail-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .desk-dialog__foot {
@@ -1230,6 +1547,42 @@ onMounted(() => {
 
 .dialog-note__list small {
   color: var(--sl-ink-soft);
+}
+
+.edit-cover-preview {
+  overflow: hidden;
+  aspect-ratio: 5 / 6;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(31, 95, 107, 0.18), rgba(201, 119, 46, 0.24));
+}
+
+.edit-cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.edit-cover-preview__placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+}
+
+.edit-cover-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.edit-cover-field input {
+  width: 100%;
+}
+
+.edit-cover-controls__upload {
+  justify-content: center;
+  width: 100%;
 }
 
 .field-grid {

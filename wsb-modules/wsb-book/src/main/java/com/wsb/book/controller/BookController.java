@@ -12,6 +12,7 @@ import com.wsb.book.service.BookService;
 import com.wsb.common.core.domain.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -53,7 +54,7 @@ public class BookController {
 
   @Operation(summary = "修改书籍")
   @PutMapping
-  public Result<BookVO> update(@RequestBody BookUpdateDTO dto) {
+  public Result<BookVO> update(@Valid @RequestBody BookUpdateDTO dto) {
     return Result.success(bookService.update(dto));
   }
 

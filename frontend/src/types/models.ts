@@ -141,10 +141,9 @@ export interface BookFormPayload {
   borrowTime?: string
 }
 
-export interface BookUpdatePayload {
+export interface BookUpdatePayload
+  extends Partial<Omit<BookFormPayload, 'shelfId' | 'isOnShelf' | 'isBorrowed' | 'owner' | 'borrowTime'>> {
   id: number
-  price?: number | null
-  remark?: string
 }
 
 export interface Shelf {

@@ -287,6 +287,16 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         if (book == null) {
             throw new ServiceException("书籍不存在");
         }
+
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!book.getUserId().equals(currentUserId)) {
+            throw new ServiceException("无权限修改他人书籍");
+        }
+
+        if (dto.getTitle() != null && StringUtils.isBlank(dto.getTitle())) {
+            throw new ServiceException("书名不能为空");
+        }
+
         bookConverter.updateBookFromDto(dto, book);
         this.updateById(book);
         return bookConverter.toBookVO(book);
