@@ -2,7 +2,7 @@
 import InfoHint from '@/components/InfoHint.vue'
 
 defineProps<{
-  title: string
+  title?: string
   description?: string
   hint?: string
 }>()
@@ -10,10 +10,14 @@ defineProps<{
 
 <template>
   <section class="surface-card section-panel">
-    <header class="section-panel__head">
-      <div>
+    <header
+      v-if="title || description || $slots.actions"
+      class="section-panel__head"
+      :class="{ 'section-panel__head--actions-only': !title && !description }"
+    >
+      <div v-if="title || description">
         <div class="section-panel__title">
-          <h2>{{ title }}</h2>
+          <h2 v-if="title">{{ title }}</h2>
           <InfoHint v-if="hint" :content="hint" />
         </div>
         <p v-if="description">{{ description }}</p>
@@ -42,6 +46,10 @@ defineProps<{
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+}
+
+.section-panel__head--actions-only {
+  justify-content: flex-end;
 }
 
 .section-panel__head h2,
