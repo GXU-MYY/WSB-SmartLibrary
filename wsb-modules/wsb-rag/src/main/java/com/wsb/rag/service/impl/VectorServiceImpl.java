@@ -26,8 +26,8 @@ public class VectorServiceImpl implements VectorService {
     @Value("${supabase.url}")
     private String supabaseUrl;
 
-    @Value("${supabase.anon-key}")
-    private String anonKey;
+    @Value("${supabase.service-role-key}")
+    private String serviceRoleKey;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final OkHttpClient httpClient = new OkHttpClient();
@@ -46,8 +46,8 @@ public class VectorServiceImpl implements VectorService {
 
             Request request = new Request.Builder()
                     .url(supabaseUrl + "/rest/v1/" + TABLE_NAME)
-                    .addHeader("apikey", anonKey)
-                    .addHeader("Authorization", "Bearer " + anonKey)
+                    .addHeader("apikey", serviceRoleKey)
+                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
                     .addHeader("Content-Type", "application/json")
                     .addHeader("Prefer", "resolution=merge-duplicates")
                     .post(RequestBody.create(json, MediaType.parse("application/json")))
@@ -78,8 +78,8 @@ public class VectorServiceImpl implements VectorService {
 
             Request request = new Request.Builder()
                     .url(rpcUrl)
-                    .addHeader("apikey", anonKey)
-                    .addHeader("Authorization", "Bearer " + anonKey)
+                    .addHeader("apikey", serviceRoleKey)
+                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
                     .addHeader("Content-Type", "application/json")
                     .post(RequestBody.create(json, MediaType.parse("application/json")))
                     .build();
@@ -110,8 +110,8 @@ public class VectorServiceImpl implements VectorService {
             // 先获取该书籍的向量
             Request getRequest = new Request.Builder()
                     .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId + "&select=embedding")
-                    .addHeader("apikey", anonKey)
-                    .addHeader("Authorization", "Bearer " + anonKey)
+                    .addHeader("apikey", serviceRoleKey)
+                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
                     .get()
                     .build();
 
@@ -150,8 +150,8 @@ public class VectorServiceImpl implements VectorService {
         try {
             Request request = new Request.Builder()
                     .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId)
-                    .addHeader("apikey", anonKey)
-                    .addHeader("Authorization", "Bearer " + anonKey)
+                    .addHeader("apikey", serviceRoleKey)
+                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
                     .delete()
                     .build();
 

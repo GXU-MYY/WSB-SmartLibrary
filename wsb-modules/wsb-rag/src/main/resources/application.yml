@@ -14,16 +14,22 @@ spring:
     username: ${RABBITMQ_USERNAME:guest}
     password: ${RABBITMQ_PASSWORD:guest}
 
-# DeepSeek API
+# DeepSeek Chat API
 deepseek:
-  embedding-url: ${DEEPSEEK_EMBEDDING_URL:}
   chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
   api-key: ${DEEPSEEK_API_KEY:}
+
+# DashScope Qwen Embedding API
+dashscope:
+  embedding-base-url: ${DASHSCOPE_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+  api-key: ${DASHSCOPE_API_KEY:}
+  embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+  embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1024}
 
 # Supabase
 supabase:
   url: ${SUPABASE_URL:}
-  anon-key: ${SUPABASE_ANON_KEY:}
+  service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
 
 # Tavily
 tavily:
