@@ -24,7 +24,7 @@ public class IsbnBookVO implements Serializable {
     private String coverUrl;
     private String isbn;
     private String isbn10;
-    private String pubplace;
+    private String pubPlace;
     private String binding;
     private String keyword;
     private String cip;

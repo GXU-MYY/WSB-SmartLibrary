@@ -28,6 +28,13 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring")
 public interface BookConverter {
 
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "classify", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "embeddingStatus", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     Book toBook(BookAddDTO dto);
 
     BookAddVO toBookAddVO(Book book);
@@ -47,6 +54,13 @@ public interface BookConverter {
     }
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "isOnShelf", ignore = true)
+    @Mapping(target = "isBorrowed", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "embeddingStatus", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     void updateBookFromDto(BookUpdateDTO dto, @MappingTarget Book book);
 
     // ==================== ISBN 查询转换 ====================
@@ -58,11 +72,12 @@ public interface BookConverter {
     @Mapping(source = "page", target = "pageCount")
     @Mapping(source = "gist", target = "summary")
     @Mapping(source = "img", target = "coverUrl")
-    @Mapping(source = "pubPlace", target = "pubplace")
+    @Mapping(source = "pubPlace", target = "pubPlace")
     @Mapping(source = "cipTxt", target = "cip")
     @Mapping(source = "yinci", target = "impression")
     @Mapping(source = "format", target = "bookFormat")
     @Mapping(source = "genus", target = "clc")
+    @Mapping(target = "subtitle", ignore = true)
     IsbnBookVO toIsbnBookVO(AliyunIsbnResponse.BookDetail detail);
 
     /**
@@ -86,6 +101,14 @@ public interface BookConverter {
     @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "isbn", ignore = true)
     @Mapping(target = "isbn10", ignore = true)
+    @Mapping(target = "price", ignore = true)
+    @Mapping(target = "pubPlace", ignore = true)
+    @Mapping(target = "binding", ignore = true)
+    @Mapping(target = "cip", ignore = true)
+    @Mapping(target = "edition", ignore = true)
+    @Mapping(target = "impression", ignore = true)
+    @Mapping(target = "bookFormat", ignore = true)
+    @Mapping(target = "clc", ignore = true)
     IsbnBookVO toIsbnBookVO(GoogleBooksResponse.VolumeInfo volumeInfo);
 
     /**
