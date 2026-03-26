@@ -15,6 +15,7 @@ import {
 } from '@/api/book'
 import { uploadPicture } from '@/api/file'
 import BookCard from '@/components/BookCard.vue'
+import BookMetadataForm from '@/components/BookMetadataForm.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
@@ -32,6 +33,7 @@ const isbnLoading = ref(false)
 const uploadingCover = ref(false)
 const detailLoading = ref(false)
 const deletingBook = ref(false)
+const editSummary = ref('')
 
 const showCreateDialog = ref(false)
 const showDetailDialog = ref(false)
@@ -61,15 +63,22 @@ const createForm = reactive<BookFormPayload>({
   title: '',
   author: '',
   subtitle: '',
-  summary: '',
   publisher: '',
   publishDate: '',
   price: null,
   pageCount: null,
+  binding: '',
   isbn: '',
   isbn10: '',
   coverUrl: '',
   classify: '',
+  keyword: '',
+  edition: '',
+  impression: '',
+  language: '',
+  bookFormat: '',
+  cip: '',
+  clc: '',
   label: '',
   remark: '',
   shelfId: null,
@@ -82,7 +91,6 @@ const editForm = reactive<BookUpdatePayload>({
   title: '',
   author: '',
   subtitle: '',
-  summary: '',
   publisher: '',
   publishDate: '',
   pageCount: null,
@@ -120,7 +128,8 @@ const classifyOptions = computed(() =>
   Array.from(new Set(books.value.map((item) => item.classify).filter(Boolean))),
 )
 
-const shelfPreview = computed(() => shelves.value.slice(0, 5))
+const creatingBookTitle = computed(() => createForm.title || '新图书')
+const createCoverPreviewUrl = computed(() => resolvePictureUrl(createForm.coverUrl))
 const editingBookTitle = computed(() => books.value.find((item) => item.id === editForm.id)?.title || '当前图书')
 const editCoverPreviewUrl = computed(() => resolvePictureUrl(editForm.coverUrl))
 const attachBookTitle = computed(() => books.value.find((item) => item.id === attachForm.bookId)?.title || '当前图书')
@@ -259,15 +268,22 @@ const resetCreateForm = () => {
   createForm.title = ''
   createForm.author = ''
   createForm.subtitle = ''
-  createForm.summary = ''
   createForm.publisher = ''
   createForm.publishDate = ''
   createForm.price = null
   createForm.pageCount = null
+  createForm.binding = ''
   createForm.isbn = ''
   createForm.isbn10 = ''
   createForm.coverUrl = ''
   createForm.classify = ''
+  createForm.keyword = ''
+  createForm.edition = ''
+  createForm.impression = ''
+  createForm.language = ''
+  createForm.bookFormat = ''
+  createForm.cip = ''
+  createForm.clc = ''
   createForm.label = ''
   createForm.remark = ''
   createForm.shelfId = null
@@ -280,7 +296,6 @@ const resetEditForm = () => {
   editForm.title = ''
   editForm.author = ''
   editForm.subtitle = ''
-  editForm.summary = ''
   editForm.publisher = ''
   editForm.publishDate = ''
   editForm.pageCount = null
@@ -299,6 +314,7 @@ const resetEditForm = () => {
   editForm.label = ''
   editForm.remark = ''
   editForm.coverUrl = ''
+  editSummary.value = ''
 }
 
 const normalizeIsbnInput = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase()
@@ -400,7 +416,6 @@ const openEditDialog = (book: Book) => {
   editForm.title = book.title || ''
   editForm.author = book.author || ''
   editForm.subtitle = book.subtitle || ''
-  editForm.summary = book.summary || ''
   editForm.publisher = book.publisher || ''
   editForm.publishDate = normalizePublishDateInput(book.publishDate) || ''
   editForm.pageCount = book.pageCount ?? null
@@ -419,6 +434,7 @@ const openEditDialog = (book: Book) => {
   editForm.label = book.label || ''
   editForm.remark = book.remark || ''
   editForm.coverUrl = book.coverUrl || ''
+  editSummary.value = (book.summary || '').trim()
   showEditDialog.value = true
 }
 
@@ -464,11 +480,18 @@ const handleAutofillByIsbn = async () => {
     createForm.author = result.author || createForm.author
     createForm.subtitle = result.subtitle || createForm.subtitle
     createForm.publisher = result.publisher || createForm.publisher
-    createForm.summary = result.summary || createForm.summary
     createForm.coverUrl = result.coverUrl || createForm.coverUrl
     createForm.publishDate = normalizePublishDateInput(result.publishDate) || createForm.publishDate
+    createForm.keyword = result.keyword || createForm.keyword
+    createForm.binding = result.binding || createForm.binding
+    createForm.language = result.language || createForm.language
+    createForm.edition = result.edition || createForm.edition
+    createForm.impression = result.impression || createForm.impression
+    createForm.bookFormat = result.bookFormat || createForm.bookFormat
+    createForm.cip = result.cip || createForm.cip
+    createForm.clc = result.clc || createForm.clc
+    createForm.isbn = result.isbn || createForm.isbn
     createForm.isbn10 = result.isbn10 || createForm.isbn10
-    createForm.classify = result.clc || createForm.classify
     createForm.pageCount = result.pageCount ? Number(result.pageCount) : createForm.pageCount
     createForm.price = result.price ? Number(String(result.price).replace(/[^\d.]/g, '')) : createForm.price
     notifySuccess('图书信息已补全', '请校对关键字段后再保存。')
@@ -530,9 +553,30 @@ const handleCreateBook = async () => {
     createForm.publishDate = normalizedPublishDate
 
     await createBook({
-      ...createForm,
+      title: createForm.title.trim(),
+      author: (createForm.author || '').trim(),
+      subtitle: (createForm.subtitle || '').trim(),
+      publisher: (createForm.publisher || '').trim(),
       publishDate: normalizedPublishDate || undefined,
+      pageCount: normalizeOptionalNumber(createForm.pageCount),
+      price: normalizeOptionalNumber(createForm.price),
+      binding: (createForm.binding || '').trim(),
+      isbn: normalizeIsbnInput(createForm.isbn || ''),
+      isbn10: normalizeIsbnInput(createForm.isbn10 || ''),
+      keyword: (createForm.keyword || '').trim(),
+      edition: (createForm.edition || '').trim(),
+      impression: (createForm.impression || '').trim(),
+      language: (createForm.language || '').trim(),
+      bookFormat: (createForm.bookFormat || '').trim(),
+      classify: (createForm.classify || '').trim(),
+      cip: (createForm.cip || '').trim(),
+      clc: (createForm.clc || '').trim(),
+      label: (createForm.label || '').trim(),
+      remark: (createForm.remark || '').trim(),
+      coverUrl: (createForm.coverUrl || '').trim(),
+      shelfId: createForm.shelfId,
       isOnShelf: createForm.isOnShelf || Boolean(createForm.shelfId),
+      isBorrowed: createForm.isBorrowed,
     })
     notifySuccess('图书已加入书库', '新的藏书已经出现在列表中。')
     resetCreateForm()
@@ -563,7 +607,6 @@ const handleUpdateBook = async () => {
       title: (editForm.title || '').trim(),
       author: (editForm.author || '').trim(),
       subtitle: (editForm.subtitle || '').trim(),
-      summary: (editForm.summary || '').trim(),
       publisher: (editForm.publisher || '').trim(),
       publishDate: normalizedPublishDate || undefined,
       pageCount: normalizeOptionalNumber(editForm.pageCount),
@@ -860,7 +903,6 @@ onMounted(() => {
             <div>
               <span class="eyebrow">New Book</span>
               <h2>录入新书</h2>
-              <p>把 ISBN 补全、手动校对和封面上传收进一个集中弹窗里。</p>
             </div>
 
             <button class="button button--ghost desk-dialog__close" type="button" @click="closeCreateDialog">
@@ -868,117 +910,50 @@ onMounted(() => {
             </button>
           </header>
 
-          <div class="desk-dialog__body desk-dialog__body--split">
-            <div class="dialog-form">
-              <div class="dialog-ribbon">
-                <span class="badge">ISBN 补全</span>
-                <span class="badge badge--accent">独立录入</span>
-              </div>
+          <div class="desk-dialog__body">
+            <BookMetadataForm
+              :form="createForm"
+              :cover-preview-url="createCoverPreviewUrl"
+              :cover-alt="creatingBookTitle"
+              :uploading-cover="uploadingCover"
+              @cover-upload="handleCoverUpload"
+            >
+              <template #before-grid>
+                <div class="field">
+                  <label>ISBN 自动补全</label>
+                  <div class="inline-composer">
+                    <input v-model="createForm.isbn" type="text" placeholder="输入 ISBN" />
+                    <button class="button button--secondary" type="button" :disabled="isbnLoading" @click="handleAutofillByIsbn">
+                      {{ isbnLoading ? '检索中...' : '自动补全' }}
+                    </button>
+                  </div>
+                </div>
+              </template>
 
-              <div class="field">
-                <label>ISBN 自动补全</label>
-                <div class="inline-composer">
-                  <input v-model="createForm.isbn" type="text" placeholder="输入 ISBN" />
-                  <button class="button button--secondary" type="button" :disabled="isbnLoading" @click="handleAutofillByIsbn">
-                    {{ isbnLoading ? '检索中...' : '自动补全' }}
-                  </button>
+              <template #after-grid>
+                <div class="field-grid field-grid--single">
+                  <div class="field">
+                    <label>目标书架</label>
+                    <select v-model="createForm.shelfId">
+                      <option :value="null">暂不入架</option>
+                      <option v-for="shelf in shelves" :key="shelf.id" :value="shelf.id">{{ shelf.shelfName }}</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div class="field-grid">
-                <div class="field">
-                  <label>书名</label>
-                  <input v-model="createForm.title" type="text" placeholder="请输入书名" />
+                <div class="toggle-row">
+                  <label><input v-model="createForm.isOnShelf" type="checkbox" /> 已上架</label>
+                  <label><input v-model="createForm.isBorrowed" type="checkbox" /> 借阅中</label>
                 </div>
-                <div class="field">
-                  <label>作者</label>
-                  <input v-model="createForm.author" type="text" placeholder="作者姓名" />
-                </div>
-                <div class="field">
-                  <label>副标题</label>
-                  <input v-model="createForm.subtitle" type="text" placeholder="可选" />
-                </div>
-                <div class="field">
-                  <label>出版社</label>
-                  <input v-model="createForm.publisher" type="text" placeholder="出版社" />
-                </div>
-                <div class="field">
-                  <label>出版日期</label>
-                  <input v-model="createForm.publishDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>价格</label>
-                  <input v-model.number="createForm.price" type="number" min="0" step="0.01" placeholder="价格" />
-                </div>
-                <div class="field">
-                  <label>页数</label>
-                  <input v-model.number="createForm.pageCount" type="number" min="1" step="1" placeholder="页数" />
-                </div>
-                <div class="field">
-                  <label>分类</label>
-                  <input v-model="createForm.classify" type="text" placeholder="如：文学 / 商业 / 设计" />
-                </div>
-                <div class="field">
-                  <label>标签</label>
-                  <input v-model="createForm.label" type="text" placeholder="多个标签用逗号分隔" />
-                </div>
-                <div class="field">
-                  <label>目标书架</label>
-                  <select v-model="createForm.shelfId">
-                    <option :value="null">暂不入架</option>
-                    <option v-for="shelf in shelves" :key="shelf.id" :value="shelf.id">{{ shelf.shelfName }}</option>
-                  </select>
-                </div>
-              </div>
+              </template>
 
-              <div class="field">
-                <label>图书简介</label>
-                <textarea v-model="createForm.summary" placeholder="输入简介、摘录或录入备注" />
-              </div>
-
-              <div class="field">
-                <label>录入备注</label>
-                <textarea v-model="createForm.remark" placeholder="例如购买渠道、版本信息或你想补充的说明" />
-              </div>
-
-              <div class="field">
-                <label>封面</label>
-                <div class="inline-composer">
-                  <input v-model="createForm.coverUrl" type="text" placeholder="可填图片 URL 或上传返回的 key" />
-                  <label class="button button--ghost upload-button">
-                    {{ uploadingCover ? '上传中...' : '上传封面' }}
-                    <input type="file" accept="image/*" :disabled="uploadingCover" @change="handleCoverUpload" />
-                  </label>
-                </div>
-              </div>
-
-              <div class="toggle-row">
-                <label><input v-model="createForm.isOnShelf" type="checkbox" /> 已上架</label>
-                <label><input v-model="createForm.isBorrowed" type="checkbox" /> 借阅中</label>
-              </div>
-            </div>
-
-            <aside class="dialog-aside">
-              <article class="dialog-note">
-                <strong>录入顺序</strong>
-                <p>先补全 ISBN，再校对标题、作者、出版社和价格，最后决定是否入架。</p>
-              </article>
-
-              <article class="dialog-note">
-                <strong>书架预览</strong>
-                <ul v-if="shelfPreview.length" class="dialog-note__list list-reset">
-                  <li v-for="shelf in shelfPreview" :key="shelf.id">
-                    <span>{{ shelf.shelfName }}</span>
-                    <small>{{ shelf.address || '位置待补充' }}</small>
-                  </li>
-                </ul>
-                <p v-else>还没有书架时，可以先保存图书，稍后再入架。</p>
-              </article>
-
-              <button class="button button--ghost" type="button" @click="openShelfDialog">
-                去管理书架
-              </button>
-            </aside>
+              <template #aside-extra>
+                <article class="dialog-note summary-lock-note summary-lock-note--create">
+                  <strong>AI 摘要</strong>
+                  <p>摘要将在新增图书后由 AI 自动生成</p>
+                </article>
+              </template>
+            </BookMetadataForm>
           </div>
 
           <footer class="desk-dialog__foot">
@@ -1003,117 +978,24 @@ onMounted(() => {
             </button>
           </header>
 
-          <div class="desk-dialog__body desk-dialog__body--split">
-            <div class="dialog-form">
-              <div class="field-grid">
-                <div class="field">
-                  <label>书名</label>
-                  <input v-model="editForm.title" type="text" placeholder="请输入书名" />
-                </div>
-                <div class="field">
-                  <label>作者</label>
-                  <input v-model="editForm.author" type="text" placeholder="作者姓名" />
-                </div>
-                <div class="field">
-                  <label>副标题</label>
-                  <input v-model="editForm.subtitle" type="text" placeholder="可选" />
-                </div>
-                <div class="field">
-                  <label>出版社</label>
-                  <input v-model="editForm.publisher" type="text" placeholder="出版社" />
-                </div>
-                <div class="field">
-                  <label>出版日期</label>
-                  <input v-model="editForm.publishDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>页数</label>
-                  <input v-model.number="editForm.pageCount" type="number" min="1" step="1" placeholder="页数" />
-                </div>
-                <div class="field">
-                  <label>价格</label>
-                  <input v-model.number="editForm.price" type="number" min="0" step="0.01" placeholder="价格" />
-                </div>
-                <div class="field">
-                  <label>分类</label>
-                  <input v-model="editForm.classify" type="text" placeholder="如：文学 / 商业 / 设计" />
-                </div>
-                <div class="field">
-                  <label>标签</label>
-                  <input v-model="editForm.label" type="text" placeholder="多个标签用逗号分隔" />
-                </div>
-                <div class="field">
-                  <label>关键词</label>
-                  <input v-model="editForm.keyword" type="text" placeholder="多个关键词用逗号分隔" />
-                </div>
-                <div class="field">
-                  <label>ISBN-13</label>
-                  <input v-model="editForm.isbn" type="text" placeholder="13 位 ISBN" />
-                </div>
-                <div class="field">
-                  <label>ISBN-10</label>
-                  <input v-model="editForm.isbn10" type="text" placeholder="10 位 ISBN" />
-                </div>
-                <div class="field">
-                  <label>装帧</label>
-                  <input v-model="editForm.binding" type="text" placeholder="如：平装 / 精装" />
-                </div>
-                <div class="field">
-                  <label>语言</label>
-                  <input v-model="editForm.language" type="text" placeholder="如：中文 / 英文" />
-                </div>
-                <div class="field">
-                  <label>版次</label>
-                  <input v-model="editForm.edition" type="text" placeholder="如：第 2 版" />
-                </div>
-                <div class="field">
-                  <label>印次</label>
-                  <input v-model="editForm.impression" type="text" placeholder="如：2025 年第 3 次印刷" />
-                </div>
-                <div class="field">
-                  <label>开本</label>
-                  <input v-model="editForm.bookFormat" type="text" placeholder="如：16 开 / 32 开" />
-                </div>
-                <div class="field">
-                  <label>CIP</label>
-                  <input v-model="editForm.cip" type="text" placeholder="CIP 核字号" />
-                </div>
-                <div class="field">
-                  <label>中图法分类</label>
-                  <input v-model="editForm.clc" type="text" placeholder="如：I247.5" />
-                </div>
-              </div>
-
-              <div class="field">
-                <label>简介</label>
-                <textarea v-model="editForm.summary" placeholder="输入简介、摘录或这本书的核心内容" />
-              </div>
-
-              <div class="field">
-                <label>备注</label>
-                <textarea v-model="editForm.remark" placeholder="例如版本信息、购买备注或阅读计划" />
-              </div>
-            </div>
-
-            <aside class="dialog-aside">
-              <article class="dialog-note">
-                <strong>封面</strong>
-                <div class="edit-cover-preview">
-                  <img v-if="editCoverPreviewUrl" :src="editCoverPreviewUrl" :alt="editingBookTitle" />
-                  <div v-else class="edit-cover-preview__placeholder">封面待补充</div>
-                </div>
-                <div class="edit-cover-controls">
-                  <div class="field edit-cover-field">
-                    <label>封面链接</label>
-                    <input v-model="editForm.coverUrl" type="text" placeholder="粘贴图片 URL 或上传返回的 key" />
-                  </div>
-                  <label class="button button--ghost upload-button edit-cover-controls__upload">
-                    {{ uploadingCover ? '上传中...' : '上传封面' }}
-                    <input type="file" accept="image/*" :disabled="uploadingCover" @change="handleEditCoverUpload" />
-                  </label>
-                </div>
-              </article>
-            </aside>
+          <div class="desk-dialog__body">
+            <BookMetadataForm
+              :form="editForm"
+              :cover-preview-url="editCoverPreviewUrl"
+              :cover-alt="editingBookTitle"
+              :uploading-cover="uploadingCover"
+              @cover-upload="handleEditCoverUpload"
+            >
+              <template #summary>
+                <article class="dialog-note summary-lock-note summary-lock-note--readonly">
+                  <strong>AI 摘要</strong>
+                  <p class="summary-lock-note__content" :class="{ 'summary-lock-note__content--pending': !editSummary }">
+                    {{ editSummary || '正在生成AI摘要中......' }}
+                  </p>
+                  <p class="summary-lock-note__hint">AI 自动生成，当前不支持手动修改</p>
+                </article>
+              </template>
+            </BookMetadataForm>
           </div>
 
           <footer class="desk-dialog__foot desk-dialog__foot--align-end">
@@ -1291,6 +1173,70 @@ onMounted(() => {
   padding: 0 8px;
   font-size: 0.88rem;
   white-space: nowrap;
+}
+
+.summary-lock-note {
+  margin-top: 4px;
+  gap: 12px;
+}
+
+.summary-lock-note--readonly {
+  border-color: rgba(201, 119, 46, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 248, 236, 0.92), rgba(255, 243, 224, 0.78)),
+    radial-gradient(circle at top right, rgba(201, 119, 46, 0.18), transparent 48%);
+}
+
+[data-theme='dark'] .summary-lock-note--readonly {
+  border-color: rgba(255, 190, 116, 0.28);
+  background:
+    linear-gradient(180deg, rgba(48, 34, 18, 0.92), rgba(31, 24, 16, 0.88)),
+    radial-gradient(circle at top right, rgba(255, 190, 116, 0.18), transparent 50%);
+}
+
+.summary-lock-note--create {
+  gap: 8px;
+}
+
+.summary-lock-note__content {
+  white-space: pre-wrap;
+  color: var(--sl-ink);
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(201, 119, 46, 0.14);
+  line-height: 1.75;
+}
+
+[data-theme='dark'] .summary-lock-note__content {
+  background: rgba(255, 248, 236, 0.06);
+  border-color: rgba(255, 190, 116, 0.14);
+}
+
+.summary-lock-note__content--pending {
+  color: var(--sl-ink-soft);
+  font-style: italic;
+}
+
+.summary-lock-note__hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #a44b12;
+  background: rgba(255, 214, 170, 0.72);
+  border: 1px solid rgba(201, 119, 46, 0.2);
+}
+
+[data-theme='dark'] .summary-lock-note__hint {
+  color: #ffd6ad;
+  background: rgba(255, 190, 116, 0.12);
+  border-color: rgba(255, 190, 116, 0.22);
 }
 
 .dialog-scrim {
@@ -1488,12 +1434,6 @@ onMounted(() => {
 .dialog-aside {
   display: grid;
   gap: 16px;
-}
-
-.dialog-ribbon {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .dialog-aside {

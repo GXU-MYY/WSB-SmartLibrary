@@ -118,11 +118,10 @@ export interface BookCardModel {
   badge?: string
 }
 
-export interface BookFormPayload {
+export interface BookMetadataPayload {
   title: string
   subtitle?: string
   author?: string
-  summary?: string
   publisher?: string
   publishDate?: string
   pageCount?: number | null
@@ -141,6 +140,9 @@ export interface BookFormPayload {
   label?: string
   remark?: string
   coverUrl?: string
+}
+
+export interface BookFormPayload extends BookMetadataPayload {
   shelfId?: number | null
   isOnShelf?: boolean
   isBorrowed?: boolean
@@ -148,8 +150,7 @@ export interface BookFormPayload {
   borrowTime?: string
 }
 
-export interface BookUpdatePayload
-  extends Partial<Omit<BookFormPayload, 'shelfId' | 'isOnShelf' | 'isBorrowed' | 'owner' | 'borrowTime'>> {
+export interface BookUpdatePayload extends Partial<BookMetadataPayload> {
   id: number
 }
 
