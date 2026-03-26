@@ -25,6 +25,7 @@ public class BookAddDTO implements Serializable {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate borrowTime;
     private String cip;
+    private String classify;
     /**
      * 中图法分类
      */

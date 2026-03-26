@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 public interface BookConverter {
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "classify", ignore = true)
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
     @Mapping(target = "embeddingStatus", ignore = true)
