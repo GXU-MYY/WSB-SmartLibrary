@@ -14,9 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-/**
- * RAG 服务实现
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,38 +35,40 @@ public class RagServiceImpl implements RagService {
 
     @Override
     public List<BookRemoteDTO> recommend(String query, int limit) {
-        // 生成查询向量
         List<Float> queryEmbedding = embeddingService.generateEmbedding(query);
-
-        // 向量搜索
         List<Long> bookIds = vectorService.searchSimilar(queryEmbedding, limit);
         if (bookIds.isEmpty()) {
             return List.of();
         }
 
-        // 获取书籍详情
         Result<List<BookRemoteDTO>> result = remoteBookService.getBooksByIds(bookIds);
         return result.getData() != null ? result.getData() : List.of();
     }
 
     @Override
     public List<BookRemoteDTO> getSimilarBooks(Long bookId, int limit) {
-        // 向量搜索相似书籍
         List<Long> bookIds = vectorService.getSimilarBooks(bookId, limit);
         if (bookIds.isEmpty()) {
             return List.of();
         }
 
-        // 获取书籍详情
         Result<List<BookRemoteDTO>> result = remoteBookService.getBooksByIds(bookIds);
         return result.getData() != null ? result.getData() : List.of();
     }
 
     @Override
-    public void processNewBook(Long bookId) {
-        // 发送到消息队列异步处理
-        rabbitTemplate.convertAndSend(exchange, embeddingRoutingKey, bookId);
+    public void enqueueSummary(Long bookId) {
         rabbitTemplate.convertAndSend(exchange, summaryRoutingKey, bookId);
-        log.info("已发送新书处理任务: bookId={}", bookId);
+        log.info("已发送摘要生成任务: bookId={}", bookId);
+    }
+
+    @Override
+    public void processNewBook(Long bookId) {
+        enqueueSummary(bookId);
+    }
+
+    public void enqueueEmbedding(Long bookId) {
+        rabbitTemplate.convertAndSend(exchange, embeddingRoutingKey, bookId);
+        log.info("已发送向量生成任务: bookId={}", bookId);
     }
 }

@@ -8,12 +8,12 @@ import com.wsb.rag.service.SummaryService;
 import com.wsb.rag.service.VectorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/**
- * RAG 消息消费者
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -23,32 +23,36 @@ public class RagConsumer {
     private final EmbeddingService embeddingService;
     private final VectorService vectorService;
     private final SummaryService summaryService;
+    private final RabbitTemplate rabbitTemplate;
 
-    /**
-     * 消费摘要生成任务
-     */
+    @Value("${rag.exchange}")
+    private String exchange;
+
+    @Value("${rag.routing.embedding}")
+    private String embeddingRoutingKey;
+
     @RabbitListener(queues = "${rag.queue.summary}")
     public void processSummary(Long bookId) {
         log.info("开始生成摘要: bookId={}", bookId);
         try {
             String summary = summaryService.generateSummary(bookId);
-            log.info("摘要生成完成: bookId={}, summary={}", bookId, summary.substring(0, Math.min(50, summary.length())));
+            if (StringUtils.isBlank(summary)) {
+                log.warn("摘要生成结果为空，跳过向量任务: bookId={}", bookId);
+                return;
+            }
+            rabbitTemplate.convertAndSend(exchange, embeddingRoutingKey, bookId);
+            log.info("摘要生成完成并已发送向量任务: bookId={}", bookId);
         } catch (Exception e) {
             log.error("摘要生成失败: bookId={}", bookId, e);
         }
     }
 
-    /**
-     * 消费向量生成任务
-     */
     @RabbitListener(queues = "${rag.queue.embedding}")
     public void processEmbedding(Long bookId) {
         log.info("开始生成向量: bookId={}", bookId);
         try {
-            // 更新状态为处理中
             remoteBookService.updateEmbeddingStatus(bookId, 1);
 
-            // 获取书籍信息
             Result<BookRemoteDTO> result = remoteBookService.getBookById(bookId);
             BookRemoteDTO book = result.getData();
             if (book == null) {
@@ -56,22 +60,14 @@ public class RagConsumer {
                 return;
             }
 
-            // 构建文本用于向量化
             String text = buildEmbeddingText(book);
-
-            // 生成向量
             var embedding = embeddingService.generateEmbedding(text);
-
-            // 存储向量
             vectorService.storeEmbedding(bookId, embedding, book);
-
-            // 更新状态为已完成
             remoteBookService.updateEmbeddingStatus(bookId, 2);
 
             log.info("向量生成完成: bookId={}", bookId);
         } catch (Exception e) {
             log.error("向量生成失败: bookId={}", bookId, e);
-            // 更新状态为未处理（允许重试）
             remoteBookService.updateEmbeddingStatus(bookId, 0);
         }
     }

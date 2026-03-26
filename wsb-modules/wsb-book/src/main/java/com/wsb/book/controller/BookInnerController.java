@@ -283,6 +283,8 @@ public class BookInnerController {
         List<Book> books = bookService.list(Wrappers.<Book>lambdaQuery()
                 .eq(Book::getIsDeleted, false)
                 .and(w -> w.isNull(Book::getEmbeddingStatus).or().eq(Book::getEmbeddingStatus, 0))
+                .isNotNull(Book::getSummary)
+                .ne(Book::getSummary, "")
                 .select(Book::getId));
 
         List<Long> bookIds = books.stream()

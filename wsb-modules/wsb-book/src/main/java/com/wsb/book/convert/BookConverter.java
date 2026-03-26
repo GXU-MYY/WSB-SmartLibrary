@@ -70,7 +70,7 @@ public interface BookConverter {
      */
     @Mapping(source = "pubDate", target = "publishDate")
     @Mapping(source = "page", target = "pageCount")
-    @Mapping(source = "gist", target = "summary")
+    @Mapping(target = "summary", ignore = true)
     @Mapping(source = "img", target = "coverUrl")
     @Mapping(source = "pubPlace", target = "pubPlace")
     @Mapping(source = "cipTxt", target = "cip")
@@ -94,7 +94,7 @@ public interface BookConverter {
      * Google Books 响应转换为 IsbnBookVO
      */
     @Mapping(source = "publishedDate", target = "publishDate")
-    @Mapping(source = "description", target = "summary")
+    @Mapping(target = "summary", ignore = true)
     @Mapping(target = "author", ignore = true)
     @Mapping(target = "pageCount", ignore = true)
     @Mapping(target = "keyword", ignore = true)
