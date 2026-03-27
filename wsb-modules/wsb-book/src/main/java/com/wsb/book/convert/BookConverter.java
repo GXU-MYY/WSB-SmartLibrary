@@ -123,7 +123,13 @@ public interface BookConverter {
         }
         vo.setKeyword(joinList(volumeInfo.getCategories()));
         if (volumeInfo.getImageLinks() != null) {
-            vo.setCoverUrl(volumeInfo.getImageLinks().getThumbnail());
+            String coverUrl = StringUtils.defaultIfBlank(
+                    volumeInfo.getImageLinks().getThumbnail(),
+                    volumeInfo.getImageLinks().getSmallThumbnail()
+            );
+            if (StringUtils.isNotBlank(coverUrl)) {
+                vo.setCoverUrl(coverUrl.replaceFirst("^http://", "https://"));
+            }
         }
         if (volumeInfo.getIndustryIdentifiers() != null) {
             for (GoogleBooksResponse.IndustryIdentifier identifier : volumeInfo.getIndustryIdentifiers()) {
@@ -139,7 +145,7 @@ public interface BookConverter {
     /**
      * 清理关键词字符串并统一分隔符
      */
-    default String cleanKeyword(String keyword) {
+    private static String cleanKeyword(String keyword) {
         if (StringUtils.isBlank(keyword)) {
             return null;
         }
@@ -166,7 +172,7 @@ public interface BookConverter {
         }
 
         String normalized = text
-                .replaceAll("\\s*[|，、;；/]\\s*", ",")
+                .replaceAll("\\s*[|，、;；]\\s*", ",")
                 .replaceAll("\\s*[-－–—]\\s*", ",");
 
         String result = Arrays.stream(normalized.split(","))
