@@ -9,7 +9,12 @@ import com.wsb.common.core.exception.ServiceException;
 import com.wsb.rag.service.SummaryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.*;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -44,26 +49,18 @@ public class SummaryServiceImpl implements SummaryService {
             throw new ServiceException("书籍不存在");
         }
 
-        // 构建提示词
         String prompt = buildSummaryPrompt(book);
-
-        // 调用 DeepSeek Chat API
         String summary = callChatAPI(prompt);
 
-        // 更新书籍摘要
         remoteBookService.updateSummary(bookId, summary);
-
         log.info("生成摘要成功: bookId={}", bookId);
         return summary;
     }
 
     @Override
     public String aggregateReviews(Long bookId, String title, String author) {
-        // 搜索网络书评
         String searchQuery = String.format("《%s》 %s 书评 读后感", title, author != null ? author : "");
         String reviews = searchWithTavily(searchQuery);
-
-        // 使用 AI 整合书评
         String prompt = buildReviewAggregationPrompt(title, author, reviews);
         return callChatAPI(prompt);
     }
@@ -72,14 +69,11 @@ public class SummaryServiceImpl implements SummaryService {
         StringBuilder sb = new StringBuilder();
         sb.append("请为以下书籍生成一段简洁的摘要（200-300字），包含主要内容、主题和价值：\n\n");
         sb.append("书名：").append(book.getTitle()).append("\n");
-        if (book.getAuthor() != null) {
+        if (StringUtils.isNotBlank(book.getAuthor())) {
             sb.append("作者：").append(book.getAuthor()).append("\n");
         }
-        if (book.getKeyword() != null) {
+        if (StringUtils.isNotBlank(book.getKeyword())) {
             sb.append("关键词：").append(book.getKeyword()).append("\n");
-        }
-        if (book.getLabel() != null) {
-            sb.append("标签：").append(book.getLabel()).append("\n");
         }
         return sb.toString();
     }

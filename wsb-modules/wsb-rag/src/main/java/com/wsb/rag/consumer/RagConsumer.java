@@ -74,22 +74,19 @@ public class RagConsumer {
 
     private String buildEmbeddingText(BookRemoteDTO book) {
         StringBuilder sb = new StringBuilder();
-        if (book.getTitle() != null) {
+        if (StringUtils.isNotBlank(book.getTitle())) {
             sb.append(book.getTitle()).append(" ");
         }
-        if (book.getSubtitle() != null) {
+        if (StringUtils.isNotBlank(book.getSubtitle())) {
             sb.append(book.getSubtitle()).append(" ");
         }
-        if (book.getAuthor() != null) {
+        if (StringUtils.isNotBlank(book.getAuthor())) {
             sb.append(book.getAuthor()).append(" ");
         }
-        if (book.getKeyword() != null) {
+        if (StringUtils.isNotBlank(book.getKeyword())) {
             sb.append(book.getKeyword()).append(" ");
         }
-        if (book.getLabel() != null) {
-            sb.append(book.getLabel()).append(" ");
-        }
-        if (book.getSummary() != null) {
+        if (StringUtils.isNotBlank(book.getSummary())) {
             sb.append(book.getSummary());
         }
         return sb.toString().trim();
