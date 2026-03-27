@@ -207,7 +207,14 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 return null;
             }
 
-            VolumeInfo volumeInfo = response.getItems().get(0).getVolumeInfo();
+            GoogleBooksResponse.BookItem searchItem = response.getItems().get(0);
+            VolumeInfo volumeInfo = searchItem.getVolumeInfo();
+            if (StringUtils.isNotBlank(searchItem.getId())) {
+                GoogleBooksResponse.BookItem detailItem = googleBooksClient.getVolumeById(searchItem.getId(), googleApiKey);
+                if (detailItem != null && detailItem.getVolumeInfo() != null) {
+                    volumeInfo = detailItem.getVolumeInfo();
+                }
+            }
             if (volumeInfo == null || StringUtils.isBlank(volumeInfo.getTitle())) {
                 return null;
             }
@@ -386,7 +393,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         }
 
         primary.setTitle(firstNonBlank(primary.getTitle(), fallback.getTitle()));
-        primary.setAuthor(firstNonBlank(primary.getAuthor(), fallback.getAuthor()));
+        primary.setAuthor(resolvePreferredAuthor(primary.getAuthor(), fallback.getAuthor()));
         primary.setSubtitle(firstNonBlank(primary.getSubtitle(), fallback.getSubtitle()));
         primary.setPublishDate(firstNonBlank(primary.getPublishDate(), fallback.getPublishDate()));
         primary.setPublisher(firstNonBlank(primary.getPublisher(), fallback.getPublisher()));
@@ -410,6 +417,24 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
     private String firstNonBlank(String primary, String fallback) {
         return StringUtils.isNotBlank(primary) ? primary : fallback;
+    }
+
+    private String resolvePreferredAuthor(String primary, String fallback) {
+        if (isPlaceholderAuthor(primary) && StringUtils.isNotBlank(fallback)) {
+            return fallback;
+        }
+        return firstNonBlank(primary, fallback);
+    }
+
+    private boolean isPlaceholderAuthor(String author) {
+        if (StringUtils.isBlank(author)) {
+            return false;
+        }
+        String normalized = author.replaceAll("[\\s,，/]+", "");
+        return normalized.contains("无名氏")
+                || normalized.contains("佚名")
+                || normalized.contains("匿名")
+                || normalized.contains("不详");
     }
 
     private void enqueueSummaryAfterCommit(Long bookId) {
