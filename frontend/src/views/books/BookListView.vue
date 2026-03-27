@@ -11,6 +11,7 @@ import {
   getIsbnBook,
   getShelves,
   onShelf,
+  updateShelf,
   updateBook,
 } from '@/api/book'
 import { uploadPicture } from '@/api/file'
@@ -20,8 +21,21 @@ import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
-import type { Book, BookFormPayload, BookUpdatePayload, Shelf, ShelfPayload } from '@/types/models'
-import { buildBookCard, formatCurrency, formatDate, normalizePage, parseTagList, resolvePictureUrl } from '@/utils/format'
+import type {
+  Book,
+  BookFormPayload,
+  BookUpdatePayload,
+  Shelf,
+  ShelfPayload,
+} from '@/types/models'
+import {
+  buildBookCard,
+  formatCurrency,
+  formatDate,
+  normalizePage,
+  parseTagList,
+  resolvePictureUrl,
+} from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
 const loading = ref(false)
@@ -33,11 +47,13 @@ const isbnLoading = ref(false)
 const uploadingCover = ref(false)
 const detailLoading = ref(false)
 const deletingBook = ref(false)
+const deletingShelf = ref(false)
 const editSummary = ref('')
 
 const showCreateDialog = ref(false)
 const showDetailDialog = ref(false)
 const showDeleteDialog = ref(false)
+const showShelfDeleteDialog = ref(false)
 const showEditDialog = ref(false)
 const showAttachDialog = ref(false)
 const showShelfDialog = ref(false)
@@ -46,6 +62,7 @@ const books = ref<Book[]>([])
 const shelves = ref<Shelf[]>([])
 const detailBook = ref<Book | null>(null)
 const deleteTarget = ref<Book | null>(null)
+const shelfDeleteTarget = ref<Shelf | null>(null)
 
 const pagination = reactive({
   current: 1,
@@ -123,19 +140,34 @@ const attachForm = reactive({
   bookId: 0,
   shelfId: 0,
 })
+const editingShelfId = ref<number | null>(null)
 
 const classifyOptions = computed(() =>
   Array.from(new Set(books.value.map((item) => item.classify).filter(Boolean))),
 )
 
 const creatingBookTitle = computed(() => createForm.title || '新图书')
-const createCoverPreviewUrl = computed(() => resolvePictureUrl(createForm.coverUrl))
-const editingBookTitle = computed(() => books.value.find((item) => item.id === editForm.id)?.title || '当前图书')
+const createCoverPreviewUrl = computed(() =>
+  resolvePictureUrl(createForm.coverUrl),
+)
+const editingBookTitle = computed(
+  () =>
+    books.value.find((item) => item.id === editForm.id)?.title || '当前图书',
+)
 const editCoverPreviewUrl = computed(() => resolvePictureUrl(editForm.coverUrl))
-const attachBookTitle = computed(() => books.value.find((item) => item.id === attachForm.bookId)?.title || '当前图书')
+const attachBookTitle = computed(
+  () =>
+    books.value.find((item) => item.id === attachForm.bookId)?.title ||
+    '当前图书',
+)
+const isEditingShelf = computed(() => editingShelfId.value !== null)
 const detailTagItems = computed(() => parseTagList(detailBook.value?.label))
-const detailKeywordItems = computed(() => parseTagList(detailBook.value?.keyword))
-const detailCoverUrl = computed(() => resolvePictureUrl(detailBook.value?.coverUrl))
+const detailKeywordItems = computed(() =>
+  parseTagList(detailBook.value?.keyword),
+)
+const detailCoverUrl = computed(() =>
+  resolvePictureUrl(detailBook.value?.coverUrl),
+)
 const detailMetaItems = computed(() => {
   const book = detailBook.value
 
@@ -218,6 +250,7 @@ const hasOpenDialog = computed(
     showCreateDialog.value ||
     showDetailDialog.value ||
     showDeleteDialog.value ||
+    showShelfDeleteDialog.value ||
     showEditDialog.value ||
     showAttachDialog.value ||
     showShelfDialog.value,
@@ -317,7 +350,17 @@ const resetEditForm = () => {
   editSummary.value = ''
 }
 
-const normalizeIsbnInput = (value: string) => value.replace(/[^0-9Xx]/g, '').toUpperCase()
+const resetShelfForm = () => {
+  editingShelfId.value = null
+  shelfForm.shelfName = ''
+  shelfForm.address = ''
+  shelfForm.isPublic = false
+  shelfForm.remark = ''
+  shelfForm.shelfType = 1
+}
+
+const normalizeIsbnInput = (value: string) =>
+  value.replace(/[^0-9Xx]/g, '').toUpperCase()
 
 const normalizeOptionalNumber = (value?: number | string | null) => {
   if (value === '' || value === null || value === undefined) {
@@ -367,6 +410,7 @@ const closeAllDialogs = () => {
   showCreateDialog.value = false
   showDetailDialog.value = false
   showDeleteDialog.value = false
+  showShelfDeleteDialog.value = false
   showEditDialog.value = false
   showAttachDialog.value = false
   showShelfDialog.value = false
@@ -390,7 +434,10 @@ const openDetailDialog = async (book: Book) => {
   try {
     detailBook.value = await getBookDetail(book.id)
   } catch {
-    notifyError('详情加载失败', '先展示当前列表中的基础信息，你可以稍后再试一次。')
+    notifyError(
+      '详情加载失败',
+      '先展示当前列表中的基础信息，你可以稍后再试一次。',
+    )
   } finally {
     detailLoading.value = false
   }
@@ -456,11 +503,32 @@ const closeAttachDialog = () => {
 
 const openShelfDialog = () => {
   closeAllDialogs()
+  resetShelfForm()
   showShelfDialog.value = true
 }
 
 const closeShelfDialog = () => {
   showShelfDialog.value = false
+  resetShelfForm()
+}
+
+const openShelfEdit = (shelf: Shelf) => {
+  editingShelfId.value = shelf.id
+  shelfForm.shelfName = shelf.shelfName || ''
+  shelfForm.address = shelf.address || ''
+  shelfForm.isPublic = Boolean(shelf.isPublic)
+  shelfForm.remark = shelf.remark || ''
+  shelfForm.shelfType = Number(shelf.shelfType || 1)
+}
+
+const openShelfDeleteDialog = (shelf: Shelf) => {
+  shelfDeleteTarget.value = shelf
+  showShelfDeleteDialog.value = true
+}
+
+const closeShelfDeleteDialog = () => {
+  showShelfDeleteDialog.value = false
+  shelfDeleteTarget.value = null
 }
 
 const handleAutofillByIsbn = async () => {
@@ -481,7 +549,8 @@ const handleAutofillByIsbn = async () => {
     createForm.subtitle = result.subtitle || createForm.subtitle
     createForm.publisher = result.publisher || createForm.publisher
     createForm.coverUrl = result.coverUrl || createForm.coverUrl
-    createForm.publishDate = normalizePublishDateInput(result.publishDate) || createForm.publishDate
+    createForm.publishDate =
+      normalizePublishDateInput(result.publishDate) || createForm.publishDate
     createForm.keyword = result.keyword || createForm.keyword
     createForm.binding = result.binding || createForm.binding
     createForm.language = result.language || createForm.language
@@ -492,8 +561,12 @@ const handleAutofillByIsbn = async () => {
     createForm.clc = result.clc || createForm.clc
     createForm.isbn = result.isbn || createForm.isbn
     createForm.isbn10 = result.isbn10 || createForm.isbn10
-    createForm.pageCount = result.pageCount ? Number(result.pageCount) : createForm.pageCount
-    createForm.price = result.price ? Number(String(result.price).replace(/[^\d.]/g, '')) : createForm.price
+    createForm.pageCount = result.pageCount
+      ? Number(result.pageCount)
+      : createForm.pageCount
+    createForm.price = result.price
+      ? Number(String(result.price).replace(/[^\d.]/g, ''))
+      : createForm.price
     notifySuccess('图书信息已补全', '请校对关键字段后再保存。')
   } finally {
     isbnLoading.value = false
@@ -549,7 +622,9 @@ const handleCreateBook = async () => {
   creatingBook.value = true
 
   try {
-    const normalizedPublishDate = normalizePublishDateInput(createForm.publishDate)
+    const normalizedPublishDate = normalizePublishDateInput(
+      createForm.publishDate,
+    )
     createForm.publishDate = normalizedPublishDate
 
     await createBook({
@@ -601,7 +676,9 @@ const handleUpdateBook = async () => {
   editingBook.value = true
 
   try {
-    const normalizedPublishDate = normalizePublishDateInput(editForm.publishDate)
+    const normalizedPublishDate = normalizePublishDateInput(
+      editForm.publishDate,
+    )
     const updatedBook = await updateBook({
       ...editForm,
       title: (editForm.title || '').trim(),
@@ -646,7 +723,10 @@ const handleDeleteBook = async () => {
 
   try {
     await deleteBook(deleteTarget.value.id)
-    notifySuccess('图书已删除', `《${deleteTarget.value.title}》已经从当前列表移除。`)
+    notifySuccess(
+      '图书已删除',
+      `《${deleteTarget.value.title}》已经从当前列表移除。`,
+    )
     closeDeleteDialog()
     await loadBooks()
   } finally {
@@ -662,24 +742,66 @@ const handleCreateShelf = async () => {
 
   creatingShelf.value = true
 
+  const payload: ShelfPayload = {
+    id: editingShelfId.value ?? undefined,
+    shelfName: shelfForm.shelfName.trim(),
+    address: (shelfForm.address || '').trim(),
+    isPublic: Boolean(shelfForm.isPublic),
+    remark: (shelfForm.remark || '').trim(),
+    shelfType: Number(shelfForm.shelfType || 1),
+  }
+
   try {
-    await createShelf(shelfForm)
-    notifySuccess('书架已创建', '新的收纳位置已经加入可选书架。')
-    shelfForm.shelfName = ''
-    shelfForm.address = ''
-    shelfForm.isPublic = false
-    shelfForm.remark = ''
-    shelfForm.shelfType = 1
+    if (editingShelfId.value) {
+      await updateShelf(payload)
+      notifySuccess('书架已更新', `${payload.shelfName} 的信息已保存。`)
+    } else {
+      await createShelf(payload)
+      notifySuccess('书架已创建', '新的收纳位置已经加入可选书架。')
+    }
+
+    resetShelfForm()
     await loadShelves()
   } finally {
     creatingShelf.value = false
   }
 }
 
-const handleDeleteShelf = async (shelf: Shelf) => {
-  await deleteShelf(shelf.id)
-  notifySuccess('书架已删除', `${shelf.shelfName} 已从当前列表移除。`)
-  await loadShelves()
+const handleDeleteShelf = async () => {
+  if (!shelfDeleteTarget.value) {
+    return
+  }
+
+  deletingShelf.value = true
+
+  try {
+    const target = shelfDeleteTarget.value
+    await deleteShelf(target.id)
+    notifySuccess('书架已删除', `${target.shelfName} 已从当前列表移除。`)
+
+    if (editingShelfId.value === target.id) {
+      resetShelfForm()
+    }
+
+    if (createForm.shelfId === target.id) {
+      createForm.shelfId = null
+    }
+
+    if (attachForm.shelfId === target.id) {
+      attachForm.shelfId = 0
+    }
+
+    closeShelfDeleteDialog()
+
+    if (String(filters.shelfId) === String(target.id)) {
+      filters.shelfId = ''
+      await Promise.all([loadShelves(), loadBooks()])
+    } else {
+      await loadShelves()
+    }
+  } finally {
+    deletingShelf.value = false
+  }
 }
 
 const handleAttachToShelf = async () => {
@@ -734,21 +856,33 @@ onMounted(() => {
           <div class="field">
             <select v-model="filters.classify" aria-label="分类筛选">
               <option value="">全部分类</option>
-              <option v-for="item in classifyOptions" :key="item" :value="item">{{ item }}</option>
+              <option v-for="item in classifyOptions" :key="item" :value="item">
+                {{ item }}
+              </option>
             </select>
           </div>
           <div class="field">
             <select v-model="filters.shelfId" aria-label="书架筛选">
               <option value="">全部书架</option>
-              <option v-for="item in shelves" :key="item.id" :value="item.id">{{ item.shelfName }}</option>
+              <option v-for="item in shelves" :key="item.id" :value="item.id">
+                {{ item.shelfName }}
+              </option>
             </select>
           </div>
         </div>
         <div class="books-filter-toolbar__actions">
-          <button class="button button--secondary books-filter-toolbar__button" type="button" @click="handleApplyFilters">
+          <button
+            class="button button--secondary books-filter-toolbar__button"
+            type="button"
+            @click="handleApplyFilters"
+          >
             筛选
           </button>
-          <button class="button button--ghost books-filter-toolbar__button" type="button" @click="handleResetFilters">
+          <button
+            class="button button--ghost books-filter-toolbar__button"
+            type="button"
+            @click="handleResetFilters"
+          >
             清空
           </button>
         </div>
@@ -757,10 +891,18 @@ onMounted(() => {
 
     <SectionPanel class="books-list-panel" title="图书清单">
       <template #actions>
-        <button class="button button--ghost" type="button" @click="openShelfDialog">
+        <button
+          class="button button--ghost"
+          type="button"
+          @click="openShelfDialog"
+        >
           管理书架
         </button>
-        <button class="button button--primary" type="button" @click="openCreateDialog">
+        <button
+          class="button button--primary"
+          type="button"
+          @click="openCreateDialog"
+        >
           新增图书
         </button>
       </template>
@@ -781,24 +923,59 @@ onMounted(() => {
               coverUrl: book.coverUrl,
               summary: book.summary,
               secondary: `${formatCurrency(book.price)} · ${book.publisher || '出版社待补充'}`,
-              badge: book.isBorrowed ? '借阅中' : book.isOnShelf ? '已上架' : '',
+              badge: book.isBorrowed
+                ? '借阅中'
+                : book.isOnShelf
+                  ? '已上架'
+                  : '',
             })
           "
         >
           <template #actions>
-            <button class="button button--ghost book-card-action" type="button" @click="openDetailDialog(book)">详情</button>
-            <button class="button button--secondary book-card-action" type="button" @click="openEditDialog(book)">编辑</button>
-            <button class="button button--ghost book-card-action" type="button" @click="openAttachDialog(book)">入架</button>
-            <button class="button button--danger book-card-action" type="button" @click="openDeleteDialog(book)">删除</button>
+            <button
+              class="button button--ghost book-card-action"
+              type="button"
+              @click="openDetailDialog(book)"
+            >
+              详情
+            </button>
+            <button
+              class="button button--secondary book-card-action"
+              type="button"
+              @click="openEditDialog(book)"
+            >
+              编辑
+            </button>
+            <button
+              class="button button--ghost book-card-action"
+              type="button"
+              @click="openAttachDialog(book)"
+            >
+              入架
+            </button>
+            <button
+              class="button button--danger book-card-action"
+              type="button"
+              @click="openDeleteDialog(book)"
+            >
+              删除
+            </button>
           </template>
         </BookCard>
 
-        <EmptyState v-if="!loading && books.length === 0" title="当前筛选下没有图书" />
+        <EmptyState
+          v-if="!loading && books.length === 0"
+          title="当前筛选下没有图书"
+        />
       </div>
     </SectionPanel>
 
     <Teleport to="body">
-      <div v-if="showDetailDialog" class="dialog-scrim" @click.self="closeDetailDialog">
+      <div
+        v-if="showDetailDialog"
+        class="dialog-scrim"
+        @click.self="closeDetailDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--detail">
           <header class="desk-dialog__head">
             <div>
@@ -807,24 +984,44 @@ onMounted(() => {
               <p>{{ detailBook?.author || '作者待补充' }}</p>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeDetailDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeDetailDialog"
+            >
               关闭
             </button>
           </header>
 
-          <LoadingState v-if="detailLoading && !detailBook" title="正在载入图书详情" />
+          <LoadingState
+            v-if="detailLoading && !detailBook"
+            title="正在载入图书详情"
+          />
 
           <div v-else-if="detailBook" class="detail-card">
             <div class="detail-card__cover">
-              <img v-if="detailCoverUrl" :src="detailCoverUrl" :alt="detailBook.title" loading="lazy" />
-              <div v-else class="detail-card__placeholder serif-title">BOOK</div>
+              <img
+                v-if="detailCoverUrl"
+                :src="detailCoverUrl"
+                :alt="detailBook.title"
+                loading="lazy"
+              />
+              <div v-else class="detail-card__placeholder serif-title">
+                BOOK
+              </div>
             </div>
 
             <div class="detail-card__copy">
               <div class="detail-card__badges inline-actions">
-                <span v-if="detailBook.classify" class="badge">{{ detailBook.classify }}</span>
-                <span v-if="detailBook.isBorrowed" class="badge badge--accent">借阅中</span>
-                <span v-else-if="detailBook.isOnShelf" class="badge">已上架</span>
+                <span v-if="detailBook.classify" class="badge">{{
+                  detailBook.classify
+                }}</span>
+                <span v-if="detailBook.isBorrowed" class="badge badge--accent"
+                  >借阅中</span
+                >
+                <span v-else-if="detailBook.isOnShelf" class="badge"
+                  >已上架</span
+                >
               </div>
 
               <section v-if="detailBook.subtitle" class="detail-card__section">
@@ -833,20 +1030,37 @@ onMounted(() => {
               </section>
 
               <div class="detail-card__meta">
-                <article v-for="item in detailMetaItems" :key="item.label" :class="{ 'detail-card__meta-item--empty': item.empty }">
+                <article
+                  v-for="item in detailMetaItems"
+                  :key="item.label"
+                  :class="{ 'detail-card__meta-item--empty': item.empty }"
+                >
                   <span>{{ item.label }}</span>
                   <strong>{{ item.value }}</strong>
                 </article>
               </div>
 
               <div v-if="detailTagItems.length" class="inline-actions">
-                <span v-for="item in detailTagItems" :key="item" class="badge">{{ item }}</span>
+                <span
+                  v-for="item in detailTagItems"
+                  :key="item"
+                  class="badge"
+                  >{{ item }}</span
+                >
               </div>
 
-              <section v-if="detailKeywordItems.length" class="detail-card__section">
+              <section
+                v-if="detailKeywordItems.length"
+                class="detail-card__section"
+              >
                 <h3>关键词</h3>
                 <div class="detail-card__chips">
-                  <span v-for="item in detailKeywordItems" :key="item" class="badge badge--soft">{{ item }}</span>
+                  <span
+                    v-for="item in detailKeywordItems"
+                    :key="item"
+                    class="badge badge--soft"
+                    >{{ item }}</span
+                  >
                 </div>
               </section>
 
@@ -875,29 +1089,52 @@ onMounted(() => {
         </section>
       </div>
 
-      <div v-if="showDeleteDialog" class="dialog-scrim" @click.self="closeDeleteDialog">
+      <div
+        v-if="showDeleteDialog"
+        class="dialog-scrim"
+        @click.self="closeDeleteDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--compact">
           <header class="desk-dialog__head">
             <div>
               <span class="eyebrow">Delete Book</span>
               <h2>确认删除</h2>
-              <p>{{ deleteTarget ? `《${deleteTarget.title}》删除后将从当前列表移除。` : '确认是否删除这本书。' }}</p>
+              <p>
+                {{
+                  deleteTarget
+                    ? `《${deleteTarget.title}》删除后将从当前列表移除。`
+                    : '确认是否删除这本书。'
+                }}
+              </p>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeDeleteDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeDeleteDialog"
+            >
               关闭
             </button>
           </header>
 
           <footer class="desk-dialog__foot desk-dialog__foot--danger-only">
-            <button class="button button--danger" type="button" :disabled="deletingBook" @click="handleDeleteBook">
+            <button
+              class="button button--danger"
+              type="button"
+              :disabled="deletingBook"
+              @click="handleDeleteBook"
+            >
               {{ deletingBook ? '删除中...' : '确认删除' }}
             </button>
           </footer>
         </section>
       </div>
 
-      <div v-if="showCreateDialog" class="dialog-scrim" @click.self="closeCreateDialog">
+      <div
+        v-if="showCreateDialog"
+        class="dialog-scrim"
+        @click.self="closeCreateDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--wide">
           <header class="desk-dialog__head">
             <div>
@@ -905,7 +1142,11 @@ onMounted(() => {
               <h2>录入新书</h2>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeCreateDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeCreateDialog"
+            >
               关闭
             </button>
           </header>
@@ -922,8 +1163,17 @@ onMounted(() => {
                 <div class="field">
                   <label>ISBN 自动补全</label>
                   <div class="inline-composer">
-                    <input v-model="createForm.isbn" type="text" placeholder="输入 ISBN" />
-                    <button class="button button--secondary" type="button" :disabled="isbnLoading" @click="handleAutofillByIsbn">
+                    <input
+                      v-model="createForm.isbn"
+                      type="text"
+                      placeholder="输入 ISBN"
+                    />
+                    <button
+                      class="button button--secondary"
+                      type="button"
+                      :disabled="isbnLoading"
+                      @click="handleAutofillByIsbn"
+                    >
                       {{ isbnLoading ? '检索中...' : '自动补全' }}
                     </button>
                   </div>
@@ -936,19 +1186,33 @@ onMounted(() => {
                     <label>目标书架</label>
                     <select v-model="createForm.shelfId">
                       <option :value="null">暂不入架</option>
-                      <option v-for="shelf in shelves" :key="shelf.id" :value="shelf.id">{{ shelf.shelfName }}</option>
+                      <option
+                        v-for="shelf in shelves"
+                        :key="shelf.id"
+                        :value="shelf.id"
+                      >
+                        {{ shelf.shelfName }}
+                      </option>
                     </select>
                   </div>
                 </div>
 
                 <div class="toggle-row">
-                  <label><input v-model="createForm.isOnShelf" type="checkbox" /> 已上架</label>
-                  <label><input v-model="createForm.isBorrowed" type="checkbox" /> 借阅中</label>
+                  <label
+                    ><input v-model="createForm.isOnShelf" type="checkbox" />
+                    已上架</label
+                  >
+                  <label
+                    ><input v-model="createForm.isBorrowed" type="checkbox" />
+                    借阅中</label
+                  >
                 </div>
               </template>
 
               <template #aside-extra>
-                <article class="dialog-note summary-lock-note summary-lock-note--create">
+                <article
+                  class="dialog-note summary-lock-note summary-lock-note--create"
+                >
                   <strong>AI 摘要</strong>
                   <p>摘要将在新增图书后由 AI 自动生成</p>
                 </article>
@@ -957,15 +1221,30 @@ onMounted(() => {
           </div>
 
           <footer class="desk-dialog__foot">
-            <button class="button button--ghost" type="button" @click="resetCreateForm">清空表单</button>
-            <button class="button button--primary" type="button" :disabled="creatingBook" @click="handleCreateBook">
+            <button
+              class="button button--ghost"
+              type="button"
+              @click="resetCreateForm"
+            >
+              清空表单
+            </button>
+            <button
+              class="button button--primary"
+              type="button"
+              :disabled="creatingBook"
+              @click="handleCreateBook"
+            >
               {{ creatingBook ? '保存中...' : '保存图书' }}
             </button>
           </footer>
         </section>
       </div>
 
-      <div v-if="showEditDialog" class="dialog-scrim" @click.self="closeEditDialog">
+      <div
+        v-if="showEditDialog"
+        class="dialog-scrim"
+        @click.self="closeEditDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--wide">
           <header class="desk-dialog__head">
             <div>
@@ -973,7 +1252,11 @@ onMounted(() => {
               <h2>编辑《{{ editingBookTitle }}》</h2>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeEditDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeEditDialog"
+            >
               关闭
             </button>
           </header>
@@ -987,27 +1270,51 @@ onMounted(() => {
               @cover-upload="handleEditCoverUpload"
             >
               <template #summary>
-                <article class="dialog-note summary-lock-note summary-lock-note--readonly">
+                <article
+                  class="dialog-note summary-lock-note summary-lock-note--readonly"
+                >
                   <strong>AI 摘要</strong>
-                  <p class="summary-lock-note__content" :class="{ 'summary-lock-note__content--pending': !editSummary }">
+                  <p
+                    class="summary-lock-note__content"
+                    :class="{
+                      'summary-lock-note__content--pending': !editSummary,
+                    }"
+                  >
                     {{ editSummary || '正在生成AI摘要中......' }}
                   </p>
-                  <p class="summary-lock-note__hint">AI 自动生成，当前不支持手动修改</p>
+                  <p class="summary-lock-note__hint">
+                    AI 自动生成，当前不支持手动修改
+                  </p>
                 </article>
               </template>
             </BookMetadataForm>
           </div>
 
           <footer class="desk-dialog__foot desk-dialog__foot--align-end">
-            <button class="button button--ghost" type="button" @click="closeEditDialog">取消</button>
-            <button class="button button--secondary" type="button" :disabled="editingBook" @click="handleUpdateBook">
+            <button
+              class="button button--ghost"
+              type="button"
+              @click="closeEditDialog"
+            >
+              取消
+            </button>
+            <button
+              class="button button--secondary"
+              type="button"
+              :disabled="editingBook"
+              @click="handleUpdateBook"
+            >
               {{ editingBook ? '更新中...' : '保存修改' }}
             </button>
           </footer>
         </section>
       </div>
 
-      <div v-if="showAttachDialog" class="dialog-scrim" @click.self="closeAttachDialog">
+      <div
+        v-if="showAttachDialog"
+        class="dialog-scrim"
+        @click.self="closeAttachDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--compact">
           <header class="desk-dialog__head">
             <div>
@@ -1015,7 +1322,11 @@ onMounted(() => {
               <h2>把《{{ attachBookTitle }}》放进书架</h2>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeAttachDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeAttachDialog"
+            >
               关闭
             </button>
           </header>
@@ -1026,22 +1337,43 @@ onMounted(() => {
                 <label>目标书架</label>
                 <select v-model.number="attachForm.shelfId">
                   <option :value="0">选择书架</option>
-                  <option v-for="shelf in shelves" :key="shelf.id" :value="shelf.id">{{ shelf.shelfName }}</option>
+                  <option
+                    v-for="shelf in shelves"
+                    :key="shelf.id"
+                    :value="shelf.id"
+                  >
+                    {{ shelf.shelfName }}
+                  </option>
                 </select>
               </div>
             </div>
           </div>
 
           <footer class="desk-dialog__foot">
-            <button class="button button--ghost" type="button" @click="openShelfDialog">管理书架</button>
-            <button class="button button--primary" type="button" :disabled="attachingShelf" @click="handleAttachToShelf">
+            <button
+              class="button button--ghost"
+              type="button"
+              @click="openShelfDialog"
+            >
+              管理书架
+            </button>
+            <button
+              class="button button--primary"
+              type="button"
+              :disabled="attachingShelf"
+              @click="handleAttachToShelf"
+            >
               {{ attachingShelf ? '入架中...' : '确认入架' }}
             </button>
           </footer>
         </section>
       </div>
 
-      <div v-if="showShelfDialog" class="dialog-scrim" @click.self="closeShelfDialog">
+      <div
+        v-if="showShelfDialog"
+        class="dialog-scrim"
+        @click.self="closeShelfDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--compact">
           <header class="desk-dialog__head">
             <div>
@@ -1049,7 +1381,11 @@ onMounted(() => {
               <h2>书架管理</h2>
             </div>
 
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeShelfDialog">
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeShelfDialog"
+            >
               关闭
             </button>
           </header>
@@ -1057,12 +1393,20 @@ onMounted(() => {
           <div class="desk-dialog__body">
             <div class="field-grid">
               <div class="field">
-                <label>新书架名称</label>
-                <input v-model="shelfForm.shelfName" type="text" placeholder="例如：客厅主书架" />
+                <label>{{ isEditingShelf ? '书架名称' : '新书架名称' }}</label>
+                <input
+                  v-model="shelfForm.shelfName"
+                  type="text"
+                  placeholder="例如：客厅主书架"
+                />
               </div>
               <div class="field">
                 <label>位置</label>
-                <input v-model="shelfForm.address" type="text" placeholder="物理位置或用途说明" />
+                <input
+                  v-model="shelfForm.address"
+                  type="text"
+                  placeholder="物理位置或用途说明"
+                />
               </div>
               <div class="field">
                 <label>书架类型</label>
@@ -1082,23 +1426,106 @@ onMounted(() => {
 
             <div class="field">
               <label>书架备注</label>
-              <textarea v-model="shelfForm.remark" placeholder="介绍这个书架收纳的主题或用途" />
+              <textarea
+                v-model="shelfForm.remark"
+                placeholder="介绍这个书架收纳的主题或用途"
+              />
             </div>
 
-            <button class="button button--secondary" type="button" :disabled="creatingShelf" @click="handleCreateShelf">
-              {{ creatingShelf ? '创建中...' : '创建书架' }}
-            </button>
+            <div class="shelf-form-actions">
+              <button
+                class="button button--secondary"
+                type="button"
+                :disabled="creatingShelf"
+                @click="handleCreateShelf"
+              >
+                {{
+                  creatingShelf
+                    ? isEditingShelf
+                      ? '保存中...'
+                      : '创建中...'
+                    : isEditingShelf
+                      ? '保存'
+                      : '创建书架'
+                }}
+              </button>
+              <button
+                v-if="isEditingShelf"
+                class="button button--ghost"
+                type="button"
+                :disabled="creatingShelf"
+                @click="resetShelfForm"
+              >
+                取消
+              </button>
+            </div>
 
             <ul class="shelf-list list-reset">
               <li v-for="shelf in shelves" :key="shelf.id">
                 <div>
                   <strong>{{ shelf.shelfName }}</strong>
-                  <p>{{ shelf.address || '位置待补充' }} · {{ shelf.shelfType === 2 ? '虚拟书单' : '实体书架' }}</p>
+                  <p>{{ shelf.shelfType === 2 ? '虚拟书单' : '实体书架' }}</p>
                 </div>
-                <button class="button button--ghost" type="button" @click="handleDeleteShelf(shelf)">删除</button>
+                <div class="shelf-list__actions">
+                  <button
+                    class="button button--ghost"
+                    type="button"
+                    @click="openShelfEdit(shelf)"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    class="button button--danger"
+                    type="button"
+                    @click="openShelfDeleteDialog(shelf)"
+                  >
+                    删除
+                  </button>
+                </div>
               </li>
             </ul>
           </div>
+        </section>
+      </div>
+
+      <div
+        v-if="showShelfDeleteDialog"
+        class="dialog-scrim"
+        @click.self="closeShelfDeleteDialog"
+      >
+        <section class="surface-card desk-dialog desk-dialog--compact">
+          <header class="desk-dialog__head">
+            <div>
+              <span class="eyebrow">Delete Shelf</span>
+              <h2>确认删除</h2>
+              <p>
+                {{
+                  shelfDeleteTarget
+                    ? `${shelfDeleteTarget.shelfName} 删除后将从当前书架列表移除。`
+                    : '确认是否删除这个书架。'
+                }}
+              </p>
+            </div>
+
+            <button
+              class="button button--ghost desk-dialog__close"
+              type="button"
+              @click="closeShelfDeleteDialog"
+            >
+              关闭
+            </button>
+          </header>
+
+          <footer class="desk-dialog__foot desk-dialog__foot--danger-only">
+            <button
+              class="button button--danger"
+              type="button"
+              :disabled="deletingShelf"
+              @click="handleDeleteShelf"
+            >
+              {{ deletingShelf ? '删除中...' : '确认删除' }}
+            </button>
+          </footer>
         </section>
       </div>
     </Teleport>
@@ -1183,15 +1610,27 @@ onMounted(() => {
 .summary-lock-note--readonly {
   border-color: rgba(201, 119, 46, 0.28);
   background:
-    linear-gradient(180deg, rgba(255, 248, 236, 0.92), rgba(255, 243, 224, 0.78)),
-    radial-gradient(circle at top right, rgba(201, 119, 46, 0.18), transparent 48%);
+    linear-gradient(
+      180deg,
+      rgba(255, 248, 236, 0.92),
+      rgba(255, 243, 224, 0.78)
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(201, 119, 46, 0.18),
+      transparent 48%
+    );
 }
 
 [data-theme='dark'] .summary-lock-note--readonly {
   border-color: rgba(255, 190, 116, 0.28);
   background:
     linear-gradient(180deg, rgba(48, 34, 18, 0.92), rgba(31, 24, 16, 0.88)),
-    radial-gradient(circle at top right, rgba(255, 190, 116, 0.18), transparent 50%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 190, 116, 0.18),
+      transparent 50%
+    );
 }
 
 .summary-lock-note--create {
@@ -1264,14 +1703,26 @@ onMounted(() => {
 
 .desk-dialog--wide {
   background:
-    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(245, 238, 228, 0.96)),
-    radial-gradient(circle at top right, rgba(31, 95, 107, 0.12), transparent 36%);
+    linear-gradient(
+      180deg,
+      rgba(255, 252, 246, 0.98),
+      rgba(245, 238, 228, 0.96)
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(31, 95, 107, 0.12),
+      transparent 36%
+    );
 }
 
 [data-theme='dark'] .desk-dialog--wide {
   background:
     linear-gradient(180deg, rgba(18, 28, 37, 0.98), rgba(15, 23, 32, 0.96)),
-    radial-gradient(circle at top right, rgba(108, 185, 199, 0.14), transparent 36%);
+    radial-gradient(
+      circle at top right,
+      rgba(108, 185, 199, 0.14),
+      transparent 36%
+    );
 }
 
 .desk-dialog--compact {
@@ -1324,7 +1775,11 @@ onMounted(() => {
   overflow: hidden;
   aspect-ratio: 5 / 6;
   border-radius: 26px;
-  background: linear-gradient(180deg, rgba(31, 95, 107, 0.18), rgba(201, 119, 46, 0.24));
+  background: linear-gradient(
+    180deg,
+    rgba(31, 95, 107, 0.18),
+    rgba(201, 119, 46, 0.24)
+  );
 }
 
 .detail-card__cover img {
@@ -1447,15 +1902,27 @@ onMounted(() => {
   border-radius: 20px;
   border: 1px solid rgba(34, 48, 67, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 251, 244, 0.48)),
-    radial-gradient(circle at top right, rgba(201, 119, 46, 0.12), transparent 45%);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.64),
+      rgba(255, 251, 244, 0.48)
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(201, 119, 46, 0.12),
+      transparent 45%
+    );
 }
 
 [data-theme='dark'] .dialog-note {
   border-color: rgba(159, 217, 228, 0.14);
   background:
     linear-gradient(180deg, rgba(25, 38, 49, 0.96), rgba(16, 25, 33, 0.92)),
-    radial-gradient(circle at top right, rgba(108, 185, 199, 0.14), transparent 48%);
+    radial-gradient(
+      circle at top right,
+      rgba(108, 185, 199, 0.14),
+      transparent 48%
+    );
 }
 
 .dialog-note strong,
@@ -1493,7 +1960,11 @@ onMounted(() => {
   overflow: hidden;
   aspect-ratio: 5 / 6;
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(31, 95, 107, 0.18), rgba(201, 119, 46, 0.24));
+  background: linear-gradient(
+    180deg,
+    rgba(31, 95, 107, 0.18),
+    rgba(201, 119, 46, 0.24)
+  );
 }
 
 .edit-cover-preview img {
@@ -1566,6 +2037,12 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.shelf-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .shelf-list {
   display: grid;
   gap: 12px;
@@ -1583,6 +2060,16 @@ onMounted(() => {
 
 [data-theme='dark'] .shelf-list li {
   background: rgba(18, 28, 37, 0.72);
+}
+
+.shelf-list__actions {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.shelf-list__actions .button {
+  min-width: 78px;
 }
 
 .shelf-list p {
