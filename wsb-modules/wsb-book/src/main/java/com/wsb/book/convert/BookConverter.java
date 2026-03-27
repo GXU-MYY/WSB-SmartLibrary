@@ -19,6 +19,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -62,8 +63,6 @@ public interface BookConverter {
     @Mapping(target = "updateTime", ignore = true)
     void updateBookFromDto(BookUpdateDTO dto, @MappingTarget Book book);
 
-    // ==================== ISBN 查询转换 ====================
-
     /**
      * 阿里云 ISBN 响应转换为 IsbnBookVO
      */
@@ -80,7 +79,7 @@ public interface BookConverter {
     IsbnBookVO toIsbnBookVO(AliyunIsbnResponse.BookDetail detail);
 
     /**
-     * 阿里云转换后处理：清理关键词
+     * 阿里云转换后清理关键词格式
      */
     @AfterMapping
     default void afterAliyunMapping(AliyunIsbnResponse.BookDetail detail, @MappingTarget IsbnBookVO vo) {
@@ -111,26 +110,21 @@ public interface BookConverter {
     IsbnBookVO toIsbnBookVO(GoogleBooksResponse.VolumeInfo volumeInfo);
 
     /**
-     * Google Books 转换后处理：处理列表、封面、ISBN
+     * Google Books 转换后处理列表、封面和 ISBN
      */
     @AfterMapping
     default void afterGoogleMapping(GoogleBooksResponse.VolumeInfo volumeInfo, @MappingTarget IsbnBookVO vo) {
         if (volumeInfo == null) {
             return;
         }
-        // 作者列表拼接
         vo.setAuthor(joinList(volumeInfo.getAuthors()));
-        // 页数转换
         if (volumeInfo.getPageCount() != null) {
             vo.setPageCount(String.valueOf(volumeInfo.getPageCount()));
         }
-        // 分类列表拼接
         vo.setKeyword(joinList(volumeInfo.getCategories()));
-        // 封面图片
         if (volumeInfo.getImageLinks() != null) {
             vo.setCoverUrl(volumeInfo.getImageLinks().getThumbnail());
         }
-        // ISBN 解析
         if (volumeInfo.getIndustryIdentifiers() != null) {
             for (GoogleBooksResponse.IndustryIdentifier identifier : volumeInfo.getIndustryIdentifiers()) {
                 if ("ISBN_13".equals(identifier.getType())) {
@@ -142,16 +136,15 @@ public interface BookConverter {
         }
     }
 
-    // ==================== 辅助方法 ====================
-
     /**
-     * 清理关键词字符串（去除前后竖线）
+     * 清理关键词字符串并统一分隔符
      */
     default String cleanKeyword(String keyword) {
         if (StringUtils.isBlank(keyword)) {
             return null;
         }
-        return keyword.replaceAll("^\\|+|\\|+$", "").replace("|", ",");
+        String normalized = keyword.replaceAll("^\\|+|\\|+$", "");
+        return normalizeDelimitedText(normalized);
     }
 
     /**
@@ -161,6 +154,26 @@ public interface BookConverter {
         if (list == null || list.isEmpty()) {
             return null;
         }
-        return String.join(",", list);
+        return normalizeDelimitedText(String.join(",", list));
+    }
+
+    /**
+     * 统一外部数据的分隔符为逗号，并去除空项
+     */
+    private static String normalizeDelimitedText(String text) {
+        if (StringUtils.isBlank(text)) {
+            return null;
+        }
+
+        String normalized = text
+                .replaceAll("\\s*[|，、;；/]\\s*", ",")
+                .replaceAll("\\s*[-－–—]\\s*", ",");
+
+        String result = Arrays.stream(normalized.split(","))
+                .map(String::trim)
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .collect(Collectors.joining(","));
+        return StringUtils.defaultIfBlank(result, null);
     }
 }
