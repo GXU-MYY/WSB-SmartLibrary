@@ -379,7 +379,8 @@ const normalizePublishDateInput = (value?: string | null) => {
   }
 
   const normalized = rawValue
-    .replace(/[./]/g, '-')
+    .replace(/[./,，]/g, '-')
+    .replace(/[－–—]/g, '-')
     .replace(/年/g, '-')
     .replace(/月/g, '-')
     .replace(/日/g, '')
