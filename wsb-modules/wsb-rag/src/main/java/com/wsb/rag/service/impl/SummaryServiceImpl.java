@@ -19,14 +19,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
- * AI 摘要服务实现（DeepSeek Chat）
+ * AI 摘要服务实现，使用 DeepSeek Chat 生成摘要与聚合书评。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SummaryServiceImpl implements SummaryService {
+
+    private static final MediaType JSON = MediaType.parse("application/json");
+    private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^\\s{0,3}#{1,6}\\s*");
+    private static final Pattern MARKDOWN_EMPHASIS = Pattern.compile("(\\*\\*|__|\\*|`)");
 
     @Value("${deepseek.chat-url}")
     private String chatUrl;
@@ -37,9 +44,22 @@ public class SummaryServiceImpl implements SummaryService {
     @Value("${tavily.api-key}")
     private String tavilyApiKey;
 
+    @Value("${deepseek.connect-timeout-seconds:10}")
+    private long connectTimeoutSeconds;
+
+    @Value("${deepseek.read-timeout-seconds:60}")
+    private long readTimeoutSeconds;
+
+    @Value("${deepseek.write-timeout-seconds:30}")
+    private long writeTimeoutSeconds;
+
+    @Value("${deepseek.call-timeout-seconds:90}")
+    private long callTimeoutSeconds;
+
     private final RemoteBookService remoteBookService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OkHttpClient httpClient = new OkHttpClient();
+
+    private volatile OkHttpClient httpClient;
 
     @Override
     public String generateSummary(Long bookId) {
@@ -50,7 +70,10 @@ public class SummaryServiceImpl implements SummaryService {
         }
 
         String prompt = buildSummaryPrompt(book);
-        String summary = callChatAPI(prompt);
+        String summary = sanitizeSummary(callChatAPI(prompt));
+        if (StringUtils.isBlank(summary)) {
+            throw new ServiceException("AI 生成的摘要为空");
+        }
 
         remoteBookService.updateSummary(bookId, summary);
         log.info("生成摘要成功: bookId={}", bookId);
@@ -59,7 +82,7 @@ public class SummaryServiceImpl implements SummaryService {
 
     @Override
     public String aggregateReviews(Long bookId, String title, String author) {
-        String searchQuery = String.format("《%s》 %s 书评 读后感", title, author != null ? author : "");
+        String searchQuery = String.format("《%s》%s 书评 读后感", title, author != null ? author : "");
         String reviews = searchWithTavily(searchQuery);
         String prompt = buildReviewAggregationPrompt(title, author, reviews);
         return callChatAPI(prompt);
@@ -67,8 +90,14 @@ public class SummaryServiceImpl implements SummaryService {
 
     private String buildSummaryPrompt(BookRemoteDTO book) {
         StringBuilder sb = new StringBuilder();
-        sb.append("请为以下书籍生成一段简洁的摘要（200-300字），包含主要内容、主题和价值：\n\n");
+        sb.append("请为以下书籍生成一段适合语义检索的中文摘要，控制在200到300字之间。\n");
+        sb.append("这个摘要将参与图书 RAG 检索，请优先保留有助于召回的关键信息：题材类型、主题、时代背景或知识领域、核心人物或核心问题、主要内容、写作风格、阅读价值、适合读者。\n");
+        sb.append("如果是文学作品，优先概括时代背景、核心人物、主要冲突和主题；如果是非虚构或知识类书籍，优先概括研究领域、核心议题、主要观点和方法。\n");
+        sb.append("只输出摘要正文，不要标题，不要 Markdown，不要分点，不要项目符号，不要套话，不要编造书中没有的信息；尽量保留书名、作者名、专有名词和主题词。\n\n");
         sb.append("书名：").append(book.getTitle()).append("\n");
+        if (StringUtils.isNotBlank(book.getSubtitle())) {
+            sb.append("副标题：").append(book.getSubtitle()).append("\n");
+        }
         if (StringUtils.isNotBlank(book.getAuthor())) {
             sb.append("作者：").append(book.getAuthor()).append("\n");
         }
@@ -80,7 +109,7 @@ public class SummaryServiceImpl implements SummaryService {
 
     private String buildReviewAggregationPrompt(String title, String author, String reviews) {
         return String.format("""
-                请根据以下网络搜索到的书评信息，为《%s》整理一份综合书评（300-500字）：
+                请根据以下网络搜索到的书评信息，为《%s》整理一份综合书评，控制在300到500字之间。
                 要求：
                 1. 总结读者的主要观点
                 2. 提及书籍的优缺点
@@ -104,19 +133,24 @@ public class SummaryServiceImpl implements SummaryService {
                     .url(chatUrl + "/chat/completions")
                     .addHeader("Authorization", "Bearer " + apiKey)
                     .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(json, MediaType.parse("application/json")))
+                    .post(RequestBody.create(json, JSON))
                     .build();
 
-            try (Response response = httpClient.newCall(request).execute()) {
+            try (Response response = getHttpClient().newCall(request).execute()) {
                 if (!response.isSuccessful()) {
-                    log.error("Chat API 调用失败: {}", response.code());
+                    String errorBody = response.body() != null ? response.body().string() : "";
+                    log.error("Chat API 调用失败: code={}, body={}", response.code(), errorBody);
                     throw new ServiceException("AI 服务暂时不可用");
                 }
 
-                String responseBody = response.body().string();
+                String responseBody = response.body() != null ? response.body().string() : "";
                 JsonNode root = objectMapper.readTree(responseBody);
-                return root.path("choices").get(0).path("message").path("content").asText();
+                return root.path("choices").path(0).path("message").path("content").asText();
             }
+        } catch (SocketTimeoutException e) {
+            log.error("Chat API 调用超时: connect={}s, read={}s, write={}s, call={}s",
+                    connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds, callTimeoutSeconds, e);
+            throw new ServiceException("AI 服务调用超时，请稍后重试");
         } catch (IOException e) {
             log.error("调用 Chat API 异常", e);
             throw new ServiceException("AI 服务调用失败: " + e.getMessage());
@@ -134,16 +168,16 @@ public class SummaryServiceImpl implements SummaryService {
             Request request = new Request.Builder()
                     .url("https://api.tavily.com/search")
                     .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(json, MediaType.parse("application/json")))
+                    .post(RequestBody.create(json, JSON))
                     .build();
 
-            try (Response response = httpClient.newCall(request).execute()) {
+            try (Response response = getHttpClient().newCall(request).execute()) {
                 if (!response.isSuccessful()) {
                     log.error("Tavily API 调用失败: {}", response.code());
                     return "暂无网络书评信息";
                 }
 
-                String responseBody = response.body().string();
+                String responseBody = response.body() != null ? response.body().string() : "";
                 JsonNode root = objectMapper.readTree(responseBody);
 
                 StringBuilder sb = new StringBuilder();
@@ -156,5 +190,35 @@ public class SummaryServiceImpl implements SummaryService {
             log.error("Tavily 搜索异常", e);
             return "暂无网络书评信息";
         }
+    }
+
+    private String sanitizeSummary(String summary) {
+        if (StringUtils.isBlank(summary)) {
+            return "";
+        }
+
+        String normalized = summary.replace("\r\n", "\n").replace('\r', '\n').trim();
+        normalized = MARKDOWN_HEADING.matcher(normalized).replaceAll("");
+        normalized = MARKDOWN_EMPHASIS.matcher(normalized).replaceAll("");
+        normalized = normalized.replaceAll("(?m)^\\s*[-*+]\\s+", "");
+        normalized = normalized.replaceAll("\\n{3,}", "\n\n");
+        return normalized.trim();
+    }
+
+    private OkHttpClient getHttpClient() {
+        if (httpClient == null) {
+            synchronized (this) {
+                if (httpClient == null) {
+                    httpClient = new OkHttpClient.Builder()
+                            .connectTimeout(connectTimeoutSeconds, TimeUnit.SECONDS)
+                            .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
+                            .writeTimeout(writeTimeoutSeconds, TimeUnit.SECONDS)
+                            .callTimeout(callTimeoutSeconds, TimeUnit.SECONDS)
+                            .retryOnConnectionFailure(true)
+                            .build();
+                }
+            }
+        }
+        return httpClient;
     }
 }

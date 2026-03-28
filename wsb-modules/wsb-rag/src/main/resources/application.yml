@@ -18,6 +18,10 @@ spring:
 deepseek:
   chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
   api-key: ${DEEPSEEK_API_KEY:}
+  connect-timeout-seconds: ${DEEPSEEK_CONNECT_TIMEOUT_SECONDS:10}
+  read-timeout-seconds: ${DEEPSEEK_READ_TIMEOUT_SECONDS:60}
+  write-timeout-seconds: ${DEEPSEEK_WRITE_TIMEOUT_SECONDS:30}
+  call-timeout-seconds: ${DEEPSEEK_CALL_TIMEOUT_SECONDS:90}
 
 # DashScope Qwen Embedding API
 dashscope:
