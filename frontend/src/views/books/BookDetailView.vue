@@ -323,7 +323,7 @@ onMounted(loadPage)
           title="返回上一页"
           @click="handleGoBack"
         >
-          <span aria-hidden="true">←</span>
+          <span aria-hidden="true" class="detail-page-action__icon">↩</span>
         </button>
       </template>
     </PageIntro>
@@ -539,6 +539,12 @@ onMounted(loadPage)
   align-items: center;
   justify-content: center;
   font-size: 1.18rem;
+  line-height: 1;
+}
+
+.detail-page-action__icon {
+  font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', sans-serif;
+  font-size: 1.26rem;
   line-height: 1;
 }
 
