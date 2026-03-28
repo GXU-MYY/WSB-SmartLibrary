@@ -75,6 +75,10 @@ const attachShelfId = ref(0)
 const bookId = computed(() => Number(route.params.id))
 const coverUrl = computed(() => resolvePictureUrl(book.value?.coverUrl))
 const tagItems = computed(() => parseTagList(book.value?.label))
+const collectButtonLabel = computed(() =>
+  collectRecord.value ? '取消收藏' : '加入收藏',
+)
+const collectButtonIcon = computed(() => (collectRecord.value ? '★' : '☆'))
 
 const loadPage = async () => {
   loading.value = true
@@ -202,6 +206,15 @@ const toggleCollect = async () => {
   }
 }
 
+const handleGoBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+
+  router.push('/books')
+}
+
 const handleGenerateSummary = async () => {
   summaryLoading.value = true
 
@@ -292,8 +305,25 @@ onMounted(loadPage)
       :description="book?.summary || '查看图书元数据、评论反馈、阅读状态、AI 摘要和相似书籍。'"
     >
       <template #actions>
-        <button class="button button--secondary" type="button" :disabled="collectLoading" @click="toggleCollect">
+        <button
+          class="button button--secondary detail-page-action detail-page-action--favorite"
+          type="button"
+          :class="{ 'detail-page-action--active': collectRecord }"
+          :disabled="collectLoading"
+          :aria-label="collectButtonLabel"
+          :title="collectButtonLabel"
+          @click="toggleCollect"
+        >
           {{ collectRecord ? '取消收藏' : '加入收藏' }}
+        </button>
+        <button
+          class="button button--ghost detail-page-action"
+          type="button"
+          aria-label="返回上一页"
+          title="返回上一页"
+          @click="handleGoBack"
+        >
+          <span aria-hidden="true">←</span>
         </button>
       </template>
     </PageIntro>
@@ -501,6 +531,33 @@ onMounted(loadPage)
 </template>
 
 <style scoped>
+.detail-page-action {
+  min-width: 46px;
+  min-height: 46px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+.detail-page-action--favorite {
+  position: relative;
+  font-size: 0;
+}
+
+.detail-page-action--favorite::before {
+  content: '☆';
+  font-size: 1.32rem;
+  line-height: 1;
+  color: currentColor;
+}
+
+.detail-page-action--favorite.detail-page-action--active::before {
+  content: '★';
+}
+
 .detail-hero {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import {
   createBook,
@@ -37,6 +38,8 @@ import {
   resolvePictureUrl,
 } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
+
+const router = useRouter()
 
 const loading = ref(false)
 const creatingBook = ref(false)
@@ -446,6 +449,10 @@ const openDetailDialog = async (book: Book) => {
 
 const closeDetailDialog = () => {
   showDetailDialog.value = false
+}
+
+const openDetailPage = (bookId: number) => {
+  router.push(`/books/${bookId}`)
 }
 
 const openDeleteDialog = (book: Book) => {
@@ -936,7 +943,7 @@ onMounted(() => {
             <button
               class="button button--ghost book-card-action"
               type="button"
-              @click="openDetailDialog(book)"
+              @click="openDetailPage(book.id)"
             >
               详情
             </button>
