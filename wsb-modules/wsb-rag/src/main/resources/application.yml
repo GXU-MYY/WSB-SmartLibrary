@@ -38,6 +38,7 @@ supabase:
 # Tavily
 tavily:
   api-key: ${TAVILY_API_KEY:}
+  review-cache-days: ${TAVILY_REVIEW_CACHE_DAYS:7}
 
 # RabbitMQ Queue Config
 rag:

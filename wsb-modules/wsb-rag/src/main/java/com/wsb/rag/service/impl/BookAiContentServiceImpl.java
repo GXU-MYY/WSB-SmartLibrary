@@ -6,7 +6,7 @@ import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
-import com.wsb.rag.service.SummaryService;
+import com.wsb.rag.service.BookAiContentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -16,10 +16,12 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -29,11 +31,12 @@ import java.util.regex.Pattern;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SummaryServiceImpl implements SummaryService {
+public class BookAiContentServiceImpl implements BookAiContentService {
 
     private static final MediaType JSON = MediaType.parse("application/json");
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^\\s{0,3}#{1,6}\\s*");
     private static final Pattern MARKDOWN_EMPHASIS = Pattern.compile("(\\*\\*|__|\\*|`)");
+    private static final String REVIEW_CACHE_KEY_PREFIX = "rag:review:book:";
 
     @Value("${deepseek.chat-url}")
     private String chatUrl;
@@ -43,6 +46,9 @@ public class SummaryServiceImpl implements SummaryService {
 
     @Value("${tavily.api-key}")
     private String tavilyApiKey;
+
+    @Value("${tavily.review-cache-days:7}")
+    private long reviewCacheDays;
 
     @Value("${deepseek.connect-timeout-seconds:10}")
     private long connectTimeoutSeconds;
@@ -57,9 +63,15 @@ public class SummaryServiceImpl implements SummaryService {
     private long callTimeoutSeconds;
 
     private final RemoteBookService remoteBookService;
+    private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private volatile OkHttpClient httpClient;
+
+    @Override
+    public String getCachedReviewDigest(Long bookId) {
+        return getCachedReview(bookId);
+    }
 
     @Override
     public String generateSummary(Long bookId) {
@@ -70,7 +82,7 @@ public class SummaryServiceImpl implements SummaryService {
         }
 
         String prompt = buildSummaryPrompt(book);
-        String summary = sanitizeSummary(callChatAPI(prompt));
+        String summary = sanitizeGeneratedText(callChatAPI(prompt));
         if (StringUtils.isBlank(summary)) {
             throw new ServiceException("AI 生成的摘要为空");
         }
@@ -82,10 +94,29 @@ public class SummaryServiceImpl implements SummaryService {
 
     @Override
     public String aggregateReviews(Long bookId, String title, String author) {
-        String searchQuery = String.format("《%s》%s 书评 读后感", title, author != null ? author : "");
+        log.info("开始聚合网络书评: bookId={}, title={}", bookId, title);
+
+        String cachedReviews = getCachedReview(bookId);
+        if (StringUtils.isNotBlank(cachedReviews)) {
+            log.info("命中 Redis 网络书评缓存: bookId={}", bookId);
+            return cachedReviews;
+        }
+
+        String searchQuery = String.format("《%s》%s 书评 读后感", title, StringUtils.defaultString(author));
+        log.info("开始搜索网络书评: bookId={}, query={}", bookId, searchQuery);
         String reviews = searchWithTavily(searchQuery);
+        log.info("Tavily 搜索结果: bookId={}\n{}", bookId, reviews);
         String prompt = buildReviewAggregationPrompt(title, author, reviews);
-        return callChatAPI(prompt);
+        String reviewResponse = callChatAPI(prompt);
+        log.info("DeepSeek 返回书评结果: bookId={}\n{}", bookId, reviewResponse);
+        String reviewDigest = sanitizeGeneratedText(reviewResponse);
+        if (StringUtils.isBlank(reviewDigest)) {
+            throw new ServiceException("聚合书评为空");
+        }
+
+        cacheReview(bookId, reviewDigest);
+        log.info("聚合网络书评完成: bookId={}", bookId);
+        return reviewDigest;
     }
 
     private String buildSummaryPrompt(BookRemoteDTO book) {
@@ -109,15 +140,23 @@ public class SummaryServiceImpl implements SummaryService {
 
     private String buildReviewAggregationPrompt(String title, String author, String reviews) {
         return String.format("""
-                请根据以下网络搜索到的书评信息，为《%s》整理一份综合书评，控制在300到500字之间。
+                请根据以下网络搜索结果，为%s的《%s》整理 3 条左右简短的中文书评。
                 要求：
-                1. 总结读者的主要观点
-                2. 提及书籍的优缺点
-                3. 给出整体评价
+                1. 每条书评控制在 50 到 100 字之间，尽量简短。
+                2. 每条都要带来源平台。
+                3. 每条只聚焦一个明确观点，可以写优点、缺点、阅读感受或适合人群。
+                4. 按要求输出书评内容，要编号，不要总标题，不要 Markdown，不要编造搜索结果里没有的来源。
+                5. 每条书评之间要换行。
 
                 搜索结果：
                 %s
-                """, title, reviews);
+                
+                返回格式：
+                1.书评内容（来源：xx）
+                2.书评内容（来源：xx）
+                ...
+                
+                """, StringUtils.defaultIfBlank(author, "未知"), title, reviews);
     }
 
     private String callChatAPI(String prompt) {
@@ -163,6 +202,7 @@ public class SummaryServiceImpl implements SummaryService {
                     .put("api_key", tavilyApiKey)
                     .put("query", query)
                     .put("search_depth", "basic")
+                    .put("max_results", 5)
                     .put("include_answer", true));
 
             Request request = new Request.Builder()
@@ -181,9 +221,12 @@ public class SummaryServiceImpl implements SummaryService {
                 JsonNode root = objectMapper.readTree(responseBody);
 
                 StringBuilder sb = new StringBuilder();
+                int count = 0;
                 for (JsonNode result : root.path("results")) {
                     sb.append(result.path("content").asText()).append("\n\n");
+                    count++;
                 }
+                log.info("Tavily 搜索完成: query={}, results={}", query, count);
                 return sb.toString();
             }
         } catch (IOException e) {
@@ -192,17 +235,43 @@ public class SummaryServiceImpl implements SummaryService {
         }
     }
 
-    private String sanitizeSummary(String summary) {
-        if (StringUtils.isBlank(summary)) {
+    private String sanitizeGeneratedText(String content) {
+        if (StringUtils.isBlank(content)) {
             return "";
         }
 
-        String normalized = summary.replace("\r\n", "\n").replace('\r', '\n').trim();
+        String normalized = content.replace("\r\n", "\n").replace('\r', '\n').trim();
         normalized = MARKDOWN_HEADING.matcher(normalized).replaceAll("");
         normalized = MARKDOWN_EMPHASIS.matcher(normalized).replaceAll("");
         normalized = normalized.replaceAll("(?m)^\\s*[-*+]\\s+", "");
         normalized = normalized.replaceAll("\\n{3,}", "\n\n");
         return normalized.trim();
+    }
+
+    private String getCachedReview(Long bookId) {
+        try {
+            return stringRedisTemplate.opsForValue().get(REVIEW_CACHE_KEY_PREFIX + bookId);
+        } catch (Exception e) {
+            log.warn("读取网络书评 Redis 缓存失败: bookId={}", bookId, e);
+            return null;
+        }
+    }
+
+    private void cacheReview(Long bookId, String reviewDigest) {
+        if (StringUtils.isBlank(reviewDigest)) {
+            return;
+        }
+        try {
+            long ttlDays = Math.max(reviewCacheDays, 1);
+            stringRedisTemplate.opsForValue().set(
+                    REVIEW_CACHE_KEY_PREFIX + bookId,
+                    reviewDigest,
+                    Duration.ofDays(ttlDays)
+            );
+            log.info("写入网络书评 Redis 缓存成功: bookId={}, ttlDays={}", bookId, ttlDays);
+        } catch (Exception e) {
+            log.warn("写入网络书评 Redis 缓存失败: bookId={}", bookId, e);
+        }
     }
 
     private OkHttpClient getHttpClient() {

@@ -4,7 +4,7 @@ import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
 import com.wsb.rag.service.EmbeddingService;
-import com.wsb.rag.service.SummaryService;
+import com.wsb.rag.service.BookAiContentService;
 import com.wsb.rag.service.VectorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ public class RagConsumer {
     private final RemoteBookService remoteBookService;
     private final EmbeddingService embeddingService;
     private final VectorService vectorService;
-    private final SummaryService summaryService;
+    private final BookAiContentService bookAiContentService;
     private final RabbitTemplate rabbitTemplate;
 
     @Value("${rag.exchange}")
@@ -35,7 +35,7 @@ public class RagConsumer {
     public void processSummary(Long bookId) {
         log.info("开始生成摘要: bookId={}", bookId);
         try {
-            String summary = summaryService.generateSummary(bookId);
+            String summary = bookAiContentService.generateSummary(bookId);
             if (StringUtils.isBlank(summary)) {
                 log.warn("摘要生成结果为空，跳过向量任务: bookId={}", bookId);
                 return;
