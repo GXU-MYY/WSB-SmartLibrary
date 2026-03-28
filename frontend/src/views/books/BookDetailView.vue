@@ -13,7 +13,7 @@ import {
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
-import { aggregateReviews, getAiSummary, getSimilarBooks } from '@/api/rag'
+import { aggregateReviews, getAiSummary, getReviewDigest, getSimilarBooks } from '@/api/rag'
 import {
   addCollect,
   addComment,
@@ -161,11 +161,13 @@ const loadPage = async () => {
 
     syncAttachShelfSelection()
 
-    try {
-      aiSummary.value = await getAiSummary(bookId.value)
-    } catch {
-      aiSummary.value = ''
-    }
+    const [summaryResult, reviewResult] = await Promise.allSettled([
+      getAiSummary(bookId.value),
+      getReviewDigest(bookId.value),
+    ])
+
+    aiSummary.value = summaryResult.status === 'fulfilled' ? summaryResult.value : ''
+    reviewDigest.value = reviewResult.status === 'fulfilled' ? (reviewResult.value || '') : ''
   } finally {
     loading.value = false
   }
@@ -488,11 +490,11 @@ onMounted(loadPage)
           </div>
 
           <div v-if="activeAiPane === 'summary'" class="copy-block">
-            <p>{{ aiSummary || 'AI 摘要正在生成中，请稍后回来查看。' }}</p>
+            <p class="copy-block__body">{{ aiSummary || 'AI 摘要正在生成中，请稍后回来查看。' }}</p>
           </div>
 
           <div v-else class="copy-block">
-            <p>{{ reviewDigest || '这里会在聚合完成后展示面向这本书的外部评论概览。' }}</p>
+            <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '待聚合...' }}</p>
             <div class="copy-block__footer">
               <button class="button button--ghost copy-block__trigger" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
                 {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
@@ -765,9 +767,13 @@ onMounted(loadPage)
   margin: 0;
 }
 
-.copy-block p {
+.copy-block__body {
   color: var(--sl-ink-soft);
   line-height: 1.8;
+}
+
+.copy-block__body--preserve {
+  white-space: pre-line;
 }
 
 .ai-reader-switch {

@@ -4,11 +4,16 @@ import type { BookRemote } from '@/types/models'
 export const getAiSummary = (bookId: number) =>
   request.get<string>(`/v1/rag/summary/${bookId}`)
 
+export const getReviewDigest = (bookId: number) =>
+  request.get<string>(`/v1/rag/reviews/${bookId}`)
+
 export const generateAiSummary = (bookId: number) =>
   request.post<string>(`/v1/rag/summary/${bookId}`)
 
 export const aggregateReviews = (bookId: number) =>
-  request.post<string>(`/v1/rag/reviews/${bookId}`)
+  request.post<string>(`/v1/rag/reviews/${bookId}`, null, {
+    timeout: 60000,
+  })
 
 export const getSimilarBooks = (bookId: number, limit = 6) =>
   request.get<BookRemote[]>(`/v1/rag/similar/${bookId}`, {
