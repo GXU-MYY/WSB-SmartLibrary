@@ -94,9 +94,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
                 LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
                 wrapper.in(Book::getId, bookIds);
-                if (StringUtils.isNotBlank(bookName)) {
-                    wrapper.like(Book::getTitle, bookName);
-                }
+                applyKeywordSearch(wrapper, bookName);
                 if (StringUtils.isNotBlank(classify)) {
                     wrapper.eq(Book::getClassify, classify);
                 }
@@ -109,9 +107,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
         LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Book::getUserId, currentUserId);
-        if (StringUtils.isNotBlank(bookName)) {
-            wrapper.like(Book::getTitle, bookName);
-        }
+        applyKeywordSearch(wrapper, bookName);
         if (StringUtils.isNotBlank(classify)) {
             wrapper.eq(Book::getClassify, classify);
         }
@@ -460,5 +456,17 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         } catch (Exception e) {
             log.warn("通知 RAG 加入摘要任务失败: bookId={}", bookId, e);
         }
+    }
+    private void applyKeywordSearch(LambdaQueryWrapper<Book> wrapper, String keyword) {
+        if (StringUtils.isBlank(keyword)) {
+            return;
+        }
+
+        wrapper.and(query -> query
+                .like(Book::getTitle, keyword)
+                .or()
+                .like(Book::getAuthor, keyword)
+                .or()
+                .like(Book::getPublisher, keyword));
     }
 }
