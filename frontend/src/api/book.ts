@@ -25,12 +25,15 @@ export const getBookList = (params: {
   page?: number
   page_size?: number
   bookshelf_id?: string | number
-  book_name?: string
+  keyword?: string
   classify?: string
 }) => request.get<PageResult<Book>>('/v1/book', { params })
 
 export const getBookDetail = (bookId: number) =>
   request.get<Book>('/v1/book/detail', { params: { book_id: bookId } })
+
+export const getBookShelves = (bookId: number) =>
+  request.get<Shelf | null>('/v1/book/shelf', { params: { book_id: bookId } })
 
 export const createBook = (payload: BookFormPayload) =>
   request.post<void>('/v1/book', payload)
@@ -92,5 +95,5 @@ export const returnBook = (payload: ReturnPayload) =>
 export const onShelf = (payload: { book_id: number; shelf_id: number }) =>
   request.post<void>('/v1/book/shelf', payload)
 
-export const offShelf = (payload: { book_id: number; shelf_id: number }) =>
+export const offShelf = (payload: { book_id: number; shelf_id?: number }) =>
   request.delete<void>('/v1/book/shelf', { data: payload })

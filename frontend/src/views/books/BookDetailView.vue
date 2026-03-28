@@ -7,7 +7,9 @@ import {
   borrowBook,
   getBookDetail,
   getReadingRecords,
+  getBookShelves,
   getShelves,
+  offShelf,
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
@@ -55,6 +57,7 @@ const averageScore = ref(0)
 const readingRecord = ref<ReadingRecord | null>(null)
 const collectRecord = ref<CollectBook | null>(null)
 const shelves = ref<Shelf[]>([])
+const bookShelf = ref<Shelf | null>(null)
 const similarBooks = ref<Book[]>([])
 const aiSummary = ref('')
 const reviewDigest = ref('')
@@ -75,16 +78,44 @@ const attachShelfId = ref(0)
 const bookId = computed(() => Number(route.params.id))
 const coverUrl = computed(() => resolvePictureUrl(book.value?.coverUrl))
 const tagItems = computed(() => parseTagList(book.value?.label))
+const attachedShelfIds = computed(() => (bookShelf.value?.id ? [bookShelf.value.id] : []))
+const attachedShelfNames = computed(() => (bookShelf.value?.shelfName ? [bookShelf.value.shelfName] : []))
+const isOnShelf = computed(() => Boolean(bookShelf.value) || Boolean(book.value?.isOnShelf))
+const isSelectedShelfAttached = computed(
+  () => attachShelfId.value > 0 && attachedShelfIds.value.includes(attachShelfId.value),
+)
+const shelfStatusText = computed(() =>
+  attachedShelfNames.value.length > 0 ? attachedShelfNames.value.join('、') : '当前未上架',
+)
+const shelfFieldLabel = computed(() =>
+  isOnShelf.value ? `是否上架（当前在架：${shelfStatusText.value}）` : '是否上架（当前未上架）',
+)
+const shelfActionText = computed(() => {
+  if (shelfLoading.value) {
+    return isSelectedShelfAttached.value ? '下架中...' : '上架中...'
+  }
+
+  return isSelectedShelfAttached.value ? '下架' : '上架'
+})
 const collectButtonLabel = computed(() =>
   collectRecord.value ? '取消收藏' : '加入收藏',
 )
 const collectButtonIcon = computed(() => (collectRecord.value ? '★' : '☆'))
 
+const syncAttachShelfSelection = () => {
+  if (bookShelf.value?.id) {
+    attachShelfId.value = bookShelf.value.id
+    return
+  }
+
+  attachShelfId.value = 0
+}
+
 const loadPage = async () => {
   loading.value = true
 
   try {
-    const [bookResult, commentResult, readingResult, similarResult, collectResult, shelfResult] =
+    const [bookResult, commentResult, readingResult, similarResult, collectResult, shelfResult, bookShelfResult] =
       await Promise.allSettled([
         getBookDetail(bookId.value),
         getBookComments(bookId.value),
@@ -92,6 +123,7 @@ const loadPage = async () => {
         getSimilarBooks(bookId.value, 4),
         getMyBookCollects(),
         getShelves(),
+        getBookShelves(bookId.value),
       ])
 
     if (bookResult.status === 'fulfilled') {
@@ -119,8 +151,15 @@ const loadPage = async () => {
 
     if (shelfResult.status === 'fulfilled') {
       shelves.value = shelfResult.value
-      attachShelfId.value = shelfResult.value[0]?.id || 0
     }
+
+    if (bookShelfResult.status === 'fulfilled') {
+      bookShelf.value = bookShelfResult.value
+    } else {
+      bookShelf.value = null
+    }
+
+    syncAttachShelfSelection()
 
     try {
       aiSummary.value = await getAiSummary(bookId.value)
@@ -283,6 +322,34 @@ const handleAttachShelf = async () => {
   }
 }
 
+const handleShelfAction = async () => {
+  if (!book.value || !attachShelfId.value) {
+    notifyError('请选择目标书架')
+    return
+  }
+
+  shelfLoading.value = true
+
+  try {
+    if (isSelectedShelfAttached.value) {
+      await offShelf({
+        book_id: book.value.id,
+        shelf_id: attachShelfId.value,
+      })
+      notifySuccess('图书已下架', '这本书已从当前书架移出。')
+    } else {
+      await onShelf({
+        book_id: book.value.id,
+        shelf_id: attachShelfId.value,
+      })
+      notifySuccess('图书已上架', '这本书已经放入选定书架。')
+    }
+    await loadPage()
+  } finally {
+    shelfLoading.value = false
+  }
+}
+
 useRegisterPageRefresh(loadPage)
 
 watch(
@@ -391,14 +458,14 @@ onMounted(loadPage)
               </select>
             </div>
             <div class="field">
-              <label>加入书架</label>
+              <label>{{ shelfFieldLabel }}</label>
               <div class="detail-hero__attach">
                 <select v-model.number="attachShelfId">
-                  <option :value="0">选择书架</option>
+                  <option :value="0" disabled hidden>选择书架</option>
                   <option v-for="item in shelves" :key="item.id" :value="item.id">{{ item.shelfName }}</option>
                 </select>
-                <button class="button button--ghost" type="button" :disabled="shelfLoading" @click="handleAttachShelf">
-                  {{ shelfLoading ? '处理中...' : '入架' }}
+                <button class="button button--ghost" type="button" :disabled="shelfLoading" @click="handleShelfAction">
+                  {{ shelfActionText }}
                 </button>
               </div>
             </div>
@@ -656,6 +723,13 @@ onMounted(loadPage)
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.detail-hero__shelf-status {
+  margin: 0 0 10px;
+  color: var(--sl-ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .detail-grid > * {

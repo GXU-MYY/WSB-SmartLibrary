@@ -11,6 +11,7 @@ import {
   getBookList,
   getIsbnBook,
   getShelves,
+  offShelf,
   onShelf,
   updateShelf,
   updateBook,
@@ -158,11 +159,27 @@ const editingBookTitle = computed(
     books.value.find((item) => item.id === editForm.id)?.title || '当前图书',
 )
 const editCoverPreviewUrl = computed(() => resolvePictureUrl(editForm.coverUrl))
+const attachBook = computed(
+  () => books.value.find((item) => item.id === attachForm.bookId) || null,
+)
 const attachBookTitle = computed(
   () =>
-    books.value.find((item) => item.id === attachForm.bookId)?.title ||
+    attachBook.value?.title ||
     '当前图书',
 )
+const isOffShelfAction = computed(() => Boolean(attachBook.value?.isOnShelf))
+const attachDialogTitle = computed(() =>
+  isOffShelfAction.value
+    ? `把《${attachBookTitle.value}》从书架移出`
+    : `把《${attachBookTitle.value}》放进书架`,
+)
+const attachDialogConfirmText = computed(() => {
+  if (attachingShelf.value) {
+    return isOffShelfAction.value ? '下架中...' : '上架中...'
+  }
+
+  return isOffShelfAction.value ? '确认下架' : '确认上架'
+})
 const isEditingShelf = computed(() => editingShelfId.value !== null)
 const detailTagItems = computed(() => parseTagList(detailBook.value?.label))
 const detailKeywordItems = computed(() =>
@@ -271,7 +288,7 @@ const loadBooks = async () => {
       page: pagination.current,
       page_size: pagination.size,
       bookshelf_id: filters.shelfId || undefined,
-      book_name: filters.keyword || undefined,
+      keyword: filters.keyword || undefined,
       classify: filters.classify || undefined,
     })
 
@@ -501,7 +518,7 @@ const closeEditDialog = () => {
 const openAttachDialog = (book: Book) => {
   closeAllDialogs()
   attachForm.bookId = book.id
-  attachForm.shelfId = Number(filters.shelfId || shelves.value[0]?.id || 0)
+  attachForm.shelfId = 0
   showAttachDialog.value = true
 }
 
@@ -813,19 +830,31 @@ const handleDeleteShelf = async () => {
 }
 
 const handleAttachToShelf = async () => {
-  if (!attachForm.bookId || !attachForm.shelfId) {
-    notifyError('请选择图书和书架', '入架前需要同时确认目标图书和目标书架。')
+  if (!attachForm.bookId || (!isOffShelfAction.value && !attachForm.shelfId)) {
+    notifyError(
+      '请选择图书和书架',
+      isOffShelfAction.value
+        ? '下架前只需要确认当前图书。'
+        : '上架前需要同时确认目标图书和目标书架。',
+    )
     return
   }
 
   attachingShelf.value = true
 
   try {
-    await onShelf({
-      book_id: attachForm.bookId,
-      shelf_id: attachForm.shelfId,
-    })
-    notifySuccess('图书已入架', '这本书已经关联到你选择的书架。')
+    if (isOffShelfAction.value) {
+      await offShelf({
+        book_id: attachForm.bookId,
+      })
+      notifySuccess('图书已下架', '这本书已从当前书架移除。')
+    } else {
+      await onShelf({
+        book_id: attachForm.bookId,
+        shelf_id: attachForm.shelfId,
+      })
+      notifySuccess('图书已上架', '这本书已经放入你选择的书架。')
+    }
     closeAttachDialog()
     await loadPage()
   } finally {
@@ -856,7 +885,7 @@ onMounted(() => {
           <input
             v-model="filters.keyword"
             type="text"
-            placeholder="关键词：标题 / 作者 / 出版社"
+            placeholder="输入标题、作者或出版社"
             aria-label="关键词筛选"
           />
         </div>
@@ -959,7 +988,7 @@ onMounted(() => {
               type="button"
               @click="openAttachDialog(book)"
             >
-              入架
+              {{ book.isOnShelf ? '下架' : '上架' }}
             </button>
             <button
               class="button button--danger book-card-action"
@@ -1326,8 +1355,8 @@ onMounted(() => {
         <section class="surface-card desk-dialog desk-dialog--compact">
           <header class="desk-dialog__head">
             <div>
-              <span class="eyebrow">On Shelf</span>
-              <h2>把《{{ attachBookTitle }}》放进书架</h2>
+              <span class="eyebrow">{{ isOffShelfAction ? 'Off Shelf' : 'On Shelf' }}</span>
+              <h2>{{ attachDialogTitle }}</h2>
             </div>
 
             <button
@@ -1340,11 +1369,14 @@ onMounted(() => {
           </header>
 
           <div class="desk-dialog__body">
-            <div class="field-grid field-grid--single">
+            <div
+              v-if="!isOffShelfAction"
+              class="field-grid field-grid--single"
+            >
               <div class="field">
                 <label>目标书架</label>
                 <select v-model.number="attachForm.shelfId">
-                  <option :value="0">选择书架</option>
+                  <option :value="0" disabled hidden>选择书架</option>
                   <option
                     v-for="shelf in shelves"
                     :key="shelf.id"
@@ -1355,6 +1387,9 @@ onMounted(() => {
                 </select>
               </div>
             </div>
+            <p v-else class="desk-dialog__hint">
+              当前操作会直接将这本书下架。如需换到别的书架，下架后再重新上架即可。
+            </p>
           </div>
 
           <footer class="desk-dialog__foot">
@@ -1371,7 +1406,7 @@ onMounted(() => {
               :disabled="attachingShelf"
               @click="handleAttachToShelf"
             >
-              {{ attachingShelf ? '入架中...' : '确认入架' }}
+              {{ attachDialogConfirmText }}
             </button>
           </footer>
         </section>
@@ -1765,6 +1800,12 @@ onMounted(() => {
 .desk-dialog__body {
   display: grid;
   gap: 18px;
+}
+
+.desk-dialog__hint {
+  margin: 0;
+  color: var(--sl-ink-soft);
+  line-height: 1.7;
 }
 
 .desk-dialog__body--split {
