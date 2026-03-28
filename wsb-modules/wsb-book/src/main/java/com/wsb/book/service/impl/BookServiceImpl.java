@@ -64,54 +64,23 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     private String googleApiKey;
 
     @Override
-    public Page<BookVO> searchByCondition(Integer page, Integer pageSize, String shelfId, String bookName, String classify) {
+    public Page<BookVO> searchByCondition(Integer page, Integer pageSize, Long shelfId, String keyword, String classify) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
         Page<Book> pageParam = new Page<>(page, pageSize);
 
-        if (StringUtils.isNotBlank(shelfId)) {
-            try {
-                Long shelfIdLong = Long.valueOf(shelfId);
-                Shelf shelf = shelfMapper.selectById(shelfIdLong);
-                if (shelf == null) {
-                    throw new ServiceException("书架不存在");
-                }
-                if (!shelf.getUserId().equals(currentUserId)) {
-                    throw new ServiceException("无权查询他人的书架");
-                }
-
-                List<Long> bookIds = bookShelfMapper.selectList(
-                        Wrappers.<BookShelf>lambdaQuery()
-                                .eq(BookShelf::getShelfId, shelfIdLong)
-                                .select(BookShelf::getBookId)
-                ).stream().map(BookShelf::getBookId).collect(Collectors.toList());
-
-                if (bookIds.isEmpty()) {
-                    Page<BookVO> emptyPage = new Page<>(page, pageSize);
-                    emptyPage.setRecords(List.of());
-                    emptyPage.setTotal(0);
-                    return emptyPage;
-                }
-
-                LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
-                wrapper.in(Book::getId, bookIds);
-                applyKeywordSearch(wrapper, bookName);
-                if (StringUtils.isNotBlank(classify)) {
-                    wrapper.eq(Book::getClassify, classify);
-                }
-                wrapper.orderByDesc(Book::getCreateTime);
-                return bookConverter.toVOPage(this.page(pageParam, wrapper));
-            } catch (NumberFormatException e) {
-                throw new ServiceException("书架 ID 格式错误");
+        if (shelfId != null) {
+            List<Long> bookIds = listShelfBookIds(shelfId, currentUserId);
+            if (bookIds.isEmpty()) {
+                return emptyPage(page, pageSize);
             }
+
+            LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
+            wrapper.in(Book::getId, bookIds);
+            return bookConverter.toVOPage(this.page(pageParam, wrapper));
         }
 
-        LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
+        LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
         wrapper.eq(Book::getUserId, currentUserId);
-        applyKeywordSearch(wrapper, bookName);
-        if (StringUtils.isNotBlank(classify)) {
-            wrapper.eq(Book::getClassify, classify);
-        }
-        wrapper.orderByDesc(Book::getCreateTime);
         return bookConverter.toVOPage(this.page(pageParam, wrapper));
     }
 
@@ -228,6 +197,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Book book = bookConverter.toBook(dto);
         book.setUserId(StpUtil.getLoginIdAsLong());
         book.setIsDeleted(false);
+        book.setIsOnShelf(dto.getShelfId() != null);
 
         this.save(book);
 
@@ -268,6 +238,9 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     @Override
     public BookVO detail(Long bookId) {
         Book book = this.getById(bookId);
+        if (book == null) {
+            throw new ServiceException("图书不存在");
+        }
         return bookConverter.toBookVO(book);
     }
 
@@ -327,55 +300,61 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void onShelf(BookShelfDTO dto) {
         Book book = this.getById(dto.getBookId());
         if (book == null) {
             throw new ServiceException("书籍不存在");
+        }
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!book.getUserId().equals(currentUserId)) {
+            throw new ServiceException("无权操作他人的图书");
         }
 
         Shelf shelf = shelfMapper.selectById(dto.getShelfId());
         if (shelf == null) {
             throw new ServiceException("书架不存在");
         }
-        if (!shelf.getUserId().equals(StpUtil.getLoginIdAsLong())) {
+        if (!shelf.getUserId().equals(currentUserId)) {
             throw new ServiceException("无权将书籍放入他人书架");
         }
 
-        Long count = bookShelfMapper.selectCount(new LambdaQueryWrapper<BookShelf>()
-                .eq(BookShelf::getShelfId, dto.getShelfId())
-                .eq(BookShelf::getBookId, dto.getBookId()));
-        if (count > 0) {
+        BookShelf currentRelation = bookShelfMapper.selectOne(new LambdaQueryWrapper<BookShelf>()
+                .eq(BookShelf::getBookId, dto.getBookId())
+                .last("limit 1"));
+        if (currentRelation != null && currentRelation.getShelfId().equals(dto.getShelfId())) {
             throw new ServiceException("书籍已存在于该书架");
         }
+
+        bookShelfMapper.delete(new LambdaQueryWrapper<BookShelf>()
+                .eq(BookShelf::getBookId, dto.getBookId()));
 
         BookShelf bookShelf = new BookShelf();
         bookShelf.setBookId(book.getId());
         bookShelf.setShelfId(shelf.getId());
         bookShelf.setIsDeleted(false);
         bookShelfMapper.insert(bookShelf);
+        updateBookShelfState(book.getId(), true);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void offShelf(BookShelfDTO dto) {
         Book book = this.getById(dto.getBookId());
         if (book == null) {
             throw new ServiceException("书籍不存在");
         }
-
-        Shelf shelf = shelfMapper.selectById(dto.getShelfId());
-        if (shelf == null) {
-            throw new ServiceException("书架不存在");
-        }
-        if (!shelf.getUserId().equals(StpUtil.getLoginIdAsLong())) {
-            throw new ServiceException("无权操作他人书架");
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!book.getUserId().equals(currentUserId)) {
+            throw new ServiceException("无权操作他人的图书");
         }
 
         int rows = bookShelfMapper.delete(new LambdaQueryWrapper<BookShelf>()
-                .eq(BookShelf::getShelfId, dto.getShelfId())
                 .eq(BookShelf::getBookId, dto.getBookId()));
         if (rows == 0) {
-            throw new ServiceException("书架中未找到该书籍");
+            throw new ServiceException("当前图书未上架");
         }
+        updateBookShelfState(book.getId(), false);
     }
 
     private IsbnBookVO mergeIsbnBook(IsbnBookVO primary, IsbnBookVO fallback) {
@@ -457,6 +436,49 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             log.warn("通知 RAG 加入摘要任务失败: bookId={}", bookId, e);
         }
     }
+
+    private List<Long> listShelfBookIds(Long shelfId, Long currentUserId) {
+        Shelf shelf = shelfMapper.selectById(shelfId);
+        if (shelf == null) {
+            throw new ServiceException("书架不存在");
+        }
+        if (!shelf.getUserId().equals(currentUserId)) {
+            throw new ServiceException("无权查询他人的书架");
+        }
+
+        return bookShelfMapper.selectList(
+                        Wrappers.<BookShelf>lambdaQuery()
+                                .eq(BookShelf::getShelfId, shelfId)
+                                .select(BookShelf::getBookId)
+                ).stream()
+                .map(BookShelf::getBookId)
+                .collect(Collectors.toList());
+    }
+
+    private Page<BookVO> emptyPage(Integer page, Integer pageSize) {
+        Page<BookVO> emptyPage = new Page<>(page, pageSize);
+        emptyPage.setRecords(List.of());
+        emptyPage.setTotal(0);
+        return emptyPage;
+    }
+
+    private void updateBookShelfState(Long bookId, boolean isOnShelf) {
+        this.lambdaUpdate()
+                .eq(Book::getId, bookId)
+                .set(Book::getIsOnShelf, isOnShelf)
+                .update();
+    }
+
+    private LambdaQueryWrapper<Book> buildSearchWrapper(String keyword, String classify) {
+        LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
+        applyKeywordSearch(wrapper, keyword);
+        if (StringUtils.isNotBlank(classify)) {
+            wrapper.eq(Book::getClassify, classify);
+        }
+        wrapper.orderByDesc(Book::getCreateTime);
+        return wrapper;
+    }
+
     private void applyKeywordSearch(LambdaQueryWrapper<Book> wrapper, String keyword) {
         if (StringUtils.isBlank(keyword)) {
             return;

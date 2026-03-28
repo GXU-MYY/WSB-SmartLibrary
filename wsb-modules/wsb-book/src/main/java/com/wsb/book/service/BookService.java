@@ -18,7 +18,7 @@ import java.util.List;
  * 图书服务接口
  */
 public interface BookService extends IService<Book> {
-    Page<BookVO> searchByCondition(Integer page, Integer pageSize, String shelfId, String bookName, String classify);
+    Page<BookVO> searchByCondition(Integer page, Integer pageSize, Long shelfId, String keyword, String classify);
 
     MyBookListVO getMyBooks();
 

@@ -15,6 +15,7 @@ import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.service.ShelfService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,7 @@ import java.util.List;
  * 书架服务实现类
  */
 @Service
+@Slf4j
 @AllArgsConstructor
 public class ShelfServiceImpl extends ServiceImpl<ShelfMapper, Shelf> implements ShelfService {
     private final ShelfConvert shelfConvert;
@@ -91,6 +93,33 @@ public class ShelfServiceImpl extends ServiceImpl<ShelfMapper, Shelf> implements
             return Collections.emptyList();
         }
         return shelfConvert.toShelfVOList(list);
+    }
+
+    @Override
+    public ShelfVO getByBookId(Long bookId) {
+        if (bookId == null) {
+            return null;
+        }
+
+        List<BookShelf> relations = bookShelfMapper.selectList(new LambdaQueryWrapper<BookShelf>()
+                .eq(BookShelf::getBookId, bookId)
+                .orderByAsc(BookShelf::getShelfId));
+        if (relations.isEmpty()) {
+            return null;
+        }
+        if (relations.size() > 1) {
+            log.warn("图书存在多个书架关联，将返回第一条关系: bookId={}, count={}", bookId, relations.size());
+        }
+
+        Shelf shelf = this.lambdaQuery()
+                .eq(Shelf::getId, relations.get(0).getShelfId())
+                .eq(Shelf::getUserId, StpUtil.getLoginIdAsLong())
+                .one();
+        if (shelf == null) {
+            return null;
+        }
+
+        return shelfConvert.toShelfVO(shelf);
     }
 
     @Override
