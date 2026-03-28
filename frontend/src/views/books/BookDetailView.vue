@@ -13,7 +13,7 @@ import {
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
-import { aggregateReviews, generateAiSummary, getAiSummary, getSimilarBooks } from '@/api/rag'
+import { aggregateReviews, getAiSummary, getSimilarBooks } from '@/api/rag'
 import {
   addCollect,
   addComment,
@@ -44,12 +44,12 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
-const summaryLoading = ref(false)
 const reviewLoading = ref(false)
 const commentLoading = ref(false)
 const collectLoading = ref(false)
 const borrowLoading = ref(false)
 const shelfLoading = ref(false)
+const activeAiPane = ref<'summary' | 'reviews'>('summary')
 
 const book = ref<Book | null>(null)
 const comments = ref<CommentItem[]>([])
@@ -254,18 +254,8 @@ const handleGoBack = () => {
   router.push('/books')
 }
 
-const handleGenerateSummary = async () => {
-  summaryLoading.value = true
-
-  try {
-    aiSummary.value = await generateAiSummary(bookId.value)
-    notifySuccess('AI 摘要已生成')
-  } finally {
-    summaryLoading.value = false
-  }
-}
-
 const handleAggregateReviews = async () => {
+  activeAiPane.value = 'reviews'
   reviewLoading.value = true
 
   try {
@@ -478,23 +468,36 @@ onMounted(loadPage)
           title="AI 阅读助手"
           hint="这里集中展示摘要、聚合书评与延展阅读结果。"
         >
-          <div class="inline-actions">
-            <button class="button button--secondary" type="button" :disabled="summaryLoading" @click="handleGenerateSummary">
-              {{ summaryLoading ? '生成中...' : '生成 AI 摘要' }}
+          <div class="ai-reader-switch">
+            <button
+              class="button ai-reader-switch__item"
+              :class="activeAiPane === 'summary' ? 'button--secondary ai-reader-switch__item--active' : 'button--ghost'"
+              type="button"
+              @click="activeAiPane = 'summary'"
+            >
+              AI 摘要
             </button>
-            <button class="button button--ghost" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
-              {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
+            <button
+              class="button ai-reader-switch__item"
+              :class="activeAiPane === 'reviews' ? 'button--secondary ai-reader-switch__item--active' : 'button--ghost'"
+              type="button"
+              @click="activeAiPane = 'reviews'"
+            >
+              网络书评
             </button>
           </div>
 
-          <div class="copy-block">
-            <h3>摘要</h3>
-            <p>{{ aiSummary || '还没有生成摘要，你可以手动触发一次。' }}</p>
+          <div v-if="activeAiPane === 'summary'" class="copy-block">
+            <p>{{ aiSummary || 'AI 摘要正在生成中，请稍后回来查看。' }}</p>
           </div>
 
-          <div class="copy-block">
-            <h3>聚合书评</h3>
-            <p>{{ reviewDigest || '这里会收集面向这本书的外部评论概览。' }}</p>
+          <div v-else class="copy-block">
+            <p>{{ reviewDigest || '这里会在聚合完成后展示面向这本书的外部评论概览。' }}</p>
+            <div class="copy-block__footer">
+              <button class="button button--ghost copy-block__trigger" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
+                {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
+              </button>
+            </div>
           </div>
         </SectionPanel>
 
@@ -741,6 +744,22 @@ onMounted(loadPage)
   gap: 10px;
 }
 
+.copy-block__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.copy-block__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.copy-block__trigger {
+  padding-inline: 14px;
+  font-size: 0.92rem;
+}
+
 .copy-block h3,
 .copy-block p {
   margin: 0;
@@ -749,6 +768,21 @@ onMounted(loadPage)
 .copy-block p {
   color: var(--sl-ink-soft);
   line-height: 1.8;
+}
+
+.ai-reader-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ai-reader-switch__item {
+  min-width: 110px;
+}
+
+.ai-reader-switch__item--active {
+  box-shadow: 0 10px 24px rgba(22, 40, 28, 0.14);
 }
 
 .field-grid {
