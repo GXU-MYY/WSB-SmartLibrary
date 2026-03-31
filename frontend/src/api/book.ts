@@ -5,6 +5,7 @@ import type {
   BookUpdatePayload,
   BorrowPayload,
   BorrowRecord,
+  BorrowSummary,
   BorrowUpdatePayload,
   IsbnBook,
   MyBookList,
@@ -78,10 +79,15 @@ export const addReadingRecord = (payload: ReadingPayload) =>
 export const updateReadingRecord = (payload: ReadingPayload) =>
   request.put<ReadingRecord>('/v1/book/reading', payload)
 
-export const getBorrowRecords = (borrowType?: number) =>
-  request.get<BorrowRecord[]>('/v1/book/borrow', {
-    params: borrowType ? { borrow_type: borrowType } : undefined,
-  })
+export const getBorrowRecords = (params?: {
+  page?: number
+  page_size?: number
+  borrow_type?: number
+  status?: number
+}) => request.get<PageResult<BorrowRecord>>('/v1/book/borrow', { params })
+
+export const getBorrowSummary = () =>
+  request.get<BorrowSummary>('/v1/book/borrow/summary')
 
 export const borrowBook = (payload: BorrowPayload) =>
   request.post<void>('/v1/book/borrow', payload)

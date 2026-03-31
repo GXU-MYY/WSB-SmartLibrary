@@ -222,8 +222,10 @@ export interface BorrowRecord {
   user_id: number
   borrow_name: string
   borrowing_time: string
+  due_time?: string
   return_time?: string
   borrow_type: number
+  status: number
   pic?: string
 }
 
@@ -231,6 +233,7 @@ export interface BorrowPayload {
   book_id: number
   borrow_name: string
   borrowing_time: string
+  due_time?: string
   borrow_type: number
 }
 
@@ -238,12 +241,20 @@ export interface BorrowUpdatePayload {
   borrow_id: number
   borrow_name: string
   borrowing_time?: string
+  due_time?: string
 }
 
 export interface ReturnPayload {
-  book_id: string
-  borrow_type: string
+  borrow_id: number
   return_time: string
+}
+
+export interface BorrowSummary {
+  total: number
+  borrowedIn: number
+  borrowedOut: number
+  active: number
+  overdue: number
 }
 
 export interface Group {
