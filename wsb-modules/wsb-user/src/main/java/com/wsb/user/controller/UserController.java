@@ -46,7 +46,7 @@ public class UserController {
 
   @Operation(summary = "更新用户信息")
   @PutMapping("/user")
-  public Result<UserInfoVO> update(@RequestBody UserUpdateDTO dto) {
+  public Result<UserInfoVO> update(@Validated @RequestBody UserUpdateDTO dto) {
     return Result.success(userService.updateUserInfo(dto));
   }
 
