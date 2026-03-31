@@ -49,6 +49,7 @@ export interface UserInfo {
   id: number
   userName: string
   nickName?: string
+  realName?: string
   phone?: string
   avatar?: string
   signature?: string
@@ -61,6 +62,8 @@ export interface UserInfo {
 
 export interface UserUpdatePayload {
   nickName?: string
+  realName?: string
+  email?: string
   signature?: string
   avatar?: string
 }
