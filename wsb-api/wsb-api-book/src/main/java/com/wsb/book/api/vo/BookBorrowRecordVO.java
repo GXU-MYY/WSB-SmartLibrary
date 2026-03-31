@@ -17,12 +17,12 @@ public class BookBorrowRecordVO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 借书记录ID
+     * 借阅记录ID
      */
     private Long id;
 
     /**
-     * 书籍ID
+     * 图书ID
      */
     @JsonProperty("book_id")
     private Long bookId;
@@ -34,38 +34,50 @@ public class BookBorrowRecordVO implements Serializable {
     private Long userId;
 
     /**
-     * 借书人姓名
+     * 借阅对象姓名
      */
     @JsonProperty("borrow_name")
     private String borrowerName;
 
     /**
-     * 借书时间
+     * 借阅时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd")
     @JsonProperty("borrowing_time")
     private LocalDate borrowTime;
 
     /**
-     * 还书时间
+     * 预计归还时间
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @JsonProperty("due_time")
+    private LocalDate dueTime;
+
+    /**
+     * 归还时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd")
     @JsonProperty("return_time")
     private LocalDate returnTime;
 
     /**
-     * 借书类型：1=借入，2=借出
+     * 借阅类型：1-借入，2-借出
      */
     @JsonProperty("borrow_type")
     private Integer borrowType;
 
     /**
-     * 书籍标题
+     * 借阅状态：0-借阅中，1-已归还，2-已逾期
+     */
+    private Integer status;
+
+    /**
+     * 图书标题
      */
     private String title;
 
     /**
-     * 书籍封面
+     * 图书封面
      */
     @JsonProperty("pic")
     private String coverUrl;

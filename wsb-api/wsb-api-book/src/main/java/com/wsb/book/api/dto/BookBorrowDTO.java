@@ -18,30 +18,36 @@ public class BookBorrowDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 书籍ID
+     * 图书ID
      */
-    @NotBlank(message = "书籍ID不能为空")
+    @NotNull(message = "图书ID不能为空")
     @JsonProperty("book_id")
     private Long bookId;
 
     /**
-     * 借书时间
+     * 借阅日期
      */
-    @NotBlank(message = "借书时间不能为空")
+    @NotNull(message = "借阅日期不能为空")
     @JsonProperty("borrowing_time")
     private LocalDate borrowTime;
 
     /**
-     * 借书人姓名
+     * 预计归还日期
      */
-    @NotBlank(message = "借书人姓名不能为空")
+    @JsonProperty("due_time")
+    private LocalDate dueTime;
+
+    /**
+     * 借阅对象姓名
+     */
+    @NotBlank(message = "借阅对象不能为空")
     @JsonProperty("borrow_name")
     private String borrowerName;
 
     /**
-     * 借书类型：1=借入，2=借出
+     * 借阅类型：1-借入，2-借出
      */
-    @NotNull(message = "借书类型不能为空")
+    @NotNull(message = "借阅类型不能为空")
     @JsonProperty("borrow_type")
     private Integer borrowType;
 }

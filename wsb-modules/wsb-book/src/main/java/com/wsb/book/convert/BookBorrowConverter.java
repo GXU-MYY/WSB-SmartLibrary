@@ -25,6 +25,7 @@ public interface BookBorrowConverter {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "returnTime", ignore = true)
+    @Mapping(target = "status", ignore = true)
     @Mapping(target = "bookName", ignore = true)
     @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
@@ -33,24 +34,24 @@ public interface BookBorrowConverter {
     BookBorrow toBookBorrow(BookBorrowDTO dto);
 
     /**
-     * 实体转换为 VO
+     * 实体转换为VO
      */
     BookBorrowVO toBookBorrowVO(BookBorrow entity);
 
     /**
-     * 实体转换为记录 VO
+     * 实体转换为记录VO
      */
     @Mapping(target = "title", ignore = true)
     @Mapping(target = "coverUrl", ignore = true)
     BookBorrowRecordVO toBookBorrowRecordVO(BookBorrow entity);
 
     /**
-     * 实体列表转换为记录 VO 列表
+     * 实体列表转换为记录VO列表
      */
     List<BookBorrowRecordVO> toBookBorrowRecordVOList(List<BookBorrow> entities);
 
     /**
-     * 更新实体（从 DTO）
+     * 更新实体（从DTO）
      */
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
@@ -58,6 +59,7 @@ public interface BookBorrowConverter {
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "returnTime", ignore = true)
     @Mapping(target = "borrowType", ignore = true)
+    @Mapping(target = "status", ignore = true)
     @Mapping(target = "bookName", ignore = true)
     @Mapping(target = "coverUrl", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
