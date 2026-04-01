@@ -16,12 +16,7 @@ import PageIntro from '@/components/PageIntro.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import type { BorrowRecord, BorrowSummary, MyBookList, PageResult } from '@/types/models'
-import {
-  borrowStatusLabel,
-  borrowTypeLabel,
-  formatDate,
-  resolvePictureUrl,
-} from '@/utils/format'
+import { borrowStatusLabel, borrowTypeLabel, formatDate, resolvePictureUrl } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -30,12 +25,13 @@ const loading = ref(false)
 const submitting = ref(false)
 const updating = ref(false)
 const returningId = ref(0)
+const showEditDialog = ref(false)
 
 const bookList = ref<MyBookList | null>(null)
 const borrowSummary = ref<BorrowSummary | null>(null)
 const records = ref<BorrowRecord[]>([])
+const editingRecord = ref<BorrowRecord | null>(null)
 
-const selectedRecordId = ref(0)
 const borrowTypeFilter = ref(0)
 const statusFilter = ref(-1)
 
@@ -61,10 +57,6 @@ const updateForm = reactive({
   due_time: '',
 })
 
-const selectedRecord = computed(() =>
-  records.value.find((item) => item.id === selectedRecordId.value) || null,
-)
-
 const summaryCards = computed(() => {
   const summary = borrowSummary.value || {
     total: 0,
@@ -78,7 +70,12 @@ const summaryCards = computed(() => {
     { label: '记录总数', value: summary.total, hint: '当前账号下所有借阅记录。', tone: 'brand' as const },
     { label: '借入', value: summary.borrowedIn, hint: '你从外部借来的书。', tone: 'plain' as const },
     { label: '借出', value: summary.borrowedOut, hint: '你借给别人的书。', tone: 'plain' as const },
-    { label: '进行中 / 逾期', value: `${summary.active} / ${summary.overdue}`, hint: '仍在流转中的记录和其中已逾期的数量。', tone: 'accent' as const },
+    {
+      label: '进行中 / 已逾期',
+      value: `${summary.active} / ${summary.overdue}`,
+      hint: '仍在流转中的记录，以及其中已经逾期的数量。',
+      tone: 'accent' as const,
+    },
   ]
 })
 
@@ -95,10 +92,6 @@ const applyBorrowPage = (pageData: PageResult<BorrowRecord>) => {
   pagination.size = pageData.size
   pagination.total = pageData.total
   pagination.pages = pageData.pages
-
-  if (selectedRecordId.value && !records.value.some((item) => item.id === selectedRecordId.value)) {
-    selectedRecordId.value = 0
-  }
 }
 
 const loadBorrowRecords = async (page = pagination.current) => {
@@ -137,19 +130,25 @@ const resetBorrowForm = () => {
 }
 
 const resetUpdateForm = () => {
-  selectedRecordId.value = 0
   updateForm.borrow_id = 0
   updateForm.borrow_name = ''
   updateForm.borrowing_time = ''
   updateForm.due_time = ''
+  editingRecord.value = null
 }
 
-const prefillUpdate = (record: BorrowRecord) => {
-  selectedRecordId.value = record.id
+const openEditDialog = (record: BorrowRecord) => {
+  editingRecord.value = record
   updateForm.borrow_id = record.id
   updateForm.borrow_name = record.borrow_name
   updateForm.borrowing_time = record.borrowing_time
   updateForm.due_time = record.due_time || ''
+  showEditDialog.value = true
+}
+
+const closeEditDialog = () => {
+  showEditDialog.value = false
+  resetUpdateForm()
 }
 
 const handleCreateBorrow = async () => {
@@ -175,7 +174,7 @@ const handleCreateBorrow = async () => {
 
 const handleUpdateRecord = async () => {
   if (!updateForm.borrow_id || !updateForm.borrow_name.trim()) {
-    notifyError('请先从记录列表中选择一条借阅记录')
+    notifyError('请先填写完整的编辑信息')
     return
   }
 
@@ -188,6 +187,7 @@ const handleUpdateRecord = async () => {
       due_time: updateForm.due_time || undefined,
     })
     notifySuccess('借阅记录已更新')
+    closeEditDialog()
     await Promise.all([loadBorrowRecords(pagination.current), loadBorrowSummary()])
   } finally {
     updating.value = false
@@ -240,8 +240,8 @@ onMounted(loadPage)
   <div class="page-shell page-stack">
     <PageIntro
       eyebrow="Borrow Flow"
-      title="让借入与借出都落成可追踪的记录"
-      description="这里会集中处理借阅登记、归还、逾期状态与历史记录，让每一本书的流转都有清晰时间线。"
+      title="把借入与借出落成清晰记录"
+      description="左侧快速登记，右侧集中浏览和处理记录，让每一本书的借阅状态都能一眼看清。"
     />
 
     <section class="page-grid metrics-grid">
@@ -256,108 +256,47 @@ onMounted(loadPage)
     </section>
 
     <section class="page-grid borrow-layout">
-      <div class="borrow-layout__side">
-        <SectionPanel
-          title="登记借阅"
-          hint="登记时可以补上预计归还日期，后续逾期统计会基于它自动判断。"
-        >
+      <SectionPanel title="登记借阅" class="borrow-layout__form">
+        <div class="field">
+          <label>图书</label>
+          <select v-model.number="borrowForm.book_id">
+            <option :value="0">选择图书</option>
+            <option v-for="book in bookList?.books || []" :key="book.id" :value="book.id">
+              {{ book.title }}
+            </option>
+          </select>
+        </div>
+
+        <div class="field-grid">
           <div class="field">
-            <label>图书</label>
-            <select v-model.number="borrowForm.book_id">
-              <option :value="0">选择图书</option>
-              <option v-for="book in bookList?.books || []" :key="book.id" :value="book.id">
-                {{ book.title }}
-              </option>
+            <label>借阅对象</label>
+            <input v-model="borrowForm.borrow_name" type="text" placeholder="填写对方姓名" />
+          </div>
+          <div class="field">
+            <label>借阅类型</label>
+            <select v-model.number="borrowForm.borrow_type">
+              <option :value="1">借入</option>
+              <option :value="2">借出</option>
             </select>
           </div>
-
-          <div class="field-grid">
-            <div class="field">
-              <label>借阅对象</label>
-              <input v-model="borrowForm.borrow_name" type="text" placeholder="填写对方姓名" />
-            </div>
-            <div class="field">
-              <label>借阅类型</label>
-              <select v-model.number="borrowForm.borrow_type">
-                <option :value="1">借入</option>
-                <option :value="2">借出</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>借阅日期</label>
-              <input v-model="borrowForm.borrowing_time" type="date" />
-            </div>
-            <div class="field">
-              <label>预计归还日期</label>
-              <input v-model="borrowForm.due_time" type="date" />
-            </div>
+          <div class="field">
+            <label>借阅日期</label>
+            <input v-model="borrowForm.borrowing_time" type="date" />
           </div>
-
-          <button
-            class="button button--primary"
-            type="button"
-            :disabled="submitting"
-            @click="handleCreateBorrow"
-          >
-            {{ submitting ? '登记中...' : '保存借阅记录' }}
-          </button>
-        </SectionPanel>
-
-        <SectionPanel
-          title="编辑记录"
-          hint="从右侧记录表中点“编辑”后，会把当前记录回填到这里。"
-        >
-          <div class="field-grid">
-            <div class="field">
-              <label>记录 ID</label>
-              <input v-model.number="updateForm.borrow_id" type="number" min="0" placeholder="先从表格中选择记录" />
-            </div>
-            <div class="field">
-              <label>借阅对象</label>
-              <input v-model="updateForm.borrow_name" type="text" placeholder="填写对方姓名" />
-            </div>
-            <div class="field">
-              <label>借阅日期</label>
-              <input v-model="updateForm.borrowing_time" type="date" />
-            </div>
-            <div class="field">
-              <label>预计归还日期</label>
-              <input v-model="updateForm.due_time" type="date" />
-            </div>
+          <div class="field">
+            <label>预计归还日期</label>
+            <input v-model="borrowForm.due_time" type="date" />
           </div>
+        </div>
 
-          <div class="inline-actions">
-            <button
-              class="button button--secondary"
-              type="button"
-              :disabled="updating"
-              @click="handleUpdateRecord"
-            >
-              {{ updating ? '保存中...' : '保存修改' }}
-            </button>
-            <button class="button button--ghost" type="button" @click="resetUpdateForm">
-              清空
-            </button>
-          </div>
+        <button class="button button--primary borrow-submit" type="button" :disabled="submitting" @click="handleCreateBorrow">
+          {{ submitting ? '登记中...' : '保存借阅记录' }}
+        </button>
+      </SectionPanel>
 
-          <div v-if="selectedRecord" class="record-hint surface-card">
-            <strong>当前编辑：{{ selectedRecord.title }}</strong>
-            <p>
-              {{ selectedRecord.borrow_name }} ·
-              {{ borrowTypeLabel(selectedRecord.borrow_type) }} ·
-              {{ borrowStatusLabel(selectedRecord.status) }}
-            </p>
-          </div>
-        </SectionPanel>
-      </div>
-
-      <SectionPanel
-        class="borrow-layout__main"
-        title="借阅记录"
-        hint="还书现在会直接按借阅记录 ID 定位，不再靠图书 ID 猜测最后一条未归还记录。"
-      >
+      <SectionPanel title="借阅记录" class="borrow-layout__records">
         <template #actions>
-          <div class="inline-actions borrow-layout__filters">
+          <div class="record-toolbar">
             <select v-model.number="borrowTypeFilter" @change="handleFilterChange">
               <option :value="0">全部类型</option>
               <option :value="1">只看借入</option>
@@ -374,8 +313,9 @@ onMounted(loadPage)
 
         <LoadingState v-if="loading && records.length === 0" />
 
-        <div v-else-if="records.length" class="table-shell">
-          <table class="table">
+        <div v-else-if="records.length" class="borrow-records-shell">
+          <div class="table-shell borrow-table-desktop">
+            <table class="table borrow-table">
             <thead>
               <tr>
                 <th>图书</th>
@@ -390,17 +330,17 @@ onMounted(loadPage)
             </thead>
             <tbody>
               <tr v-for="record in records" :key="record.id">
-                <td>
-                  <div class="record-book">
+                <td class="borrow-table__book">
+                  <div class="book-cell">
                     <img
                       v-if="resolvePictureUrl(record.pic)"
                       :src="resolvePictureUrl(record.pic)"
                       :alt="record.title"
-                      class="record-book__cover"
+                      class="book-cell__cover"
                       loading="lazy"
                     />
-                    <div v-else class="record-book__cover record-book__cover--placeholder">BOOK</div>
-                    <div class="record-book__meta">
+                    <div v-else class="book-cell__cover book-cell__cover--placeholder">BOOK</div>
+                    <div class="book-cell__meta">
                       <strong>{{ record.title }}</strong>
                       <span>#{{ record.id }}</span>
                     </div>
@@ -417,8 +357,8 @@ onMounted(loadPage)
                 </td>
                 <td>{{ record.return_time ? formatDate(record.return_time) : '未归还' }}</td>
                 <td>
-                  <div class="inline-actions">
-                    <button class="button button--ghost" type="button" @click="prefillUpdate(record)">
+                  <div class="inline-actions borrow-table__actions">
+                    <button class="button button--ghost" type="button" @click="openEditDialog(record)">
                       编辑
                     </button>
                     <button
@@ -434,7 +374,70 @@ onMounted(loadPage)
                 </td>
               </tr>
             </tbody>
-          </table>
+            </table>
+          </div>
+
+          <div class="borrow-card-list">
+            <article v-for="record in records" :key="`mobile-${record.id}`" class="borrow-record-card surface-card">
+              <div class="borrow-record-card__head">
+                <div class="book-cell">
+                  <img
+                    v-if="resolvePictureUrl(record.pic)"
+                    :src="resolvePictureUrl(record.pic)"
+                    :alt="record.title"
+                    class="book-cell__cover"
+                    loading="lazy"
+                  />
+                  <div v-else class="book-cell__cover book-cell__cover--placeholder">BOOK</div>
+                  <div class="book-cell__meta">
+                    <strong>{{ record.title }}</strong>
+                    <span>#{{ record.id }}</span>
+                  </div>
+                </div>
+                <span class="status-chip" :class="`status-chip--${record.status}`">
+                  {{ borrowStatusLabel(record.status) }}
+                </span>
+              </div>
+
+              <div class="borrow-record-card__meta">
+                <div class="borrow-record-card__pair">
+                  <span>对象</span>
+                  <strong>{{ record.borrow_name }}</strong>
+                </div>
+                <div class="borrow-record-card__pair">
+                  <span>类型</span>
+                  <strong>{{ borrowTypeLabel(record.borrow_type) }}</strong>
+                </div>
+                <div class="borrow-record-card__pair">
+                  <span>借阅</span>
+                  <strong>{{ formatDate(record.borrowing_time) }}</strong>
+                </div>
+                <div class="borrow-record-card__pair">
+                  <span>预计</span>
+                  <strong>{{ record.due_time ? formatDate(record.due_time) : '未设置' }}</strong>
+                </div>
+                <div v-if="record.return_time" class="borrow-record-card__pair">
+                  <span>归还</span>
+                  <strong>{{ formatDate(record.return_time) }}</strong>
+                </div>
+              </div>
+
+              <div class="inline-actions borrow-record-card__actions">
+                <button class="button button--ghost" type="button" @click="openEditDialog(record)">
+                  编辑
+                </button>
+                <button
+                  v-if="record.status !== 1"
+                  class="button button--secondary"
+                  type="button"
+                  :disabled="returningId === record.id"
+                  @click="handleReturn(record)"
+                >
+                  {{ returningId === record.id ? '还书中...' : '还书' }}
+                </button>
+              </div>
+            </article>
+          </div>
 
           <div class="pagination-bar">
             <p class="pagination-bar__info">
@@ -461,9 +464,59 @@ onMounted(loadPage)
           </div>
         </div>
 
-        <EmptyState v-else title="还没有借阅记录" description="先登记一条借阅记录，这里就会出现完整的流转历史。" />
+        <EmptyState
+          v-else
+          title="还没有借阅记录"
+          description="先登记一条借阅记录，这里就会出现完整的流转历史。"
+        />
       </SectionPanel>
     </section>
+
+    <div v-if="showEditDialog" class="dialog-backdrop" @click.self="closeEditDialog">
+      <section class="dialog-card dialog-card--borrow-edit">
+        <button class="dialog-close" type="button" @click="closeEditDialog">×</button>
+
+        <header class="dialog-head">
+          <div>
+            <p class="dialog-eyebrow">Borrow Edit</p>
+            <h2>编辑借阅记录</h2>
+          </div>
+        </header>
+
+        <div v-if="editingRecord" class="dialog-book-summary surface-card">
+          <strong>{{ editingRecord.title }}</strong>
+          <p>
+            {{ editingRecord.borrow_name }} ·
+            {{ borrowTypeLabel(editingRecord.borrow_type) }} ·
+            {{ borrowStatusLabel(editingRecord.status) }}
+          </p>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label>借阅对象</label>
+            <input v-model="updateForm.borrow_name" type="text" placeholder="填写对方姓名" />
+          </div>
+          <div class="field">
+            <label>借阅日期</label>
+            <input v-model="updateForm.borrowing_time" type="date" />
+          </div>
+          <div class="field">
+            <label>预计归还日期</label>
+            <input v-model="updateForm.due_time" type="date" />
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="button button--ghost" type="button" @click="closeEditDialog">
+            取消
+          </button>
+          <button class="button button--primary" type="button" :disabled="updating" @click="handleUpdateRecord">
+            {{ updating ? '保存中...' : '保存修改' }}
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -472,18 +525,12 @@ onMounted(loadPage)
   grid-column: span 3;
 }
 
-.borrow-layout__side {
+.borrow-layout__form {
   grid-column: span 4;
-  display: grid;
-  gap: 20px;
 }
 
-.borrow-layout__main {
+.borrow-layout__records {
   grid-column: span 8;
-}
-
-.borrow-layout__filters {
-  justify-content: flex-end;
 }
 
 .field-grid {
@@ -492,47 +539,164 @@ onMounted(loadPage)
   gap: 14px;
 }
 
-.record-book {
-  display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 12px;
-  align-items: center;
-  min-width: 220px;
+.borrow-submit {
+  width: 100%;
 }
 
-.record-book__cover {
-  width: 42px;
+.record-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.borrow-records-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.table-shell {
+  overflow-x: visible;
+  padding-bottom: 4px;
+}
+
+.borrow-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.borrow-table th,
+.borrow-table td {
+  vertical-align: middle;
+}
+
+.borrow-table th {
+  white-space: nowrap;
+}
+
+.borrow-table td {
+  line-height: 1.5;
+}
+
+.borrow-table__book {
+  width: 32%;
+}
+
+.borrow-table__person {
+  width: 14%;
+  word-break: break-all;
+}
+
+.borrow-table__status {
+  width: 13%;
+}
+
+.borrow-info-cell {
+  display: grid;
+  gap: 4px;
+  color: var(--sl-ink-soft);
+}
+
+.borrow-info-cell strong {
+  color: var(--sl-ink);
+}
+
+.borrow-table th:last-child,
+.borrow-table td:last-child {
+  width: 150px;
+}
+
+.borrow-table__actions {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.borrow-card-list {
+  display: none;
+}
+
+.borrow-record-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.borrow-record-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.borrow-record-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.borrow-record-card__pair {
+  display: grid;
+  gap: 4px;
+}
+
+.borrow-record-card__pair span {
+  font-size: 0.82rem;
+  color: var(--sl-ink-soft);
+}
+
+.borrow-record-card__pair strong {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.borrow-record-card__actions {
+  justify-content: flex-end;
+}
+
+.book-cell {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.book-cell__cover {
+  width: 46px;
   aspect-ratio: 3 / 4;
   border-radius: 10px;
   object-fit: cover;
   background: var(--sl-soft-panel-bg);
 }
 
-.record-book__cover--placeholder {
+.book-cell__cover--placeholder {
   display: grid;
   place-items: center;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   letter-spacing: 0.08em;
   color: var(--sl-ink-soft);
 }
 
-.record-book__meta {
+.book-cell__meta {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
-.record-book__meta strong {
-  line-height: 1.4;
+.book-cell__meta strong {
+  line-height: 1.45;
 }
 
-.record-book__meta span {
-  color: var(--sl-ink-soft);
+.book-cell__meta span {
   font-size: 0.82rem;
+  color: var(--sl-ink-soft);
 }
 
 .status-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 0.82rem;
@@ -555,23 +719,12 @@ onMounted(loadPage)
   color: #b4583e;
 }
 
-.record-hint {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-}
-
-.record-hint p {
-  margin: 0;
-  color: var(--sl-ink-soft);
-}
-
 .pagination-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .pagination-bar__info {
@@ -579,22 +732,130 @@ onMounted(loadPage)
   color: var(--sl-ink-soft);
 }
 
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 22, 32, 0.46);
+  backdrop-filter: blur(12px);
+}
+
+.dialog-card {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--sl-panel-bg);
+  border: 1px solid var(--sl-border-color);
+  border-radius: 26px;
+  box-shadow: 0 26px 60px rgba(11, 18, 32, 0.2);
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.dialog-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border: none;
+  background: transparent;
+  color: var(--sl-ink-soft);
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dialog-head h2,
+.dialog-head p {
+  margin: 0;
+}
+
+.dialog-eyebrow {
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sl-ink-soft);
+}
+
+.dialog-book-summary {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+}
+
+.dialog-book-summary p {
+  margin: 0;
+  color: var(--sl-ink-soft);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 @media (max-width: 1200px) {
-  .metrics-grid > *,
-  .borrow-layout__side,
-  .borrow-layout__main {
+  .borrow-layout__form,
+  .borrow-layout__records {
     grid-column: span 12;
   }
 }
 
+@media (max-width: 960px) {
+  .metrics-grid > * {
+    grid-column: span 6;
+  }
+}
+
 @media (max-width: 720px) {
+  .metrics-grid > * {
+    grid-column: span 12;
+  }
+
   .field-grid {
     grid-template-columns: 1fr;
   }
 
-  .pagination-bar {
+  .record-toolbar {
+    justify-content: flex-start;
+  }
+
+  .borrow-table-desktop {
+    display: none;
+  }
+
+  .borrow-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .borrow-record-card__meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .borrow-record-card__actions {
+    justify-content: stretch;
+  }
+
+  .borrow-record-card__actions :deep(.button),
+  .borrow-record-card__actions .button {
+    flex: 1;
+  }
+
+  .pagination-bar,
+  .dialog-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .dialog-card {
+    padding: 20px;
+    border-radius: 22px;
   }
 }
 </style>
