@@ -1,51 +1,21 @@
-server:
-  port: 9700
-
 spring:
   application:
     name: wsb-rag
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  config:
+    import:
+      - optional:nacos:wsb-common.yml?refreshEnabled=true
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yml?refreshEnabled=true
   cloud:
     nacos:
+      server-addr: 127.0.0.1:8848
       discovery:
-        server-addr: localhost:8848
-  rabbitmq:
-    host: ${RABBITMQ_HOST:localhost}
-    port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
-
-# DeepSeek Chat API
-deepseek:
-  chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
-  api-key: ${DEEPSEEK_API_KEY:}
-  connect-timeout-seconds: ${DEEPSEEK_CONNECT_TIMEOUT_SECONDS:10}
-  read-timeout-seconds: ${DEEPSEEK_READ_TIMEOUT_SECONDS:60}
-  write-timeout-seconds: ${DEEPSEEK_WRITE_TIMEOUT_SECONDS:30}
-  call-timeout-seconds: ${DEEPSEEK_CALL_TIMEOUT_SECONDS:90}
-
-# DashScope Qwen Embedding API
-dashscope:
-  embedding-base-url: ${DASHSCOPE_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-  api-key: ${DASHSCOPE_API_KEY:}
-  embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
-  embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1024}
-
-# Supabase
-supabase:
-  url: ${SUPABASE_URL:}
-  service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
-
-# Tavily
-tavily:
-  api-key: ${TAVILY_API_KEY:}
-  review-cache-days: ${TAVILY_REVIEW_CACHE_DAYS:7}
-
-# RabbitMQ Queue Config
-rag:
-  queue:
-    summary: wsb.summary.queue
-    embedding: wsb.embedding.queue
-  exchange: wsb.rag.exchange
-  routing:
-    summary: wsb.summary
-    embedding: wsb.embedding
+        server-addr: ${spring.cloud.nacos.server-addr}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+      config:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        file-extension: yml
