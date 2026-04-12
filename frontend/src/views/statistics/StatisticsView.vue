@@ -227,7 +227,7 @@ onMounted(loadStatistics)
   padding: 16px;
   border-radius: 18px;
   border: 1px solid var(--sl-line);
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--sl-soft-panel-bg);
 }
 
 .rank-list__item p {

@@ -32,12 +32,18 @@ public class BookBorrowVO implements Serializable {
     private LocalDate borrowTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
+    @JsonProperty("due_time")
+    private LocalDate dueTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd")
     @JsonProperty("return_time")
     private LocalDate returnTime;
 
-    /**
-     * 借书类型：1=借入，2=借出
-     */
     @JsonProperty("borrow_type")
     private Integer borrowType;
+
+    /**
+     * 借阅状态：0-借阅中，1-已归还，2-已逾期
+     */
+    private Integer status;
 }

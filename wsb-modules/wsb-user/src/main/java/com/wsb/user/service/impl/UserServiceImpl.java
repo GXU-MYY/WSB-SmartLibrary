@@ -23,12 +23,14 @@ import com.wsb.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.wsb.common.core.utils.SmsUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -76,7 +78,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new ServiceException("用户不存在");
         }
 
-        userConverter.updateUserFromDto(dto, user);
+        String nickName = trimToNull(dto.getNickName());
+        String realName = trimToNull(dto.getRealName());
+        String email = trimToNull(dto.getEmail());
+        String signature = trimToNull(dto.getSignature());
+        String avatar = trimToNull(dto.getAvatar());
+
+        validateEmail(userId, email, user.getEmail());
+
+        user.setNickName(nickName);
+        user.setRealName(realName);
+        user.setEmail(email);
+        user.setSignature(signature);
+        user.setAvatar(avatar);
         this.updateById(user);
         return userConverter.toUserInfoVO(user);
     }
@@ -197,5 +211,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Override
     public void logout() {
         StpUtil.logout();
+    }
+
+    private void validateEmail(Long userId, String newEmail, String currentEmail) {
+        if (!StringUtils.hasText(newEmail) || Objects.equals(newEmail, currentEmail)) {
+            return;
+        }
+
+        long emailCount = this.count(new LambdaQueryWrapper<User>()
+                .eq(User::getEmail, newEmail)
+                .ne(User::getId, userId));
+        if (emailCount > 0) {
+            throw new ServiceException("该邮箱已被其他用户使用");
+        }
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

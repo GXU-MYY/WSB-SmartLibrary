@@ -4,7 +4,6 @@ import feign.Client;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import java.net.InetSocketAddress;
 import java.net.Proxy;
@@ -14,17 +13,13 @@ import java.net.Proxy;
  * 配置 HTTP 代理访问 Google
  */
 @Slf4j
-@Configuration
 public class GoogleBooksFeignConfig {
 
-    @Value("${google.books.proxy.host:}")
-    private String proxyHost;
-
-    @Value("${google.books.proxy.port:0}")
-    private int proxyPort;
-
     @Bean
-    public Client feignClient() {
+    public Client feignClient(
+            @Value("${google.books.proxy.host:}") String proxyHost,
+            @Value("${google.books.proxy.port:0}") int proxyPort
+    ) {
         if (proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0) {
             log.info("Google Books API 使用代理: {}:{}", proxyHost, proxyPort);
             Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));

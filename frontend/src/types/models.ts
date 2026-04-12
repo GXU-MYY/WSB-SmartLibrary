@@ -49,6 +49,7 @@ export interface UserInfo {
   id: number
   userName: string
   nickName?: string
+  realName?: string
   phone?: string
   avatar?: string
   signature?: string
@@ -61,6 +62,8 @@ export interface UserInfo {
 
 export interface UserUpdatePayload {
   nickName?: string
+  realName?: string
+  email?: string
   signature?: string
   avatar?: string
 }
@@ -101,6 +104,13 @@ export interface MyBookList {
   books: Book[]
 }
 
+export interface RecentBook {
+  id: number
+  title: string
+  coverUrl?: string
+  updateTime?: string
+}
+
 export interface BookCardModel {
   id: number | string
   title: string
@@ -111,11 +121,10 @@ export interface BookCardModel {
   badge?: string
 }
 
-export interface BookFormPayload {
+export interface BookMetadataPayload {
   title: string
   subtitle?: string
   author?: string
-  summary?: string
   publisher?: string
   publishDate?: string
   pageCount?: number | null
@@ -134,6 +143,9 @@ export interface BookFormPayload {
   label?: string
   remark?: string
   coverUrl?: string
+}
+
+export interface BookFormPayload extends BookMetadataPayload {
   shelfId?: number | null
   isOnShelf?: boolean
   isBorrowed?: boolean
@@ -141,10 +153,8 @@ export interface BookFormPayload {
   borrowTime?: string
 }
 
-export interface BookUpdatePayload {
+export interface BookUpdatePayload extends Partial<BookMetadataPayload> {
   id: number
-  price?: number | null
-  remark?: string
 }
 
 export interface Shelf {
@@ -212,28 +222,51 @@ export interface BorrowRecord {
   user_id: number
   borrow_name: string
   borrowing_time: string
+  due_time?: string
   return_time?: string
   borrow_type: number
+  status: number
   pic?: string
 }
 
 export interface BorrowPayload {
-  book_id: number
+  book_id?: number
+  shelf_id?: number
   borrow_name: string
   borrowing_time: string
+  due_time?: string
   borrow_type: number
+  isbn?: string
+  title?: string
+  subtitle?: string
+  author?: string
+  publisher?: string
+  publish_date?: string
+  page_count?: number
+  price?: number
+  binding?: string
+  keyword?: string
+  cover_url?: string
 }
 
 export interface BorrowUpdatePayload {
   borrow_id: number
   borrow_name: string
   borrowing_time?: string
+  due_time?: string
 }
 
 export interface ReturnPayload {
-  book_id: string
-  borrow_type: string
+  borrow_id: number
   return_time: string
+}
+
+export interface BorrowSummary {
+  total: number
+  borrowedIn: number
+  borrowedOut: number
+  active: number
+  overdue: number
 }
 
 export interface Group {

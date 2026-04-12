@@ -5,19 +5,21 @@ const notifications = useNotifications()
 </script>
 
 <template>
-  <div class="toast-stack" aria-live="polite" aria-atomic="true">
-    <transition-group name="toast">
-      <article
-        v-for="item in notifications.items"
-        :key="item.id"
-        class="toast surface-card"
-        :class="`toast--${item.kind}`"
-      >
-        <strong>{{ item.title }}</strong>
-        <p v-if="item.message">{{ item.message }}</p>
-      </article>
-    </transition-group>
-  </div>
+  <Teleport to="body">
+    <div class="toast-stack" aria-live="polite" aria-atomic="true">
+      <transition-group name="toast">
+        <article
+          v-for="item in notifications.items"
+          :key="item.id"
+          class="toast surface-card"
+          :class="`toast--${item.kind}`"
+        >
+          <strong>{{ item.title }}</strong>
+          <p v-if="item.message">{{ item.message }}</p>
+        </article>
+      </transition-group>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -25,7 +27,7 @@ const notifications = useNotifications()
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 40;
+  z-index: 120;
   display: grid;
   gap: 12px;
   width: min(360px, calc(100vw - 32px));

@@ -1,9 +1,17 @@
 package com.wsb.rag.service;
 
 /**
- * AI 摘要服务接口
+ * 图书 AI 内容服务接口
  */
-public interface SummaryService {
+public interface BookAiContentService {
+
+    /**
+     * 获取已缓存的网络书评
+     *
+     * @param bookId 书籍ID
+     * @return 聚合书评缓存
+     */
+    String getCachedReviewDigest(Long bookId);
 
     /**
      * 生成书籍摘要

@@ -3,6 +3,7 @@ package com.wsb.book.domain;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
@@ -40,7 +41,7 @@ public class BookBorrow implements Serializable {
     private Long userId;
 
     /**
-     * 借阅对方姓名
+     * 借阅对象姓名
      */
     private String borrowerName;
 
@@ -50,7 +51,12 @@ public class BookBorrow implements Serializable {
     private LocalDate borrowTime;
 
     /**
-     * 归还日期（NULL表示未归还）
+     * 预计归还日期
+     */
+    private LocalDate dueTime;
+
+    /**
+     * 实际归还日期
      */
     private LocalDate returnTime;
 
@@ -58,6 +64,11 @@ public class BookBorrow implements Serializable {
      * 借阅方向：1-借入，2-借出
      */
     private Integer borrowType;
+
+    /**
+     * 借阅状态：0-借阅中，1-已归还，2-已逾期
+     */
+    private Integer status;
 
     /**
      * 图书名称（冗余）
@@ -72,6 +83,7 @@ public class BookBorrow implements Serializable {
     /**
      * 是否删除
      */
+    @TableLogic
     private Boolean isDeleted;
 
     /**

@@ -1,136 +1,21 @@
-server:
-  port: 8080
-
 spring:
   application:
     name: wsb-gateway
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      database: 0
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  config:
+    import:
+      - optional:nacos:wsb-common.yml?refreshEnabled=true
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yml?refreshEnabled=true
   cloud:
     nacos:
+      server-addr: 127.0.0.1:8848
       discovery:
-        server-addr: localhost:8848
-    gateway:
-      discovery:
-        locator:
-          enabled: true # 开启从注册中心动态创建路由的功能
-      routes:
-        # 用户模块 (含认证)
-        - id: wsb-user
-          uri: lb://wsb-user
-          predicates:
-            - Path=/v1/admin/login,/v1/admin/logout,/v1/admin/user/**,/v1/admin/register,/v1/admin/passwd,/v1/admin/phone/**
-        # 书籍模块 (含借阅)
-        - id: wsb-book
-          uri: lb://wsb-book
-          predicates:
-            - Path=/v1/book/**,/v1/shelf/**,/v1/bookshelf/**,/v1/isbn/**
-        # 社交模块
-        - id: wsb-social
-          uri: lb://wsb-social
-          predicates:
-            - Path=/v1/collect/**,/v1/stars,/v1/social/**
-        # 社区模块
-        - id: wsb-community
-          uri: lb://wsb-community
-          predicates:
-            - Path=/v1/group/**,/v1/community/**
-        # 文件模块
-        - id: wsb-file
-          uri: lb://wsb-file
-          predicates:
-            - Path=/v1/picture/**
-        # RAG模块
-        - id: wsb-rag
-          uri: lb://wsb-rag
-          predicates:
-            - Path=/v1/rag/**
-
-        # --- Swagger API Docs Routes ---
-        - id: wsb-user-swagger
-          uri: lb://wsb-user
-          predicates:
-            - Path=/wsb-user/v3/api-docs
-          filters:
-            - RewritePath=/wsb-user/v3/api-docs, /v3/api-docs
-        - id: wsb-book-swagger
-          uri: lb://wsb-book
-          predicates:
-            - Path=/wsb-book/v3/api-docs
-          filters:
-            - RewritePath=/wsb-book/v3/api-docs, /v3/api-docs
-        - id: wsb-social-swagger
-          uri: lb://wsb-social
-          predicates:
-            - Path=/wsb-social/v3/api-docs
-          filters:
-            - RewritePath=/wsb-social/v3/api-docs, /v3/api-docs
-        - id: wsb-community-swagger
-          uri: lb://wsb-community
-          predicates:
-            - Path=/wsb-community/v3/api-docs
-          filters:
-            - RewritePath=/wsb-community/v3/api-docs, /v3/api-docs
-        - id: wsb-file-swagger
-          uri: lb://wsb-file
-          predicates:
-            - Path=/wsb-file/v3/api-docs
-          filters:
-            - RewritePath=/wsb-file/v3/api-docs, /v3/api-docs
-        - id: wsb-rag-swagger
-          uri: lb://wsb-rag
-          predicates:
-            - Path=/wsb-rag/v3/api-docs
-          filters:
-            - RewritePath=/wsb-rag/v3/api-docs, /v3/api-docs
-
-knife4j:
-  gateway:
-    enabled: true
-    strategy: manual
-    routes:
-      - name: 用户服务
-        url: /wsb-user/v3/api-docs
-        service-name: wsb-user
-        order: 1
-      - name: 书籍服务
-        url: /wsb-book/v3/api-docs
-        service-name: wsb-book
-        order: 2
-      - name: 社交服务
-        url: /wsb-social/v3/api-docs
-        service-name: wsb-social
-        order: 3
-      - name: 社区服务
-        url: /wsb-community/v3/api-docs
-        service-name: wsb-community
-        order: 4
-      - name: 文件服务
-        url: /wsb-file/v3/api-docs
-        service-name: wsb-file
-        order: 5
-      - name: RAG服务
-        url: /wsb-rag/v3/api-docs
-        service-name: wsb-rag
-        order: 6
-
-sa-token:
-  # token名称 (同时也是cookie名称)
-  token-name: satoken
-  # token有效期，单位s 默认30天
-  timeout: 2592000
-  # token临时有效期 (指定时间内无操作就视为token过期) 单位: 秒
-  active-timeout: -1
-  # 是否允许同一账号并发登录 (为true时允许一起登录, 为false时新登录挤掉旧登录)
-  is-concurrent: true
-  # 在多人登录同一账号时，是否共用一个token (为true时所有登录共用一个token, 为false时每次登录新建一个token)
-  is-share: true
-  # token风格
-  token-style: uuid
-  # 是否输出操作日志
-  is-log: false
-  # jwt秘钥
-  jwt-secret-key: wsbbackendsecretkeywsbbackendsecretkey32bits
+        server-addr: ${spring.cloud.nacos.server-addr}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+      config:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        file-extension: yml

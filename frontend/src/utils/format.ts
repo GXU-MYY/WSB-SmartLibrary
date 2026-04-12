@@ -67,6 +67,17 @@ export const borrowTypeLabel = (type?: number) => {
   return type === 1 ? '借入' : '借出'
 }
 
+export const borrowStatusLabel = (status?: number) => {
+  switch (status) {
+    case 1:
+      return '已归还'
+    case 2:
+      return '已逾期'
+    default:
+      return '借阅中'
+  }
+}
+
 export const initialsFromName = (value?: string) => {
   if (!value) {
     return 'WS'

@@ -10,7 +10,7 @@ import java.io.Serializable;
 import java.time.LocalDate;
 
 /**
- * 借书记录更新DTO
+ * 借阅记录更新DTO
  */
 @Data
 public class BookBorrowUpdateDTO implements Serializable {
@@ -18,22 +18,28 @@ public class BookBorrowUpdateDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 借书记录ID
+     * 借阅记录ID
      */
-    @NotNull(message = "借书记录ID不能为空")
+    @NotNull(message = "借阅记录ID不能为空")
     @JsonProperty("borrow_id")
     private Long borrowId;
 
     /**
-     * 借书人姓名
+     * 借阅对象姓名
      */
-    @NotBlank(message = "借书人姓名不能为空")
+    @NotBlank(message = "借阅对象不能为空")
     @JsonProperty("borrow_name")
     private String borrowerName;
 
     /**
-     * 借书时间
+     * 借阅日期
      */
     @JsonProperty("borrowing_time")
     private LocalDate borrowTime;
+
+    /**
+     * 预计归还日期
+     */
+    @JsonProperty("due_time")
+    private LocalDate dueTime;
 }

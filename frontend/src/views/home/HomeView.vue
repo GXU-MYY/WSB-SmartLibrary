@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getMyBooks, getReadingRecords } from '@/api/book'
+import { getReadingRecords, getRecentBooks } from '@/api/book'
 import { getPersonalStats } from '@/api/community'
 import { recommendBooks } from '@/api/rag'
 import { getTopRatedBooks } from '@/api/social'
@@ -12,8 +12,8 @@ import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
-import type { BookCardModel, PersonalStats, ReadingRecord, TopRatedBook } from '@/types/models'
-import { buildBookCard, formatDateTime, readingStatusLabel } from '@/utils/format'
+import type { BookCardModel, PersonalStats, ReadingRecord, RecentBook, TopRatedBook } from '@/types/models'
+import { buildBookCard, formatDateTime, initialsFromName, readingStatusLabel, resolvePictureUrl } from '@/utils/format'
 
 const router = useRouter()
 
@@ -21,7 +21,7 @@ const loading = ref(false)
 const recommendationLoading = ref(false)
 
 const personalStats = ref<PersonalStats | null>(null)
-const myBooks = ref<BookCardModel[]>([])
+const recentBooks = ref<RecentBook[]>([])
 const topRatedBooks = ref<TopRatedBook[]>([])
 const readingRecords = ref<ReadingRecord[]>([])
 const recommendedBooks = ref<BookCardModel[]>([])
@@ -65,9 +65,9 @@ const loadDashboard = async () => {
   loading.value = true
 
   try {
-    const [statsResult, booksResult, topRatedResult, readingResult] = await Promise.allSettled([
+    const [statsResult, recentBooksResult, topRatedResult, readingResult] = await Promise.allSettled([
       getPersonalStats(),
-      getMyBooks(),
+      getRecentBooks(),
       getTopRatedBooks(4),
       getReadingRecords(),
     ])
@@ -76,17 +76,8 @@ const loadDashboard = async () => {
       personalStats.value = statsResult.value
     }
 
-    if (booksResult.status === 'fulfilled') {
-      myBooks.value = booksResult.value.books.slice(0, 4).map((book) =>
-        buildBookCard({
-          id: book.id,
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl,
-          summary: book.summary,
-          secondary: `${book.publisher || '出版社待补充'} · ${book.publishDate || '时间待补充'}`,
-        }),
-      )
+    if (recentBooksResult.status === 'fulfilled') {
+      recentBooks.value = recentBooksResult.value
     }
 
     if (topRatedResult.status === 'fulfilled') {
@@ -146,17 +137,23 @@ onMounted(loadDashboard)
 
     <section class="page-grid home-grid">
       <SectionPanel title="最近整理的藏书" hint="最近录入或修改过的图书，方便你继续补全信息。">
-        <LoadingState v-if="loading && myBooks.length === 0" />
-        <div v-else class="books-grid">
-          <BookCard v-for="book in myBooks" :key="book.id" :book="book">
-            <template #actions>
-              <button class="button button--ghost" type="button" @click="router.push(`/books/${book.id}`)">
-                查看详情
-              </button>
-            </template>
-          </BookCard>
+        <LoadingState v-if="loading && recentBooks.length === 0" />
+        <div v-else class="recent-books-grid">
+          <button
+            v-for="book in recentBooks"
+            :key="book.id"
+            class="surface-card recent-book-card"
+            type="button"
+            @click="router.push(`/books/${book.id}`)"
+          >
+            <div class="recent-book-card__cover">
+              <img v-if="resolvePictureUrl(book.coverUrl)" :src="resolvePictureUrl(book.coverUrl)" :alt="book.title" loading="lazy" />
+              <div v-else class="recent-book-card__placeholder serif-title">{{ initialsFromName(book.title) }}</div>
+            </div>
+            <p class="recent-book-card__title">{{ book.title }}</p>
+          </button>
 
-          <EmptyState v-if="!loading && myBooks.length === 0" title="你的书架还是空的">
+          <EmptyState v-if="!loading && recentBooks.length === 0" title="你的书架还是空的">
             <button class="button button--primary" type="button" @click="router.push('/books')">
               去添加图书
             </button>
@@ -262,6 +259,71 @@ onMounted(loadDashboard)
   gap: 16px;
 }
 
+.recent-books-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.recent-book-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 0;
+  text-align: left;
+  background: var(--sl-surface);
+  color: inherit;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.recent-book-card:hover,
+.recent-book-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px rgba(31, 95, 107, 0.16);
+}
+
+.recent-book-card:focus-visible {
+  outline: 3px solid rgba(31, 95, 107, 0.2);
+  outline-offset: 4px;
+}
+
+.recent-book-card__cover {
+  overflow: hidden;
+  aspect-ratio: 5 / 6;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(31, 95, 107, 0.18), rgba(201, 119, 46, 0.24));
+}
+
+.recent-book-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recent-book-card__placeholder {
+  display: grid;
+  place-items: end start;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.6rem;
+}
+
+.recent-book-card__title {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.35;
+  color: var(--sl-ink);
+  text-align: center;
+  font-family: "STSong", "SimSun", serif;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .books-grid--compact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -297,6 +359,10 @@ onMounted(loadDashboard)
 }
 
 @media (max-width: 720px) {
+  .recent-books-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .books-grid,
   .books-grid--compact,
   .recommend-row {

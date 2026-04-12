@@ -24,4 +24,17 @@ public interface GoogleBooksClient {
             @RequestParam("q") String query,
             @RequestParam("key") String apiKey
     );
+
+    /**
+     * 根据 volume id 获取图书详情
+     *
+     * @param volumeId Google Books volume id
+     * @param apiKey   Google Books API Key
+     * @return 图书详情
+     */
+    @GetMapping("/volumes/{volumeId}")
+    GoogleBooksResponse.BookItem getVolumeById(
+            @org.springframework.web.bind.annotation.PathVariable("volumeId") String volumeId,
+            @RequestParam("key") String apiKey
+    );
 }

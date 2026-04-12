@@ -1,11 +1,12 @@
 package com.wsb.book.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDate;
 
 /**
  * 还书DTO
@@ -16,23 +17,16 @@ public class BookReturnDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 书籍ID
+     * 借阅记录ID
      */
-    @NotBlank(message = "书籍ID不能为空")
-    @JsonProperty("book_id")
-    private String bookId;
+    @NotNull(message = "借阅记录ID不能为空")
+    @JsonProperty("borrow_id")
+    private Long borrowId;
 
     /**
-     * 借书类型：1=借入，2=借出
+     * 归还时间
      */
-    @NotBlank(message = "借书类型不能为空")
-    @JsonProperty("borrow_type")
-    private String borrowType;
-
-    /**
-     * 还书时间
-     */
-    @NotBlank(message = "还书时间不能为空")
+    @NotNull(message = "归还时间不能为空")
     @JsonProperty("return_time")
-    private String returnTime;
+    private LocalDate returnTime;
 }

@@ -45,13 +45,7 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
-        
-        <!-- Spring Cloud Context (Bootstrap support) -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-bootstrap</artifactId>
-        </dependency>
-        
+
         <!-- OpenFeign (Optional for ErrorDecoder) -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

@@ -5,10 +5,12 @@ import type {
   BookUpdatePayload,
   BorrowPayload,
   BorrowRecord,
+  BorrowSummary,
   BorrowUpdatePayload,
   IsbnBook,
   MyBookList,
   PageResult,
+  RecentBook,
   ReadingPayload,
   ReadingRecord,
   ReturnPayload,
@@ -18,16 +20,21 @@ import type {
 
 export const getMyBooks = () => request.get<MyBookList>('/v1/book/my')
 
+export const getRecentBooks = () => request.get<RecentBook[]>('/v1/book/recent')
+
 export const getBookList = (params: {
   page?: number
   page_size?: number
   bookshelf_id?: string | number
-  book_name?: string
+  keyword?: string
   classify?: string
 }) => request.get<PageResult<Book>>('/v1/book', { params })
 
 export const getBookDetail = (bookId: number) =>
   request.get<Book>('/v1/book/detail', { params: { book_id: bookId } })
+
+export const getBookShelves = (bookId: number) =>
+  request.get<Shelf | null>('/v1/book/shelf', { params: { book_id: bookId } })
 
 export const createBook = (payload: BookFormPayload) =>
   request.post<void>('/v1/book', payload)
@@ -72,10 +79,15 @@ export const addReadingRecord = (payload: ReadingPayload) =>
 export const updateReadingRecord = (payload: ReadingPayload) =>
   request.put<ReadingRecord>('/v1/book/reading', payload)
 
-export const getBorrowRecords = (borrowType?: number) =>
-  request.get<BorrowRecord[]>('/v1/book/borrow', {
-    params: borrowType ? { borrow_type: borrowType } : undefined,
-  })
+export const getBorrowRecords = (params?: {
+  page?: number
+  page_size?: number
+  borrow_type?: number
+  status?: number
+}) => request.get<PageResult<BorrowRecord>>('/v1/book/borrow', { params })
+
+export const getBorrowSummary = () =>
+  request.get<BorrowSummary>('/v1/book/borrow/summary')
 
 export const borrowBook = (payload: BorrowPayload) =>
   request.post<void>('/v1/book/borrow', payload)
@@ -89,5 +101,5 @@ export const returnBook = (payload: ReturnPayload) =>
 export const onShelf = (payload: { book_id: number; shelf_id: number }) =>
   request.post<void>('/v1/book/shelf', payload)
 
-export const offShelf = (payload: { book_id: number; shelf_id: number }) =>
+export const offShelf = (payload: { book_id: number; shelf_id?: number }) =>
   request.delete<void>('/v1/book/shelf', { data: payload })

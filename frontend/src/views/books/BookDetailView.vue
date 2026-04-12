@@ -7,11 +7,13 @@ import {
   borrowBook,
   getBookDetail,
   getReadingRecords,
+  getBookShelves,
   getShelves,
+  offShelf,
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
-import { aggregateReviews, generateAiSummary, getAiSummary, getSimilarBooks } from '@/api/rag'
+import { aggregateReviews, getAiSummary, getReviewDigest, getSimilarBooks } from '@/api/rag'
 import {
   addCollect,
   addComment,
@@ -42,12 +44,12 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
-const summaryLoading = ref(false)
 const reviewLoading = ref(false)
 const commentLoading = ref(false)
 const collectLoading = ref(false)
 const borrowLoading = ref(false)
 const shelfLoading = ref(false)
+const activeAiPane = ref<'summary' | 'reviews'>('summary')
 
 const book = ref<Book | null>(null)
 const comments = ref<CommentItem[]>([])
@@ -55,6 +57,7 @@ const averageScore = ref(0)
 const readingRecord = ref<ReadingRecord | null>(null)
 const collectRecord = ref<CollectBook | null>(null)
 const shelves = ref<Shelf[]>([])
+const bookShelf = ref<Shelf | null>(null)
 const similarBooks = ref<Book[]>([])
 const aiSummary = ref('')
 const reviewDigest = ref('')
@@ -75,12 +78,44 @@ const attachShelfId = ref(0)
 const bookId = computed(() => Number(route.params.id))
 const coverUrl = computed(() => resolvePictureUrl(book.value?.coverUrl))
 const tagItems = computed(() => parseTagList(book.value?.label))
+const attachedShelfIds = computed(() => (bookShelf.value?.id ? [bookShelf.value.id] : []))
+const attachedShelfNames = computed(() => (bookShelf.value?.shelfName ? [bookShelf.value.shelfName] : []))
+const isOnShelf = computed(() => Boolean(bookShelf.value) || Boolean(book.value?.isOnShelf))
+const isSelectedShelfAttached = computed(
+  () => attachShelfId.value > 0 && attachedShelfIds.value.includes(attachShelfId.value),
+)
+const shelfStatusText = computed(() =>
+  attachedShelfNames.value.length > 0 ? attachedShelfNames.value.join('、') : '当前未上架',
+)
+const shelfFieldLabel = computed(() =>
+  isOnShelf.value ? `是否上架（当前在架：${shelfStatusText.value}）` : '是否上架（当前未上架）',
+)
+const shelfActionText = computed(() => {
+  if (shelfLoading.value) {
+    return isSelectedShelfAttached.value ? '下架中...' : '上架中...'
+  }
+
+  return isSelectedShelfAttached.value ? '下架' : '上架'
+})
+const collectButtonLabel = computed(() =>
+  collectRecord.value ? '取消收藏' : '加入收藏',
+)
+const collectButtonIcon = computed(() => (collectRecord.value ? '★' : '☆'))
+
+const syncAttachShelfSelection = () => {
+  if (bookShelf.value?.id) {
+    attachShelfId.value = bookShelf.value.id
+    return
+  }
+
+  attachShelfId.value = 0
+}
 
 const loadPage = async () => {
   loading.value = true
 
   try {
-    const [bookResult, commentResult, readingResult, similarResult, collectResult, shelfResult] =
+    const [bookResult, commentResult, readingResult, similarResult, collectResult, shelfResult, bookShelfResult] =
       await Promise.allSettled([
         getBookDetail(bookId.value),
         getBookComments(bookId.value),
@@ -88,6 +123,7 @@ const loadPage = async () => {
         getSimilarBooks(bookId.value, 4),
         getMyBookCollects(),
         getShelves(),
+        getBookShelves(bookId.value),
       ])
 
     if (bookResult.status === 'fulfilled') {
@@ -115,14 +151,23 @@ const loadPage = async () => {
 
     if (shelfResult.status === 'fulfilled') {
       shelves.value = shelfResult.value
-      attachShelfId.value = shelfResult.value[0]?.id || 0
     }
 
-    try {
-      aiSummary.value = await getAiSummary(bookId.value)
-    } catch {
-      aiSummary.value = ''
+    if (bookShelfResult.status === 'fulfilled') {
+      bookShelf.value = bookShelfResult.value
+    } else {
+      bookShelf.value = null
     }
+
+    syncAttachShelfSelection()
+
+    const [summaryResult, reviewResult] = await Promise.allSettled([
+      getAiSummary(bookId.value),
+      getReviewDigest(bookId.value),
+    ])
+
+    aiSummary.value = summaryResult.status === 'fulfilled' ? summaryResult.value : ''
+    reviewDigest.value = reviewResult.status === 'fulfilled' ? (reviewResult.value || '') : ''
   } finally {
     loading.value = false
   }
@@ -202,18 +247,17 @@ const toggleCollect = async () => {
   }
 }
 
-const handleGenerateSummary = async () => {
-  summaryLoading.value = true
-
-  try {
-    aiSummary.value = await generateAiSummary(bookId.value)
-    notifySuccess('AI 摘要已生成')
-  } finally {
-    summaryLoading.value = false
+const handleGoBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+    return
   }
+
+  router.push('/books')
 }
 
 const handleAggregateReviews = async () => {
+  activeAiPane.value = 'reviews'
   reviewLoading.value = true
 
   try {
@@ -270,6 +314,34 @@ const handleAttachShelf = async () => {
   }
 }
 
+const handleShelfAction = async () => {
+  if (!book.value || !attachShelfId.value) {
+    notifyError('请选择目标书架')
+    return
+  }
+
+  shelfLoading.value = true
+
+  try {
+    if (isSelectedShelfAttached.value) {
+      await offShelf({
+        book_id: book.value.id,
+        shelf_id: attachShelfId.value,
+      })
+      notifySuccess('图书已下架', '这本书已从当前书架移出。')
+    } else {
+      await onShelf({
+        book_id: book.value.id,
+        shelf_id: attachShelfId.value,
+      })
+      notifySuccess('图书已上架', '这本书已经放入选定书架。')
+    }
+    await loadPage()
+  } finally {
+    shelfLoading.value = false
+  }
+}
+
 useRegisterPageRefresh(loadPage)
 
 watch(
@@ -292,8 +364,25 @@ onMounted(loadPage)
       :description="book?.summary || '查看图书元数据、评论反馈、阅读状态、AI 摘要和相似书籍。'"
     >
       <template #actions>
-        <button class="button button--secondary" type="button" :disabled="collectLoading" @click="toggleCollect">
+        <button
+          class="button button--secondary detail-page-action detail-page-action--favorite"
+          type="button"
+          :class="{ 'detail-page-action--active': collectRecord }"
+          :disabled="collectLoading"
+          :aria-label="collectButtonLabel"
+          :title="collectButtonLabel"
+          @click="toggleCollect"
+        >
           {{ collectRecord ? '取消收藏' : '加入收藏' }}
+        </button>
+        <button
+          class="button button--ghost detail-page-action"
+          type="button"
+          aria-label="返回上一页"
+          title="返回上一页"
+          @click="handleGoBack"
+        >
+          <span aria-hidden="true" class="detail-page-action__icon">↩</span>
         </button>
       </template>
     </PageIntro>
@@ -361,14 +450,14 @@ onMounted(loadPage)
               </select>
             </div>
             <div class="field">
-              <label>加入书架</label>
+              <label>{{ shelfFieldLabel }}</label>
               <div class="detail-hero__attach">
                 <select v-model.number="attachShelfId">
-                  <option :value="0">选择书架</option>
+                  <option :value="0" disabled hidden>选择书架</option>
                   <option v-for="item in shelves" :key="item.id" :value="item.id">{{ item.shelfName }}</option>
                 </select>
-                <button class="button button--ghost" type="button" :disabled="shelfLoading" @click="handleAttachShelf">
-                  {{ shelfLoading ? '处理中...' : '入架' }}
+                <button class="button button--ghost" type="button" :disabled="shelfLoading" @click="handleShelfAction">
+                  {{ shelfActionText }}
                 </button>
               </div>
             </div>
@@ -381,23 +470,36 @@ onMounted(loadPage)
           title="AI 阅读助手"
           hint="这里集中展示摘要、聚合书评与延展阅读结果。"
         >
-          <div class="inline-actions">
-            <button class="button button--secondary" type="button" :disabled="summaryLoading" @click="handleGenerateSummary">
-              {{ summaryLoading ? '生成中...' : '生成 AI 摘要' }}
+          <div class="ai-reader-switch">
+            <button
+              class="button ai-reader-switch__item"
+              :class="activeAiPane === 'summary' ? 'button--secondary ai-reader-switch__item--active' : 'button--ghost'"
+              type="button"
+              @click="activeAiPane = 'summary'"
+            >
+              AI 摘要
             </button>
-            <button class="button button--ghost" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
-              {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
+            <button
+              class="button ai-reader-switch__item"
+              :class="activeAiPane === 'reviews' ? 'button--secondary ai-reader-switch__item--active' : 'button--ghost'"
+              type="button"
+              @click="activeAiPane = 'reviews'"
+            >
+              网络书评
             </button>
           </div>
 
-          <div class="copy-block">
-            <h3>摘要</h3>
-            <p>{{ aiSummary || '还没有生成摘要，你可以手动触发一次。' }}</p>
+          <div v-if="activeAiPane === 'summary'" class="copy-block">
+            <p class="copy-block__body">{{ aiSummary || 'AI 摘要正在生成中，请稍后回来查看。' }}</p>
           </div>
 
-          <div class="copy-block">
-            <h3>聚合书评</h3>
-            <p>{{ reviewDigest || '这里会收集面向这本书的外部评论概览。' }}</p>
+          <div v-else class="copy-block">
+            <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '待聚合...' }}</p>
+            <div class="copy-block__footer">
+              <button class="button button--ghost copy-block__trigger" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
+                {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
+              </button>
+            </div>
           </div>
         </SectionPanel>
 
@@ -501,6 +603,39 @@ onMounted(loadPage)
 </template>
 
 <style scoped>
+.detail-page-action {
+  min-width: 46px;
+  min-height: 46px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+.detail-page-action__icon {
+  font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', sans-serif;
+  font-size: 1.26rem;
+  line-height: 1;
+}
+
+.detail-page-action--favorite {
+  position: relative;
+  font-size: 0;
+}
+
+.detail-page-action--favorite::before {
+  content: '☆';
+  font-size: 1.32rem;
+  line-height: 1;
+  color: currentColor;
+}
+
+.detail-page-action--favorite.detail-page-action--active::before {
+  content: '★';
+}
+
 .detail-hero {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -595,6 +730,13 @@ onMounted(loadPage)
   gap: 10px;
 }
 
+.detail-hero__shelf-status {
+  margin: 0 0 10px;
+  color: var(--sl-ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .detail-grid > * {
   grid-column: span 6;
 }
@@ -604,14 +746,49 @@ onMounted(loadPage)
   gap: 10px;
 }
 
+.copy-block__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.copy-block__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.copy-block__trigger {
+  padding-inline: 14px;
+  font-size: 0.92rem;
+}
+
 .copy-block h3,
 .copy-block p {
   margin: 0;
 }
 
-.copy-block p {
+.copy-block__body {
   color: var(--sl-ink-soft);
   line-height: 1.8;
+}
+
+.copy-block__body--preserve {
+  white-space: pre-line;
+}
+
+.ai-reader-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ai-reader-switch__item {
+  min-width: 110px;
+}
+
+.ai-reader-switch__item--active {
+  box-shadow: 0 10px 24px rgba(22, 40, 28, 0.14);
 }
 
 .field-grid {
