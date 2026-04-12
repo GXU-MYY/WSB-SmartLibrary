@@ -5,7 +5,9 @@ import {
   borrowBook,
   getBorrowRecords,
   getBorrowSummary,
+  getIsbnBook,
   getMyBooks,
+  getShelves,
   returnBook,
   updateBorrowRecord,
 } from '@/api/book'
@@ -15,7 +17,7 @@ import MetricCard from '@/components/MetricCard.vue'
 import PageIntro from '@/components/PageIntro.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
-import type { BorrowRecord, BorrowSummary, MyBookList, PageResult } from '@/types/models'
+import type { BorrowRecord, BorrowSummary, IsbnBook, MyBookList, PageResult, Shelf } from '@/types/models'
 import { borrowStatusLabel, borrowTypeLabel, formatDate, resolvePictureUrl } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
@@ -23,17 +25,20 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 const loading = ref(false)
 const submitting = ref(false)
+const isbnLoading = ref(false)
 const updating = ref(false)
 const returningId = ref(0)
 const showEditDialog = ref(false)
 
 const bookList = ref<MyBookList | null>(null)
+const shelfList = ref<Shelf[]>([])
 const borrowSummary = ref<BorrowSummary | null>(null)
 const records = ref<BorrowRecord[]>([])
 const editingRecord = ref<BorrowRecord | null>(null)
 
 const borrowTypeFilter = ref(0)
 const statusFilter = ref(-1)
+const lendableBooks = computed(() => (bookList.value?.books || []).filter(book => !book.isBorrowed))
 
 const pagination = reactive({
   current: 1,
@@ -44,10 +49,21 @@ const pagination = reactive({
 
 const borrowForm = reactive({
   book_id: 0,
+  shelf_id: 0,
   borrow_name: '',
   borrowing_time: today(),
   due_time: '',
   borrow_type: 2,
+  isbn: '',
+  title: '',
+  author: '',
+  publisher: '',
+  publish_date: '',
+  page_count: null as number | null,
+  price: null as number | null,
+  binding: '',
+  keyword: '',
+  cover_url: '',
 })
 
 const updateForm = reactive({
@@ -107,14 +123,16 @@ const loadPage = async () => {
   loading.value = true
 
   try {
-    const [pageData, booksResult, summaryResult] = await Promise.all([
+    const [pageData, booksResult, shelvesResult, summaryResult] = await Promise.all([
       getBorrowRecords(buildBorrowParams(1)),
       getMyBooks(),
+      getShelves(),
       getBorrowSummary(),
     ])
 
     applyBorrowPage(pageData)
     bookList.value = booksResult
+    shelfList.value = shelvesResult
     borrowSummary.value = summaryResult
   } finally {
     loading.value = false
@@ -123,10 +141,21 @@ const loadPage = async () => {
 
 const resetBorrowForm = () => {
   borrowForm.book_id = 0
+  borrowForm.shelf_id = 0
   borrowForm.borrow_name = ''
   borrowForm.borrowing_time = today()
   borrowForm.due_time = ''
   borrowForm.borrow_type = 2
+  borrowForm.isbn = ''
+  borrowForm.title = ''
+  borrowForm.author = ''
+  borrowForm.publisher = ''
+  borrowForm.publish_date = ''
+  borrowForm.page_count = null
+  borrowForm.price = null
+  borrowForm.binding = ''
+  borrowForm.keyword = ''
+  borrowForm.cover_url = ''
 }
 
 const resetUpdateForm = () => {
@@ -151,9 +180,47 @@ const closeEditDialog = () => {
   resetUpdateForm()
 }
 
+const applyIsbnBook = (book: IsbnBook) => {
+  borrowForm.title = borrowForm.title || book.title || ''
+  borrowForm.author = borrowForm.author || book.author || ''
+  borrowForm.publisher = borrowForm.publisher || book.publisher || ''
+  borrowForm.publish_date = borrowForm.publish_date || book.publishDate || ''
+  borrowForm.page_count = borrowForm.page_count || (book.pageCount ? Number(book.pageCount) || null : null)
+  borrowForm.binding = borrowForm.binding || book.binding || ''
+  borrowForm.keyword = borrowForm.keyword || book.keyword || ''
+  borrowForm.cover_url = borrowForm.cover_url || book.coverUrl || ''
+  borrowForm.isbn = borrowForm.isbn || book.isbn || ''
+}
+
+const handleFillIsbn = async () => {
+  if (!borrowForm.isbn.trim()) {
+    notifyError('请先填写 ISBN')
+    return
+  }
+
+  isbnLoading.value = true
+  try {
+    const book = await getIsbnBook(borrowForm.isbn.trim())
+    applyIsbnBook(book)
+    notifySuccess('ISBN 信息已补全，可继续手动校对')
+  } finally {
+    isbnLoading.value = false
+  }
+}
+
 const handleCreateBorrow = async () => {
-  if (!borrowForm.book_id || !borrowForm.borrow_name.trim()) {
-    notifyError('请先选择图书并填写借阅对象')
+  if (!borrowForm.borrow_name.trim()) {
+    notifyError('请先填写借阅对象')
+    return
+  }
+
+  if (borrowForm.borrow_type === 2 && !borrowForm.book_id) {
+    notifyError('请先选择要借出的图书')
+    return
+  }
+
+  if (borrowForm.borrow_type === 1 && !borrowForm.title.trim()) {
+    notifyError('请填写借入书籍的书名')
     return
   }
 
@@ -162,6 +229,18 @@ const handleCreateBorrow = async () => {
   try {
     await borrowBook({
       ...borrowForm,
+      book_id: borrowForm.borrow_type === 2 ? borrowForm.book_id : undefined,
+      shelf_id: borrowForm.borrow_type === 1 && borrowForm.shelf_id ? borrowForm.shelf_id : undefined,
+      isbn: borrowForm.borrow_type === 1 ? borrowForm.isbn.trim() || undefined : undefined,
+      title: borrowForm.borrow_type === 1 ? borrowForm.title.trim() : undefined,
+      author: borrowForm.borrow_type === 1 ? borrowForm.author.trim() || undefined : undefined,
+      publisher: borrowForm.borrow_type === 1 ? borrowForm.publisher.trim() || undefined : undefined,
+      publish_date: borrowForm.borrow_type === 1 ? borrowForm.publish_date || undefined : undefined,
+      page_count: borrowForm.borrow_type === 1 ? borrowForm.page_count || undefined : undefined,
+      price: borrowForm.borrow_type === 1 ? borrowForm.price || undefined : undefined,
+      binding: borrowForm.borrow_type === 1 ? borrowForm.binding.trim() || undefined : undefined,
+      keyword: borrowForm.borrow_type === 1 ? borrowForm.keyword.trim() || undefined : undefined,
+      cover_url: borrowForm.borrow_type === 1 ? borrowForm.cover_url.trim() || undefined : undefined,
       due_time: borrowForm.due_time || undefined,
     })
     notifySuccess('借阅记录已登记')
@@ -257,16 +336,6 @@ onMounted(loadPage)
 
     <section class="page-grid borrow-layout">
       <SectionPanel title="登记借阅" class="borrow-layout__form">
-        <div class="field">
-          <label>图书</label>
-          <select v-model.number="borrowForm.book_id">
-            <option :value="0">选择图书</option>
-            <option v-for="book in bookList?.books || []" :key="book.id" :value="book.id">
-              {{ book.title }}
-            </option>
-          </select>
-        </div>
-
         <div class="field-grid">
           <div class="field">
             <label>借阅对象</label>
@@ -286,6 +355,70 @@ onMounted(loadPage)
           <div class="field">
             <label>预计归还日期</label>
             <input v-model="borrowForm.due_time" type="date" />
+          </div>
+        </div>
+
+        <div v-if="borrowForm.borrow_type === 2" class="field">
+          <label>借出图书</label>
+          <select v-model.number="borrowForm.book_id">
+            <option :value="0" disabled hidden>选择图书</option>
+            <option v-for="book in lendableBooks" :key="book.id" :value="book.id">
+              {{ book.title }}
+            </option>
+          </select>
+        </div>
+
+        <div v-else class="offline-borrow-form">
+          <div class="field isbn-field">
+            <label>ISBN</label>
+            <div class="inline-field">
+              <input v-model="borrowForm.isbn" type="text" placeholder="可选，填写后可自动补全书籍信息" />
+              <button class="button button--secondary" type="button" :disabled="isbnLoading" @click="handleFillIsbn">
+                {{ isbnLoading ? '补全中...' : 'ISBN 补全' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>书名</label>
+            <input v-model="borrowForm.title" type="text" placeholder="借入书籍的书名" />
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label>作者</label>
+              <input v-model="borrowForm.author" type="text" placeholder="未填写也可以保存" />
+            </div>
+            <div class="field">
+              <label>出版社</label>
+              <input v-model="borrowForm.publisher" type="text" placeholder="未填写也可以保存" />
+            </div>
+            <div class="field">
+              <label>出版日期</label>
+              <input v-model="borrowForm.publish_date" type="date" />
+            </div>
+            <div class="field">
+              <label>页数</label>
+              <input v-model.number="borrowForm.page_count" type="number" min="0" placeholder="可选" />
+            </div>
+            <div class="field">
+              <label>装帧</label>
+              <input v-model="borrowForm.binding" type="text" placeholder="可选" />
+            </div>
+            <div class="field">
+              <label>放入书架</label>
+              <select v-model.number="borrowForm.shelf_id">
+                <option :value="0">暂不上架</option>
+                <option v-for="shelf in shelfList" :key="shelf.id" :value="shelf.id">
+                  {{ shelf.shelfName }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>封面链接</label>
+            <input v-model="borrowForm.cover_url" type="text" placeholder="可选，ISBN 补全后会自动带入" />
           </div>
         </div>
 
@@ -539,8 +672,27 @@ onMounted(loadPage)
   gap: 14px;
 }
 
+.offline-borrow-form {
+  display: grid;
+  gap: 14px;
+}
+
+.inline-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.field-hint {
+  margin: 8px 0 0;
+  color: var(--sl-ink-soft);
+  font-size: 0.86rem;
+}
+
 .borrow-submit {
   width: 100%;
+  margin-top: 18px;
 }
 
 .record-toolbar {
@@ -818,6 +970,10 @@ onMounted(loadPage)
   }
 
   .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-field {
     grid-template-columns: 1fr;
   }
 

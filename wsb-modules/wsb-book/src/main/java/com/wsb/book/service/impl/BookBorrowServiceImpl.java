@@ -11,16 +11,27 @@ import com.wsb.book.api.dto.BookReturnDTO;
 import com.wsb.book.api.vo.BookBorrowRecordVO;
 import com.wsb.book.api.vo.BookBorrowSummaryVO;
 import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.api.vo.IsbnBookVO;
+import com.wsb.book.client.RagFeignClient;
 import com.wsb.book.convert.BookBorrowConverter;
 import com.wsb.book.domain.Book;
 import com.wsb.book.domain.BookBorrow;
+import com.wsb.book.domain.BookShelf;
+import com.wsb.book.domain.Shelf;
 import com.wsb.book.mapper.BookBorrowMapper;
 import com.wsb.book.mapper.BookMapper;
+import com.wsb.book.mapper.BookShelfMapper;
+import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.service.BookBorrowService;
+import com.wsb.book.service.BookService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -28,38 +39,326 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 借阅服务实现类
+ * 图书借阅服务实现类
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBorrow> implements BookBorrowService {
 
+    private static final int BORROW_TYPE_IN = 1;
+    private static final int BORROW_TYPE_OUT = 2;
+
     private final BookMapper bookMapper;
+    private final BookShelfMapper bookShelfMapper;
+    private final ShelfMapper shelfMapper;
+    private final BookService bookService;
     private final BookBorrowConverter bookBorrowConverter;
+    private final RagFeignClient ragFeignClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BookBorrowVO borrow(BookBorrowDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
-        Long bookId = dto.getBookId();
+        validateBorrowDates(dto.getBorrowTime(), dto.getDueTime());
 
-        Book book = bookMapper.selectById(bookId);
+        if (dto.getBorrowType() == null) {
+            throw new ServiceException("借阅类型不能为空");
+        }
+        if (dto.getBorrowType() == BORROW_TYPE_IN) {
+            return borrowOfflineBook(dto, currentUserId);
+        }
+        if (dto.getBorrowType() == BORROW_TYPE_OUT) {
+            return borrowOwnedBook(dto, currentUserId);
+        }
+
+        throw new ServiceException("借阅类型不正确");
+    }
+
+    private BookBorrowVO borrowOwnedBook(BookBorrowDTO dto, Long currentUserId) {
+        if (dto.getBookId() == null) {
+            throw new ServiceException("借出时必须选择图书");
+        }
+
+        Book book = bookMapper.selectById(dto.getBookId());
         if (book == null) {
             throw new ServiceException("图书不存在");
         }
+        if (!currentUserId.equals(book.getUserId())) {
+            throw new ServiceException("只能借出自己的图书");
+        }
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入的图书不能再次借出");
+        }
 
-        validateBorrowDates(dto.getBorrowTime(), dto.getDueTime());
-        validateActiveBorrow(bookId);
+        validateActiveBorrow(book.getId());
+        BookBorrow borrow = createBorrowRecord(dto, currentUserId, book);
+        this.save(borrow);
+        return bookBorrowConverter.toBookBorrowVO(borrow);
+    }
 
+    private BookBorrowVO borrowOfflineBook(BookBorrowDTO dto, Long currentUserId) {
+        Book book = createOfflineBorrowedBook(dto, currentUserId);
+        BookBorrow borrow = createBorrowRecord(dto, currentUserId, book);
+        this.save(borrow);
+        return bookBorrowConverter.toBookBorrowVO(borrow);
+    }
+
+    private BookBorrow createBorrowRecord(BookBorrowDTO dto, Long currentUserId, Book book) {
         BookBorrow borrow = bookBorrowConverter.toBookBorrow(dto);
+        borrow.setBookId(book.getId());
         borrow.setUserId(currentUserId);
         borrow.setBookName(book.getTitle());
         borrow.setCoverUrl(book.getCoverUrl());
         borrow.setStatus(resolveBorrowStatus(dto.getDueTime(), null));
         borrow.setIsDeleted(false);
+        return borrow;
+    }
 
-        this.save(borrow);
-        return bookBorrowConverter.toBookBorrowVO(borrow);
+    private Book createOfflineBorrowedBook(BookBorrowDTO dto, Long currentUserId) {
+        Book book = new Book();
+        String isbn = StringUtils.trimToNull(dto.getIsbn());
+
+        if (isbn != null) {
+            Book existingBook = findBookMetadataByIsbn(isbn);
+            if (existingBook != null) {
+                applyBookMetadata(book, existingBook);
+            } else {
+                applyIsbnMetadata(book, queryIsbnMetadata(isbn));
+            }
+        }
+        applyManualBookMetadata(book, dto);
+
+        if (StringUtils.isBlank(book.getTitle())) {
+            throw new ServiceException("线下借入时请填写书名，或先填写 ISBN 获取图书信息");
+        }
+
+        book.setUserId(currentUserId);
+        book.setIsDeleted(false);
+        book.setIsBorrowed(true);
+        book.setIsOnShelf(dto.getShelfId() != null);
+        book.setEmbeddingStatus(0);
+        bookMapper.insert(book);
+
+        if (dto.getShelfId() != null) {
+            attachToShelf(book.getId(), dto.getShelfId(), currentUserId);
+        }
+
+        enqueueSummaryAfterCommit(book.getId());
+        return book;
+    }
+
+    private Book findBookMetadataByIsbn(String isbn) {
+        String compactIsbn = isbn.replaceAll("[\\s-]", "");
+        return bookMapper.selectOne(Wrappers.<Book>lambdaQuery()
+                .eq(Book::getIsDeleted, false)
+                .and(wrapper -> {
+                    wrapper.eq(Book::getIsbn, isbn)
+                            .or()
+                            .eq(Book::getIsbn10, isbn);
+                    if (!compactIsbn.equals(isbn)) {
+                        wrapper.or()
+                                .eq(Book::getIsbn, compactIsbn)
+                                .or()
+                                .eq(Book::getIsbn10, compactIsbn);
+                    }
+                })
+                .orderByDesc(Book::getUpdateTime)
+                .orderByDesc(Book::getCreateTime)
+                .last("LIMIT 1"));
+    }
+
+    private IsbnBookVO queryIsbnMetadata(String isbn) {
+        try {
+            return bookService.getBookByIsbn(isbn);
+        } catch (Exception e) {
+            log.warn("线下借入 ISBN 元数据查询失败: isbn={}", isbn, e);
+            return null;
+        }
+    }
+
+    private void applyBookMetadata(Book target, Book source) {
+        if (source == null) {
+            return;
+        }
+        target.setTitle(source.getTitle());
+        target.setSubtitle(source.getSubtitle());
+        target.setAuthor(source.getAuthor());
+        target.setSummary(source.getSummary());
+        target.setPublisher(source.getPublisher());
+        target.setPublishDate(source.getPublishDate());
+        target.setPageCount(source.getPageCount());
+        target.setPrice(source.getPrice());
+        target.setBinding(source.getBinding());
+        target.setIsbn(source.getIsbn());
+        target.setIsbn10(source.getIsbn10());
+        target.setKeyword(source.getKeyword());
+        target.setCoverUrl(source.getCoverUrl());
+        target.setLanguage(source.getLanguage());
+        target.setBookFormat(source.getBookFormat());
+        target.setClc(source.getClc());
+        target.setCip(source.getCip());
+        target.setEdition(source.getEdition());
+        target.setImpression(source.getImpression());
+    }
+
+    private void applyIsbnMetadata(Book target, IsbnBookVO source) {
+        if (source == null) {
+            return;
+        }
+        target.setTitle(source.getTitle());
+        target.setSubtitle(source.getSubtitle());
+        target.setAuthor(source.getAuthor());
+        target.setSummary(source.getSummary());
+        target.setPublisher(source.getPublisher());
+        target.setPublishDate(parsePublishDate(source.getPublishDate()));
+        target.setPageCount(parseInteger(source.getPageCount()));
+        target.setPrice(parseDouble(source.getPrice()));
+        target.setBinding(source.getBinding());
+        target.setIsbn(source.getIsbn());
+        target.setIsbn10(source.getIsbn10());
+        target.setKeyword(source.getKeyword());
+        target.setCoverUrl(source.getCoverUrl());
+        target.setLanguage(source.getLanguage());
+        target.setBookFormat(source.getBookFormat());
+        target.setClc(source.getClc());
+        target.setCip(source.getCip());
+        target.setEdition(source.getEdition());
+        target.setImpression(source.getImpression());
+    }
+
+    private void applyManualBookMetadata(Book target, BookBorrowDTO dto) {
+        setIfNotBlank(target::setTitle, dto.getTitle());
+        setIfNotBlank(target::setSubtitle, dto.getSubtitle());
+        setIfNotBlank(target::setAuthor, dto.getAuthor());
+        setIfNotBlank(target::setPublisher, dto.getPublisher());
+        if (dto.getPublishDate() != null) {
+            target.setPublishDate(dto.getPublishDate());
+        }
+        if (dto.getPageCount() != null) {
+            target.setPageCount(dto.getPageCount());
+        }
+        if (dto.getPrice() != null) {
+            target.setPrice(dto.getPrice());
+        }
+        setIfNotBlank(target::setBinding, dto.getBinding());
+        setIfNotBlank(target::setIsbn, dto.getIsbn());
+        setIfNotBlank(target::setIsbn10, dto.getIsbn10());
+        setIfNotBlank(target::setKeyword, dto.getKeyword());
+        setIfNotBlank(target::setCoverUrl, dto.getCoverUrl());
+    }
+
+    private void setIfNotBlank(java.util.function.Consumer<String> setter, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            setter.accept(value.trim());
+        }
+    }
+
+    private LocalDate parsePublishDate(String value) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+
+        String normalized = value.trim()
+                .replace('，', '-')
+                .replace(',', '-')
+                .replace('/', '-')
+                .replace('－', '-')
+                .replace('年', '-')
+                .replace('月', '-')
+                .replace("日", "")
+                .replaceAll("-+$", "");
+        try {
+            if (normalized.matches("\\d{4}")) {
+                return LocalDate.of(Integer.parseInt(normalized), 1, 1);
+            }
+            if (normalized.matches("\\d{4}-\\d{1,2}")) {
+                String[] parts = normalized.split("-");
+                return LocalDate.of(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), 1);
+            }
+            if (normalized.matches("\\d{4}-\\d{1,2}-\\d{1,2}")) {
+                String[] parts = normalized.split("-");
+                return LocalDate.of(
+                        Integer.parseInt(parts[0]),
+                        Integer.parseInt(parts[1]),
+                        Integer.parseInt(parts[2])
+                );
+            }
+        } catch (Exception ignored) {
+            log.debug("ISBN 出版日期解析失败: {}", value);
+        }
+        return null;
+    }
+
+    private Integer parseInteger(String value) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        String normalized = value.replaceAll("[^0-9]", "");
+        if (StringUtils.isBlank(normalized)) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(normalized);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Double parseDouble(String value) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        String normalized = value.replaceAll("[^0-9.]", "");
+        if (StringUtils.isBlank(normalized)) {
+            return null;
+        }
+        try {
+            return Double.valueOf(normalized);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private void attachToShelf(Long bookId, Long shelfId, Long currentUserId) {
+        Shelf shelf = shelfMapper.selectById(shelfId);
+        if (shelf == null) {
+            throw new ServiceException("指定的书架不存在");
+        }
+        if (!currentUserId.equals(shelf.getUserId())) {
+            throw new ServiceException("无权添加到该书架");
+        }
+
+        BookShelf relation = new BookShelf();
+        relation.setBookId(bookId);
+        relation.setShelfId(shelfId);
+        relation.setIsDeleted(false);
+        bookShelfMapper.insert(relation);
+    }
+
+    private void enqueueSummaryAfterCommit(Long bookId) {
+        if (bookId == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            enqueueSummary(bookId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                enqueueSummary(bookId);
+            }
+        });
+    }
+
+    private void enqueueSummary(Long bookId) {
+        try {
+            ragFeignClient.enqueueSummary(bookId);
+            log.info("已通过 RAG 内部接口加入摘要任务: bookId={}", bookId);
+        } catch (Exception e) {
+            log.warn("通知 RAG 加入摘要任务失败: bookId={}", bookId, e);
+        }
     }
 
     @Override
@@ -122,8 +421,8 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
 
         BookBorrowSummaryVO vo = new BookBorrowSummaryVO();
         vo.setTotal(borrows.size());
-        vo.setBorrowedIn((int) borrows.stream().filter(item -> item.getBorrowType() != null && item.getBorrowType() == 1).count());
-        vo.setBorrowedOut((int) borrows.stream().filter(item -> item.getBorrowType() != null && item.getBorrowType() == 2).count());
+        vo.setBorrowedIn((int) borrows.stream().filter(item -> item.getBorrowType() != null && item.getBorrowType() == BORROW_TYPE_IN).count());
+        vo.setBorrowedOut((int) borrows.stream().filter(item -> item.getBorrowType() != null && item.getBorrowType() == BORROW_TYPE_OUT).count());
         vo.setActive((int) borrows.stream().filter(this::isActiveBorrow).count());
         vo.setOverdue((int) borrows.stream().filter(item -> item.getStatus() != null && item.getStatus() == BookBorrowStatus.OVERDUE).count());
         return vo;

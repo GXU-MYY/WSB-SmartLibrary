@@ -230,11 +230,23 @@ export interface BorrowRecord {
 }
 
 export interface BorrowPayload {
-  book_id: number
+  book_id?: number
+  shelf_id?: number
   borrow_name: string
   borrowing_time: string
   due_time?: string
   borrow_type: number
+  isbn?: string
+  title?: string
+  subtitle?: string
+  author?: string
+  publisher?: string
+  publish_date?: string
+  page_count?: number
+  price?: number
+  binding?: string
+  keyword?: string
+  cover_url?: string
 }
 
 export interface BorrowUpdatePayload {
