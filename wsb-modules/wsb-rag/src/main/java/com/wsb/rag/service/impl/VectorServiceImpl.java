@@ -1,229 +1,161 @@
 package com.wsb.rag.service.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.exception.ServiceException;
+import com.wsb.rag.config.RagPgVectorProperties;
 import com.wsb.rag.service.VectorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * 向量数据库服务实现（Supabase）。
+ * 向量数据库服务实现（pgvector）。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class VectorServiceImpl implements VectorService {
 
-    private static final MediaType JSON = MediaType.parse("application/json");
-    private static final String TABLE_NAME = "book_embeddings";
-
-    @Value("${supabase.url}")
-    private String supabaseUrl;
-
-    @Value("${supabase.service-role-key}")
-    private String serviceRoleKey;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OkHttpClient httpClient = new OkHttpClient();
+    private final PgVectorStore pgVectorStore;
+    private final JdbcTemplate jdbcTemplate;
+    private final RagPgVectorProperties properties;
 
     @Override
-    public void storeEmbedding(Long bookId, List<Float> embedding, BookRemoteDTO metadata) {
-        try {
-            String embeddingStr = embedding.toString();
-            String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("book_id", bookId)
-                    .put("title", metadata.getTitle())
-                    .put("author", metadata.getAuthor())
-                    .put("embedding", "[" + embeddingStr.substring(1, embeddingStr.length() - 1) + "]"));
-
-            Request request = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("Prefer", "resolution=merge-duplicates")
-                    .post(RequestBody.create(json, JSON))
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("存储向量失败: {}, body={}", response.code(), errorBody);
-                    throw new ServiceException("存储向量失败");
-                }
-                log.info("存储向量成功: bookId={}", bookId);
-            }
-        } catch (IOException e) {
-            log.error("存储向量异常", e);
-            throw new ServiceException("存储向量失败: " + e.getMessage());
+    public void storeEmbedding(Long bookId, String content, BookRemoteDTO metadata) {
+        if (bookId == null) {
+            throw new ServiceException("书籍ID不能为空");
         }
+        if (StringUtils.isBlank(content)) {
+            throw new ServiceException("向量内容不能为空");
+        }
+
+        deleteEmbedding(bookId);
+
+        Document document = new Document(content, buildMetadata(bookId, metadata));
+        pgVectorStore.add(List.of(document));
+        log.info("已写入 pgvector: bookId={}", bookId);
     }
 
     @Override
-    public List<Long> searchSimilar(List<Float> queryEmbedding, int limit) {
-        if (queryEmbedding == null || queryEmbedding.isEmpty()) {
-            log.warn("跳过向量搜索：查询向量为空");
+    public List<Long> searchSimilar(String query, int limit) {
+        if (StringUtils.isBlank(query)) {
             return List.of();
         }
 
-        try {
-            String embeddingJson = queryEmbedding.toString();
-            String rpcUrl = supabaseUrl + "/rest/v1/rpc/match_book_embeddings";
-
-            String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("query_embedding", "[" + embeddingJson.substring(1, embeddingJson.length() - 1) + "]")
-                    .put("match_count", limit));
-
-            Request request = new Request.Builder()
-                    .url(rpcUrl)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(json, JSON))
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("向量搜索失败: {}, body={}", response.code(), errorBody);
-                    return List.of();
-                }
-
-                String responseBody = response.body().string();
-                JsonNode root = objectMapper.readTree(responseBody);
-                List<Long> result = new ArrayList<>();
-                for (JsonNode item : root) {
-                    result.add(item.path("book_id").asLong());
-                }
-                return result;
-            }
-        } catch (IOException e) {
-            log.error("向量搜索异常", e);
-            return List.of();
-        }
+        return pgVectorStore.similaritySearch(SearchRequest.builder()
+                        .query(query)
+                        .topK(limit)
+                        .build())
+                .stream()
+                .map(this::extractBookId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     @Override
     public List<Long> getSimilarBooks(Long bookId, int limit) {
-        try {
-            Request getRequest = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId + "&select=embedding")
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .get()
-                    .build();
-
-            try (Response getResponse = httpClient.newCall(getRequest).execute()) {
-                if (!getResponse.isSuccessful()) {
-                    String errorBody = getResponse.body() != null ? getResponse.body().string() : "";
-                    log.error("获取书籍向量失败: {}, body={}", getResponse.code(), errorBody);
-                    return List.of();
-                }
-
-                String responseBody = getResponse.body().string();
-                JsonNode root = objectMapper.readTree(responseBody);
-                if (root.isEmpty()) {
-                    return List.of();
-                }
-
-                List<Float> embedding = parseEmbedding(root.get(0).path("embedding"));
-                if (embedding.isEmpty()) {
-                    log.warn("书籍向量为空或解析失败: bookId={}", bookId);
-                    return List.of();
-                }
-
-                return searchSimilar(embedding, limit + 1).stream()
-                        .filter(id -> !id.equals(bookId))
-                        .limit(limit)
-                        .toList();
-            }
-        } catch (IOException e) {
-            log.error("获取相似书籍异常", e);
+        if (bookId == null) {
             return List.of();
         }
+
+        String content = findContentByBookId(bookId);
+        if (StringUtils.isBlank(content)) {
+            log.warn("未找到可用于相似推荐的向量内容: bookId={}", bookId);
+            return List.of();
+        }
+
+        return pgVectorStore.similaritySearch(SearchRequest.builder()
+                        .query(content)
+                        .topK(limit + 1)
+                        .build())
+                .stream()
+                .map(this::extractBookId)
+                .filter(Objects::nonNull)
+                .filter(id -> !id.equals(bookId))
+                .distinct()
+                .limit(limit)
+                .toList();
     }
 
     @Override
     public void deleteEmbedding(Long bookId) {
-        try {
-            Request request = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .delete()
-                    .build();
+        if (bookId == null) {
+            return;
+        }
 
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("删除向量失败: {}, body={}", response.code(), errorBody);
-                } else {
-                    log.info("删除向量成功: bookId={}", bookId);
-                }
-            }
-        } catch (IOException e) {
-            log.error("删除向量异常", e);
+        int deleted = jdbcTemplate.update(
+                "DELETE FROM " + qualifiedTableName() + " WHERE metadata->>'bookId' = ?",
+                bookId.toString()
+        );
+        if (deleted > 0) {
+            log.info("已删除 pgvector 向量: bookId={}, rows={}", bookId, deleted);
         }
     }
 
-    private List<Float> parseEmbedding(JsonNode embeddingNode) {
-        List<Float> embedding = new ArrayList<>();
-        if (embeddingNode == null || embeddingNode.isMissingNode() || embeddingNode.isNull()) {
-            return embedding;
+    private Map<String, Object> buildMetadata(Long bookId, BookRemoteDTO metadata) {
+        Map<String, Object> metadataMap = new LinkedHashMap<>();
+        metadataMap.put("bookId", bookId);
+        if (metadata == null) {
+            return metadataMap;
         }
-
-        if (embeddingNode.isArray()) {
-            for (JsonNode value : embeddingNode) {
-                embedding.add((float) value.asDouble());
-            }
-            return embedding;
+        if (StringUtils.isNotBlank(metadata.getTitle())) {
+            metadataMap.put("title", metadata.getTitle());
         }
-
-        if (!embeddingNode.isTextual()) {
-            return embedding;
+        if (StringUtils.isNotBlank(metadata.getAuthor())) {
+            metadataMap.put("author", metadata.getAuthor());
         }
-
-        String raw = embeddingNode.asText();
-        if (StringUtils.isBlank(raw)) {
-            return embedding;
+        if (StringUtils.isNotBlank(metadata.getCoverUrl())) {
+            metadataMap.put("coverUrl", metadata.getCoverUrl());
         }
+        return metadataMap;
+    }
 
-        String normalized = raw.trim();
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
+    private Long extractBookId(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return null;
         }
-
-        if (StringUtils.isBlank(normalized)) {
-            return embedding;
+        Object value = document.getMetadata().get("bookId");
+        if (value instanceof Number number) {
+            return number.longValue();
         }
-
-        for (String item : normalized.split(",")) {
-            String token = item.trim();
-            if (token.isEmpty()) {
-                continue;
-            }
+        if (value instanceof String text && StringUtils.isNotBlank(text)) {
             try {
-                embedding.add(Float.parseFloat(token));
-            } catch (NumberFormatException ex) {
-                log.warn("书籍向量包含非法数字: token={}", token);
-                return List.of();
+                return Long.valueOf(text);
+            } catch (NumberFormatException ignored) {
+                return null;
             }
         }
+        return null;
+    }
 
-        return embedding;
+    private String findContentByBookId(Long bookId) {
+        List<String> contents = jdbcTemplate.query(
+                "SELECT content FROM " + qualifiedTableName() + " WHERE metadata->>'bookId' = ? ORDER BY id DESC LIMIT 1",
+                (rs, rowNum) -> rs.getString("content"),
+                bookId.toString()
+        );
+        return contents.isEmpty() ? null : contents.get(0);
+    }
+
+    private String qualifiedTableName() {
+        return safeIdentifier(properties.getSchemaName()) + "." + safeIdentifier(properties.getTableName());
+    }
+
+    private String safeIdentifier(String identifier) {
+        if (StringUtils.isBlank(identifier) || !identifier.matches("[A-Za-z0-9_]+")) {
+            throw new ServiceException("非法的 pgvector 标识符配置: " + identifier);
+        }
+        return identifier;
     }
 }

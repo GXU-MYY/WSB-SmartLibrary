@@ -3,7 +3,6 @@ package com.wsb.rag.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wsb.common.core.exception.ServiceException;
-import com.wsb.rag.service.EmbeddingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -12,20 +11,25 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.Embedding;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Embedding 服务实现（DashScope Qwen Embedding）
+ * DashScope-compatible embedding model adapter for Spring AI.
  */
 @Slf4j
-@Service
+@Component
 @RequiredArgsConstructor
-public class EmbeddingServiceImpl implements EmbeddingService {
+public class DashScopeEmbeddingModel implements EmbeddingModel {
 
     private static final MediaType JSON = MediaType.parse("application/json");
 
@@ -45,17 +49,12 @@ public class EmbeddingServiceImpl implements EmbeddingService {
     private final OkHttpClient httpClient = new OkHttpClient();
 
     @Override
-    public List<Float> generateEmbedding(String text) {
-        List<List<Float>> embeddings = generateEmbeddings(List.of(text));
-        if (embeddings.isEmpty()) {
-            throw new ServiceException("生成嵌入向量失败");
-        }
-        return embeddings.get(0);
-    }
-
-    @Override
-    public List<List<Float>> generateEmbeddings(List<String> texts) {
+    public EmbeddingResponse call(EmbeddingRequest request) {
         validateConfig();
+        List<String> texts = request.getInstructions();
+        if (texts == null || texts.isEmpty()) {
+            return new EmbeddingResponse(List.of());
+        }
 
         try {
             var requestPayload = objectMapper.createObjectNode();
@@ -63,40 +62,59 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             requestPayload.set("input", objectMapper.valueToTree(texts));
             requestPayload.put("encoding_format", "float");
             requestPayload.put("dimensions", embeddingDimensions);
-            String requestBody = objectMapper.writeValueAsString(requestPayload);
 
-            Request request = new Request.Builder()
+            Request httpRequest = new Request.Builder()
                     .url(resolveEmbeddingEndpoint())
                     .addHeader("Authorization", "Bearer " + apiKey)
                     .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(requestBody, JSON))
+                    .post(RequestBody.create(objectMapper.writeValueAsString(requestPayload), JSON))
                     .build();
 
-            try (Response response = httpClient.newCall(request).execute()) {
+            try (Response response = httpClient.newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "";
                     log.error("DashScope Embedding API 调用失败: code={}, body={}", response.code(), errorBody);
                     throw new ServiceException("DashScope Embedding API 调用失败");
                 }
 
-                String responseBody = response.body().string();
+                String responseBody = response.body() != null ? response.body().string() : "";
                 JsonNode root = objectMapper.readTree(responseBody);
                 JsonNode data = root.path("data");
 
-                List<List<Float>> result = new ArrayList<>();
+                List<Embedding> embeddings = new ArrayList<>();
+                int index = 0;
                 for (JsonNode item : data) {
-                    List<Float> embedding = new ArrayList<>();
-                    for (JsonNode value : item.path("embedding")) {
-                        embedding.add((float) value.asDouble());
-                    }
-                    result.add(embedding);
+                    float[] vector = toVector(item.path("embedding"));
+                    embeddings.add(new Embedding(vector, index++));
                 }
-                return result;
+                return new EmbeddingResponse(embeddings);
             }
         } catch (IOException e) {
             log.error("生成嵌入向量异常", e);
             throw new ServiceException("生成嵌入向量失败: " + e.getMessage());
         }
+    }
+
+    @Override
+    public float[] embed(Document document) {
+        if (document == null || StringUtils.isBlank(document.getText())) {
+            return new float[0];
+        }
+        return embed(document.getText());
+    }
+
+    @Override
+    public int dimensions() {
+        return embeddingDimensions != null ? embeddingDimensions : 1024;
+    }
+
+    private float[] toVector(JsonNode embeddingNode) {
+        float[] vector = new float[embeddingNode.size()];
+        int index = 0;
+        for (JsonNode value : embeddingNode) {
+            vector[index++] = (float) value.asDouble();
+        }
+        return vector;
     }
 
     private void validateConfig() {

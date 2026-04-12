@@ -3,7 +3,6 @@ package com.wsb.rag.service.impl;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
-import com.wsb.rag.service.EmbeddingService;
 import com.wsb.rag.service.RagService;
 import com.wsb.rag.service.VectorService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +19,6 @@ import java.util.List;
 public class RagServiceImpl implements RagService {
 
     private final RemoteBookService remoteBookService;
-    private final EmbeddingService embeddingService;
     private final VectorService vectorService;
     private final RabbitTemplate rabbitTemplate;
 
@@ -35,8 +33,7 @@ public class RagServiceImpl implements RagService {
 
     @Override
     public List<BookRemoteDTO> recommend(String query, int limit) {
-        List<Float> queryEmbedding = embeddingService.generateEmbedding(query);
-        List<Long> bookIds = vectorService.searchSimilar(queryEmbedding, limit);
+        List<Long> bookIds = vectorService.searchSimilar(query, limit);
         if (bookIds.isEmpty()) {
             return List.of();
         }

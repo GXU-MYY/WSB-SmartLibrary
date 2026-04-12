@@ -3,7 +3,6 @@ package com.wsb.rag.consumer;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
-import com.wsb.rag.service.EmbeddingService;
 import com.wsb.rag.service.BookAiContentService;
 import com.wsb.rag.service.VectorService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +19,6 @@ import org.springframework.stereotype.Component;
 public class RagConsumer {
 
     private final RemoteBookService remoteBookService;
-    private final EmbeddingService embeddingService;
     private final VectorService vectorService;
     private final BookAiContentService bookAiContentService;
     private final RabbitTemplate rabbitTemplate;
@@ -61,8 +59,7 @@ public class RagConsumer {
             }
 
             String text = buildEmbeddingText(book);
-            var embedding = embeddingService.generateEmbedding(text);
-            vectorService.storeEmbedding(bookId, embedding, book);
+            vectorService.storeEmbedding(bookId, text, book);
             remoteBookService.updateEmbeddingStatus(bookId, 2);
 
             log.info("向量生成完成: bookId={}", bookId);

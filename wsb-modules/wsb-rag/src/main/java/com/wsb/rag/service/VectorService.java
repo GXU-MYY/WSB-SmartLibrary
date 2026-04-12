@@ -10,22 +10,22 @@ import java.util.List;
 public interface VectorService {
 
     /**
-     * 存储书籍向量
+     * 存储书籍向量文档。
      *
-     * @param bookId    书籍ID
-     * @param embedding 嵌入向量
-     * @param metadata  元数据
+     * @param bookId   书籍ID
+     * @param content  用于向量化的文本内容
+     * @param metadata 书籍元数据
      */
-    void storeEmbedding(Long bookId, List<Float> embedding, BookRemoteDTO metadata);
+    void storeEmbedding(Long bookId, String content, BookRemoteDTO metadata);
 
     /**
      * 相似度搜索
      *
-     * @param queryEmbedding 查询向量
-     * @param limit          返回数量
+     * @param query 查询文本
+     * @param limit 返回数量
      * @return 相似书籍ID列表
      */
-    List<Long> searchSimilar(List<Float> queryEmbedding, int limit);
+    List<Long> searchSimilar(String query, int limit);
 
     /**
      * 根据书籍ID获取相似书籍
