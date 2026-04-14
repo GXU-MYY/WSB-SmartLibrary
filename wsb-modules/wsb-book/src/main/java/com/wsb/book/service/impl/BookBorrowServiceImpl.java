@@ -8,9 +8,11 @@ import com.wsb.book.api.constant.BookBorrowStatus;
 import com.wsb.book.api.dto.BookBorrowDTO;
 import com.wsb.book.api.dto.BookBorrowUpdateDTO;
 import com.wsb.book.api.dto.BookReturnDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.vo.BookBorrowRecordVO;
 import com.wsb.book.api.vo.BookBorrowSummaryVO;
 import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.client.RagFeignClient;
 import com.wsb.book.convert.BookBorrowConverter;
@@ -36,6 +38,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +78,68 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         throw new ServiceException("借阅类型不正确");
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommunityBorrowFlowVO createCommunityBorrowFlow(CommunityBorrowCreateDTO dto) {
+        if (dto == null || dto.getBookId() == null) {
+            throw new ServiceException("社群借阅请求缺少图书信息");
+        }
+        if (dto.getOwnerUserId() == null || dto.getBorrowerUserId() == null) {
+            throw new ServiceException("社群借阅用户信息不完整");
+        }
+        if (dto.getOwnerUserId().equals(dto.getBorrowerUserId())) {
+            throw new ServiceException("出借人和借入人不能是同一个用户");
+        }
+        validateBorrowDates(dto.getBorrowTime(), dto.getDueTime());
+
+        Book book = bookMapper.selectById(dto.getBookId());
+        if (book == null || Boolean.TRUE.equals(book.getIsDeleted())) {
+            throw new ServiceException("图书不存在");
+        }
+        if (!dto.getOwnerUserId().equals(book.getUserId())) {
+            throw new ServiceException("该图书不属于当前出借人");
+        }
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入图书不能发起社群借出");
+        }
+
+        validateActiveBorrow(book.getId());
+
+        String flowId = UUID.randomUUID().toString();
+        BookBorrow inBorrow = buildCommunityBorrowRecord(
+                book,
+                dto.getBorrowerUserId(),
+                dto.getOwnerNickname(),
+                BORROW_TYPE_IN,
+                dto.getBorrowTime(),
+                dto.getDueTime(),
+                flowId,
+                dto.getGroupId(),
+                dto.getRequestId()
+        );
+        BookBorrow outBorrow = buildCommunityBorrowRecord(
+                book,
+                dto.getOwnerUserId(),
+                dto.getBorrowerNickname(),
+                BORROW_TYPE_OUT,
+                dto.getBorrowTime(),
+                dto.getDueTime(),
+                flowId,
+                dto.getGroupId(),
+                dto.getRequestId()
+        );
+
+        this.save(inBorrow);
+        this.save(outBorrow);
+        refreshBookLentOutStatus(book.getId());
+
+        CommunityBorrowFlowVO vo = new CommunityBorrowFlowVO();
+        vo.setBorrowFlowId(flowId);
+        vo.setInBorrowId(inBorrow.getId());
+        vo.setOutBorrowId(outBorrow.getId());
+        return vo;
+    }
+
     private BookBorrowVO borrowOwnedBook(BookBorrowDTO dto, Long currentUserId) {
         if (dto.getBookId() == null) {
             throw new ServiceException("借出时必须选择图书");
@@ -94,6 +159,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         validateActiveBorrow(book.getId());
         BookBorrow borrow = createBorrowRecord(dto, currentUserId, book);
         this.save(borrow);
+        refreshBookLentOutStatus(book.getId());
         return bookBorrowConverter.toBookBorrowVO(borrow);
     }
 
@@ -111,6 +177,33 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         borrow.setBookName(book.getTitle());
         borrow.setCoverUrl(book.getCoverUrl());
         borrow.setStatus(resolveBorrowStatus(dto.getDueTime(), null));
+        borrow.setIsDeleted(false);
+        return borrow;
+    }
+
+    private BookBorrow buildCommunityBorrowRecord(
+            Book book,
+            Long userId,
+            String borrowerName,
+            Integer borrowType,
+            LocalDate borrowTime,
+            LocalDate dueTime,
+            String flowId,
+            Long groupId,
+            Long requestId) {
+        BookBorrow borrow = new BookBorrow();
+        borrow.setBookId(book.getId());
+        borrow.setUserId(userId);
+        borrow.setBorrowerName(StringUtils.defaultIfBlank(borrowerName, "未命名读者"));
+        borrow.setBorrowTime(borrowTime);
+        borrow.setDueTime(dueTime);
+        borrow.setBorrowType(borrowType);
+        borrow.setStatus(resolveBorrowStatus(dueTime, null));
+        borrow.setBookName(book.getTitle());
+        borrow.setCoverUrl(book.getCoverUrl());
+        borrow.setBorrowFlowId(flowId);
+        borrow.setGroupId(groupId);
+        borrow.setRequestId(requestId);
         borrow.setIsDeleted(false);
         return borrow;
     }
@@ -136,6 +229,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         book.setUserId(currentUserId);
         book.setIsDeleted(false);
         book.setIsBorrowed(true);
+        book.setIsLentOut(false);
         book.setIsOnShelf(dto.getShelfId() != null);
         book.setEmbeddingStatus(0);
         bookMapper.insert(book);
@@ -386,6 +480,8 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         borrow.setReturnTime(dto.getReturnTime());
         borrow.setStatus(BookBorrowStatus.RETURNED);
         this.updateById(borrow);
+        syncFlowReturnIfNeeded(borrow);
+        refreshBookLentOutStatus(borrow.getBookId());
 
         return bookBorrowConverter.toBookBorrowVO(borrow);
     }
@@ -455,6 +551,7 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
 
         this.updateById(borrow);
+        syncFlowUpdateIfNeeded(borrow);
     }
 
     private List<BookBorrowRecordVO> buildBorrowRecordVOs(List<BookBorrow> borrows) {
@@ -483,6 +580,55 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
             }
         });
         return voList;
+    }
+
+    private void syncFlowReturnIfNeeded(BookBorrow borrow) {
+        if (borrow == null || StringUtils.isBlank(borrow.getBorrowFlowId())) {
+            return;
+        }
+
+        this.update(Wrappers.<BookBorrow>lambdaUpdate()
+                .eq(BookBorrow::getBorrowFlowId, borrow.getBorrowFlowId())
+                .ne(BookBorrow::getId, borrow.getId())
+                .eq(BookBorrow::getIsDeleted, false)
+                .set(BookBorrow::getReturnTime, borrow.getReturnTime())
+                .set(BookBorrow::getStatus, BookBorrowStatus.RETURNED));
+    }
+
+    private void syncFlowUpdateIfNeeded(BookBorrow borrow) {
+        if (borrow == null || StringUtils.isBlank(borrow.getBorrowFlowId())) {
+            return;
+        }
+
+        int syncedStatus = borrow.getReturnTime() != null
+                ? BookBorrowStatus.RETURNED
+                : resolveBorrowStatus(borrow.getDueTime(), null);
+
+        this.update(Wrappers.<BookBorrow>lambdaUpdate()
+                .eq(BookBorrow::getBorrowFlowId, borrow.getBorrowFlowId())
+                .ne(BookBorrow::getId, borrow.getId())
+                .eq(BookBorrow::getIsDeleted, false)
+                .set(BookBorrow::getBorrowTime, borrow.getBorrowTime())
+                .set(BookBorrow::getDueTime, borrow.getDueTime())
+                .set(borrow.getReturnTime() != null, BookBorrow::getReturnTime, borrow.getReturnTime())
+                .set(BookBorrow::getStatus, syncedStatus));
+    }
+
+    private void refreshBookLentOutStatus(Long bookId) {
+        if (bookId == null) {
+            return;
+        }
+
+        Long activeOutCount = this.baseMapper.selectCount(Wrappers.<BookBorrow>lambdaQuery()
+                .eq(BookBorrow::getBookId, bookId)
+                .eq(BookBorrow::getBorrowType, BORROW_TYPE_OUT)
+                .eq(BookBorrow::getIsDeleted, false)
+                .in(BookBorrow::getStatus, BookBorrowStatus.BORROWING, BookBorrowStatus.OVERDUE));
+
+        Book update = new Book();
+        update.setId(bookId);
+        update.setIsLentOut(activeOutCount != null && activeOutCount > 0);
+        bookMapper.updateById(update);
     }
 
     private void validateActiveBorrow(Long bookId) {

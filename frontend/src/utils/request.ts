@@ -30,8 +30,8 @@ const wait = (time: number) => new Promise((resolve) => setTimeout(resolve, time
 const resolveMessage = (payload?: Partial<ApiEnvelope<unknown>>) =>
   payload?.message || payload?.msg || 'Request failed, please try again later.'
 
-const isAuthMessage = (message: string) =>
-  /login|token|auth|unauthorized|401/i.test(message)
+const isAuthFailure = (payloadCode?: number, statusCode?: number) =>
+  Number(payloadCode) === 401 || Number(statusCode) === 401
 
 const shouldRetry = (
   error: AxiosError<{ message?: string; msg?: string }>,
@@ -66,7 +66,7 @@ service.interceptors.response.use(
       const message = resolveMessage(payload)
 
       if (Number(payload.code) !== 200) {
-        if (isAuthMessage(message)) {
+        if (isAuthFailure(Number(payload.code), response.status)) {
           clearAuthSnapshot()
         }
 
@@ -97,7 +97,7 @@ service.interceptors.response.use(
       error.message ||
       'Network error, please try again later.'
 
-    if (isAuthMessage(message)) {
+    if (isAuthFailure(undefined, error.response?.status)) {
       clearAuthSnapshot()
     }
 

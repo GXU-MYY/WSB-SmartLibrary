@@ -105,13 +105,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName) {
+    public Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName, String phone) {
         // 列表查询
         Page<User> userPage = new Page<>(page, pageSize);
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        if (userName != null && !userName.isEmpty()) {
+        if (StringUtils.hasText(userName)) {
             wrapper.like(User::getUserName, userName);
         }
+        if (StringUtils.hasText(phone)) {
+            wrapper.eq(User::getPhone, phone.trim());
+        }
+        wrapper.eq(User::getIsDeleted, false);
 
         this.page(userPage, wrapper);
 

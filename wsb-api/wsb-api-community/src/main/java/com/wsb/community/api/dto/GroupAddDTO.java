@@ -8,7 +8,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 群组新增DTO
+ * 群组新增 DTO
  */
 @Data
 public class GroupAddDTO implements Serializable {
@@ -22,9 +22,8 @@ public class GroupAddDTO implements Serializable {
     private String groupName;
 
     /**
-     * 群成员用户ID列表
+     * 初始成员用户ID列表，可为空
      */
-    @NotBlank(message = "群成员不能为空")
     private List<Long> userIds;
 
     /**

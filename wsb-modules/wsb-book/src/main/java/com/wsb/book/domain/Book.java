@@ -145,6 +145,11 @@ public class Book implements Serializable {
     private Boolean isBorrowed;
 
     /**
+     * 鏄惁姝ｅ湪鍊熷嚭涓?
+     */
+    private Boolean isLentOut;
+
+    /**
      * 所有者用户ID
      */
     private Long userId;

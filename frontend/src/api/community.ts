@@ -4,6 +4,10 @@ import type {
   BorrowStats,
   CollectStats,
   Group,
+  GroupBorrowRequest,
+  GroupBorrowRequestPayload,
+  GroupPublicBook,
+  GroupPublicShelf,
   GroupPayload,
   GroupUser,
   GroupUserOperatePayload,
@@ -27,6 +31,13 @@ export const updateGroup = (payload: GroupPayload) =>
 export const deleteGroup = (groupId: number) =>
   request.delete<void>('/v1/group', { params: { group_id: groupId } })
 
+export const exitGroup = (groupId: number) =>
+  request.delete<void>('/v1/group/user/exit', {
+    params: {
+      group_id: groupId,
+    },
+  })
+
 export const getGroupUsers = (groupId: number, type: 'in' | 'out') =>
   request.get<GroupUser[]>('/v1/group/user', {
     params: {
@@ -48,6 +59,36 @@ export const getShareRecords = (groupId: number, shareType?: string) =>
       share_type: shareType,
     },
   })
+
+export const getGroupPublicShelves = (groupId: number) =>
+  request.get<GroupPublicShelf[]>('/v1/group/borrow/public/shelves', {
+    params: {
+      group_id: groupId,
+    },
+  })
+
+export const getGroupPublicBooks = (groupId: number) =>
+  request.get<GroupPublicBook[]>('/v1/group/borrow/public/books', {
+    params: {
+      group_id: groupId,
+    },
+  })
+
+export const createGroupBorrowRequest = (payload: GroupBorrowRequestPayload) =>
+  request.post<GroupBorrowRequest>('/v1/group/borrow/request', payload)
+
+export const getGroupBorrowRequests = (groupId: number) =>
+  request.get<GroupBorrowRequest[]>('/v1/group/borrow/request', {
+    params: {
+      group_id: groupId,
+    },
+  })
+
+export const approveGroupBorrowRequest = (requestId: number) =>
+  request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/approve`)
+
+export const rejectGroupBorrowRequest = (requestId: number) =>
+  request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/reject`)
 
 export const getBorrowSummary = (scope: 'all' | 'mine') =>
   request.get<BorrowStats>('/v1/community/statistics/summary', {

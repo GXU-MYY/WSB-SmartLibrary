@@ -12,7 +12,9 @@ import com.wsb.community.api.dto.ShareAddDTO;
 import com.wsb.community.api.vo.ShareRecordVO;
 import com.wsb.community.api.vo.ShareVO;
 import com.wsb.community.convert.ShareConverter;
+import com.wsb.community.domain.Group;
 import com.wsb.community.domain.GroupUser;
+import com.wsb.community.mapper.GroupMapper;
 import com.wsb.community.domain.Share;
 import com.wsb.community.mapper.ShareMapper;
 import com.wsb.community.service.GroupUserService;
@@ -36,6 +38,7 @@ public class ShareServiceImpl extends ServiceImpl<ShareMapper, Share> implements
 
     private final ShareConverter shareConverter;
     private final GroupUserService groupUserService;
+    private final GroupMapper groupMapper;
     private final RemoteBookService remoteBookService;
     private final RemoteUserService remoteUserService;
 
@@ -148,6 +151,13 @@ public class ShareServiceImpl extends ServiceImpl<ShareMapper, Share> implements
      * 检查用户是否在群组中
      */
     private void checkUserInGroup(Long groupId, Long userId) {
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || Boolean.TRUE.equals(group.getIsDeleted())) {
+            throw new ServiceException("群组不存在");
+        }
+        if (Objects.equals(group.getOwnerId(), userId)) {
+            return;
+        }
         long count = groupUserService.count(Wrappers.<GroupUser>lambdaQuery()
                 .eq(GroupUser::getGroupId, groupId)
                 .eq(GroupUser::getUserId, userId)

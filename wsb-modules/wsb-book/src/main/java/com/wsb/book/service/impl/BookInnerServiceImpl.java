@@ -4,20 +4,30 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.wsb.book.api.constant.BookBorrowStatus;
 import com.wsb.book.api.dto.BookBorrowCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.PublicShelfBookDTO;
+import com.wsb.book.api.dto.ShelfRemoteDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.book.api.dto.UserBorrowStatsDTO;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 import com.wsb.book.convert.BookInnerConverter;
 import com.wsb.book.domain.Book;
 import com.wsb.book.domain.BookBorrow;
+import com.wsb.book.domain.BookShelf;
+import com.wsb.book.domain.Shelf;
 import com.wsb.book.mapper.BookBorrowMapper;
+import com.wsb.book.mapper.BookShelfMapper;
+import com.wsb.book.mapper.ShelfMapper;
+import com.wsb.book.service.BookBorrowService;
 import com.wsb.book.service.BookInnerService;
 import com.wsb.book.service.BookService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,7 +40,10 @@ import java.util.stream.Collectors;
 public class BookInnerServiceImpl implements BookInnerService {
 
     private final BookService bookService;
+    private final BookBorrowService bookBorrowService;
     private final BookBorrowMapper bookBorrowMapper;
+    private final BookShelfMapper bookShelfMapper;
+    private final ShelfMapper shelfMapper;
     private final BookInnerConverter bookInnerConverter;
 
     @Override
@@ -48,6 +61,81 @@ public class BookInnerServiceImpl implements BookInnerService {
             return List.of();
         }
         return bookInnerConverter.toBookRemoteDTOList(bookService.listByIds(bookIds));
+    }
+
+    @Override
+    public List<ShelfRemoteDTO> getPublicShelvesByOwners(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        return shelfMapper.selectList(Wrappers.<Shelf>lambdaQuery()
+                        .in(Shelf::getUserId, userIds)
+                        .eq(Shelf::getIsDeleted, false)
+                        .eq(Shelf::getIsPublic, true)
+                        .orderByDesc(Shelf::getUpdateTime)
+                        .orderByDesc(Shelf::getId))
+                .stream()
+                .map(this::toShelfRemoteDTO)
+                .toList();
+    }
+
+    @Override
+    public List<PublicShelfBookDTO> getPublicShelfBooksByOwners(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Shelf> publicShelves = shelfMapper.selectList(Wrappers.<Shelf>lambdaQuery()
+                .in(Shelf::getUserId, userIds)
+                .eq(Shelf::getIsDeleted, false)
+                .eq(Shelf::getIsPublic, true));
+        if (publicShelves.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Shelf> shelfMap = publicShelves.stream()
+                .collect(Collectors.toMap(Shelf::getId, shelf -> shelf));
+
+        List<BookShelf> relations = bookShelfMapper.selectList(Wrappers.<BookShelf>lambdaQuery()
+                .in(BookShelf::getShelfId, shelfMap.keySet())
+                .eq(BookShelf::getIsDeleted, false));
+        if (relations.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Book> bookMap = bookService.listByIds(relations.stream()
+                        .map(BookShelf::getBookId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
+                .collect(Collectors.toMap(Book::getId, book -> book));
+
+        return relations.stream()
+                .map(relation -> {
+                    Shelf shelf = shelfMap.get(relation.getShelfId());
+                    Book book = bookMap.get(relation.getBookId());
+                    if (shelf == null || book == null) {
+                        return null;
+                    }
+
+                    PublicShelfBookDTO dto = new PublicShelfBookDTO();
+                    dto.setShelfId(shelf.getId());
+                    dto.setShelfName(shelf.getShelfName());
+                    dto.setOwnerUserId(shelf.getUserId());
+                    dto.setBookId(book.getId());
+                    dto.setTitle(book.getTitle());
+                    dto.setAuthor(book.getAuthor());
+                    dto.setCoverUrl(book.getCoverUrl());
+                    dto.setIsBorrowed(Boolean.TRUE.equals(book.getIsBorrowed()));
+                    dto.setIsLentOut(Boolean.TRUE.equals(book.getIsLentOut()));
+                    dto.setBorrowable(!Boolean.TRUE.equals(book.getIsBorrowed()) && !Boolean.TRUE.equals(book.getIsLentOut()));
+                    return dto;
+                })
+                .filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparing(PublicShelfBookDTO::getShelfId).thenComparing(PublicShelfBookDTO::getBookId))
+                .toList();
     }
 
     @Override
@@ -229,6 +317,11 @@ public class BookInnerServiceImpl implements BookInnerService {
         bookService.updateById(book);
     }
 
+    @Override
+    public CommunityBorrowFlowVO createCommunityBorrowFlow(CommunityBorrowCreateDTO dto) {
+        return bookBorrowService.createCommunityBorrowFlow(dto);
+    }
+
     private void syncOverdueBorrows() {
         LocalDate today = LocalDate.now();
 
@@ -247,5 +340,15 @@ public class BookInnerServiceImpl implements BookInnerService {
                         .or()
                         .ge(BookBorrow::getDueTime, today))
                 .set(BookBorrow::getStatus, BookBorrowStatus.BORROWING));
+    }
+
+    private ShelfRemoteDTO toShelfRemoteDTO(Shelf shelf) {
+        ShelfRemoteDTO dto = new ShelfRemoteDTO();
+        dto.setId(shelf.getId());
+        dto.setShelfName(shelf.getShelfName());
+        dto.setUserId(shelf.getUserId());
+        dto.setIsPublic(shelf.getIsPublic());
+        dto.setRemark(shelf.getRemark());
+        return dto;
     }
 }

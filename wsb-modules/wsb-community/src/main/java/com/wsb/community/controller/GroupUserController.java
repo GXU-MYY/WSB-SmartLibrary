@@ -40,7 +40,7 @@ public class GroupUserController {
         }
     }
 
-    @Operation(summary = "群组成员操作", description = "拉用户进群(type=add)或踢用户出群(type=minus)")
+    @Operation(summary = "群组成员操作", description = "拉用户进群(type=add)或将用户移出群聊(type=minus)")
     @PostMapping
     public Result<Void> operateGroupUser(@Valid @RequestBody GroupUserOperateDTO dto) {
         if ("add".equals(dto.getType())) {
@@ -50,6 +50,13 @@ public class GroupUserController {
         } else {
             return Result.error("type参数错误，可选值：add、minus");
         }
+        return Result.success();
+    }
+
+    @Operation(summary = "退出群聊")
+    @DeleteMapping("/exit")
+    public Result<Void> exitGroup(@Parameter(description = "群组ID") @RequestParam("group_id") Long groupId) {
+        groupUserService.exitGroup(groupId);
         return Result.success();
     }
 }

@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.wsb.book.api.dto.BookBorrowDTO;
 import com.wsb.book.api.dto.BookBorrowUpdateDTO;
 import com.wsb.book.api.dto.BookReturnDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.vo.BookBorrowRecordVO;
 import com.wsb.book.api.vo.BookBorrowSummaryVO;
 import com.wsb.book.api.vo.BookBorrowVO;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 import com.wsb.book.domain.BookBorrow;
 
 /**
@@ -44,4 +46,6 @@ public interface BookBorrowService extends IService<BookBorrow> {
      * 修改借阅信息
      */
     void updateBorrow(BookBorrowUpdateDTO dto);
+
+    CommunityBorrowFlowVO createCommunityBorrowFlow(CommunityBorrowCreateDTO dto);
 }

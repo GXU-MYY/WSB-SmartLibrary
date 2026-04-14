@@ -56,7 +56,8 @@ public class UserController {
       @RequestParam(value = "user_id", required = false) Long userId,
       @RequestParam(value = "page", required = false, defaultValue = "1") Integer page,
       @RequestParam(value = "page_size", required = false, defaultValue = "10") Integer pageSize,
-      @RequestParam(value = "user_name", required = false) String userName) {
+      @RequestParam(value = "user_name", required = false) String userName,
+      @RequestParam(value = "phone", required = false) String phone) {
 
     // 详情
     if (userId != null) {
@@ -64,7 +65,7 @@ public class UserController {
     }
 
     // 列表
-    Page<UserInfoVO> userPage = userService.getUserList(page, pageSize, userName);
+    Page<UserInfoVO> userPage = userService.getUserList(page, pageSize, userName, phone);
     return Result.success(userPage);
   }
 

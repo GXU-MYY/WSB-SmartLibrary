@@ -2,8 +2,10 @@ package com.wsb.book.api;
 
 import com.wsb.book.api.dto.BookBorrowCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.PublicShelfBookDTO;
 import com.wsb.book.api.dto.ShelfRemoteDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.book.api.dto.UserBorrowStatsDTO;
@@ -11,8 +13,11 @@ import com.wsb.common.core.domain.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 
 import java.util.List;
 
@@ -45,6 +50,18 @@ public interface RemoteBookService {
      */
     @GetMapping("/shelf/batch")
     Result<List<ShelfRemoteDTO>> getShelfByIds(@RequestParam("ids") List<Long> shelfIds);
+
+    /**
+     * 鏍规嵁鐢ㄦ埛ID鍒楄〃鑾峰彇鍏紑涔︽灦
+     */
+    @GetMapping("/shelf/public")
+    Result<List<ShelfRemoteDTO>> getPublicShelvesByOwners(@RequestParam("user_ids") List<Long> userIds);
+
+    /**
+     * 鏍规嵁鐢ㄦ埛ID鍒楄〃鑾峰彇鍏紑涔︽灦涓殑鍥句功
+     */
+    @GetMapping("/shelf/public/books")
+    Result<List<PublicShelfBookDTO>> getPublicShelfBooksByOwners(@RequestParam("user_ids") List<Long> userIds);
 
     // ========== 书籍统计相关接口 ==========
 
@@ -123,4 +140,10 @@ public interface RemoteBookService {
      */
     @PutMapping("/book/rag/{bookId}/embedding-status")
     Result<Void> updateEmbeddingStatus(@PathVariable("bookId") Long bookId, @RequestParam("status") Integer status);
+
+    /**
+     * 鍒涘缓绀剧兢鍊熼槄娴佺▼
+     */
+    @PostMapping("/borrow/community/flow")
+    Result<CommunityBorrowFlowVO> createCommunityBorrowFlow(@RequestBody CommunityBorrowCreateDTO dto);
 }

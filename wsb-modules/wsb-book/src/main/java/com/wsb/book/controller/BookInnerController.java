@@ -2,15 +2,21 @@ package com.wsb.book.controller;
 
 import com.wsb.book.api.dto.BookBorrowCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.PublicShelfBookDTO;
+import com.wsb.book.api.dto.ShelfRemoteDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.book.api.dto.UserBorrowStatsDTO;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 import com.wsb.book.service.BookInnerService;
 import com.wsb.common.core.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,6 +42,16 @@ public class BookInnerController {
     @GetMapping("/book/batch")
     public Result<List<BookRemoteDTO>> getBooksByIds(@RequestParam(value = "ids", required = false) List<Long> bookIds) {
         return Result.success(bookInnerService.getBooksByIds(bookIds));
+    }
+
+    @GetMapping("/shelf/public")
+    public Result<List<ShelfRemoteDTO>> getPublicShelvesByOwners(@RequestParam(value = "user_ids", required = false) List<Long> userIds) {
+        return Result.success(bookInnerService.getPublicShelvesByOwners(userIds));
+    }
+
+    @GetMapping("/shelf/public/books")
+    public Result<List<PublicShelfBookDTO>> getPublicShelfBooksByOwners(@RequestParam(value = "user_ids", required = false) List<Long> userIds) {
+        return Result.success(bookInnerService.getPublicShelfBooksByOwners(userIds));
     }
 
     @GetMapping("/book/stats/user-count")
@@ -98,5 +114,10 @@ public class BookInnerController {
     public Result<Void> updateEmbeddingStatus(@PathVariable Long bookId, @RequestParam("status") Integer status) {
         bookInnerService.updateEmbeddingStatus(bookId, status);
         return Result.success();
+    }
+
+    @PostMapping("/borrow/community/flow")
+    public Result<CommunityBorrowFlowVO> createCommunityBorrowFlow(@RequestBody CommunityBorrowCreateDTO dto) {
+        return Result.success(bookInnerService.createCommunityBorrowFlow(dto));
     }
 }

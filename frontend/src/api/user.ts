@@ -35,7 +35,12 @@ export const getUserProfile = (userId: number) =>
 /**
  * 获取用户列表，用于群组邀请等场景。
  */
-export const getUsers = (params: { page?: number; page_size?: number; user_name?: string }) =>
+export const getUsers = (params: {
+  page?: number
+  page_size?: number
+  user_name?: string
+  phone?: string
+}) =>
   request.get<PageResult<UserInfo>>('/v1/admin/user', { params })
 
 /**

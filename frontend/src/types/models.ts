@@ -323,6 +323,54 @@ export interface ShareRecord {
   name?: string
 }
 
+export interface GroupPublicShelf {
+  id: number
+  shelfName: string
+  remark?: string
+  ownerUserId: number
+  ownerNickname?: string
+}
+
+export interface GroupPublicBook {
+  shelfId: number
+  shelfName: string
+  ownerUserId: number
+  ownerNickname?: string
+  bookId: number
+  title: string
+  author?: string
+  coverUrl?: string
+  isBorrowed?: boolean
+  isLentOut?: boolean
+  borrowable?: boolean
+}
+
+export interface GroupBorrowRequestPayload {
+  groupId: number
+  bookId: number
+  dueTime?: string
+  requestRemark?: string
+}
+
+export interface GroupBorrowRequest {
+  id: number
+  groupId: number
+  bookId: number
+  bookName: string
+  coverUrl?: string
+  shelfId?: number
+  shelfName?: string
+  ownerUserId: number
+  ownerNickname?: string
+  borrowerUserId: number
+  borrowerNickname?: string
+  dueTime?: string
+  requestRemark?: string
+  borrowFlowId?: string
+  status: number
+  createTime?: string
+}
+
 export interface CommentItem {
   id: number
   bookId: number

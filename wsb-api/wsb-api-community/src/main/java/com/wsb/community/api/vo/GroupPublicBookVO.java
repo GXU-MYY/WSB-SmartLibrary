@@ -1,4 +1,4 @@
-package com.wsb.book.api.dto;
+package com.wsb.community.api.vo;
 
 import lombok.Data;
 
@@ -6,23 +6,22 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 书籍远程调用DTO
+ * 群组公开图书 VO
  */
 @Data
-public class BookRemoteDTO implements Serializable {
+public class GroupPublicBookVO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    private Long id;
+    private Long shelfId;
+    private String shelfName;
+    private Long ownerUserId;
+    private String ownerNickname;
+    private Long bookId;
     private String title;
-    private String subtitle;
     private String author;
-    private String summary;
-    private String keyword;
-    private String label;
     private String coverUrl;
-    private Integer embeddingStatus;
-    private Long userId;
     private Boolean isBorrowed;
     private Boolean isLentOut;
+    private Boolean borrowable;
 }

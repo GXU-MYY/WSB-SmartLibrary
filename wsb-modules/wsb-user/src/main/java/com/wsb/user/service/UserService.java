@@ -22,7 +22,7 @@ public interface UserService extends IService<User> {
 
   UserRemoteDTO getUserInfoByUsername(String username);
 
-  Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName);
+  Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName, String phone);
 
   UserInfoVO getUserInfoByUserId(Long userId);
 
