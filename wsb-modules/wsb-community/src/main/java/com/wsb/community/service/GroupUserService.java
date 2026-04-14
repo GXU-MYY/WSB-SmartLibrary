@@ -35,6 +35,14 @@ public interface GroupUserService extends IService<GroupUser> {
     void removeUsers(GroupUserOperateDTO dto);
 
     /**
+     * 群主移除指定成员
+     *
+     * @param groupId 群组ID
+     * @param userId  用户ID
+     */
+    void kickUser(Long groupId, Long userId);
+
+    /**
      * 当前登录用户退出群聊
      *
      * @param groupId 群组ID

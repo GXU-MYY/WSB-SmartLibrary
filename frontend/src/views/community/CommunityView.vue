@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
-import { getMyBooks, getShelves } from '@/api/book'
 import {
   approveGroupBorrowRequest,
   createGroup,
@@ -13,10 +12,9 @@ import {
   getGroupPublicShelves,
   getGroupUsers,
   getGroups,
-  getShareRecords,
   operateGroupUsers,
+  removeGroupMember,
   rejectGroupBorrowRequest,
-  shareToGroup,
 } from '@/api/community'
 import { getUsers } from '@/api/user'
 import EmptyState from '@/components/EmptyState.vue'
@@ -32,9 +30,6 @@ import type {
   GroupPublicBook,
   GroupPublicShelf,
   GroupUser,
-  MyBookList,
-  ShareRecord,
-  Shelf,
   UserInfo,
 } from '@/types/models'
 import { formatDateTime, normalizePage } from '@/utils/format'
@@ -51,98 +46,78 @@ const savingGroup = ref(false)
 const savingMembers = ref(false)
 const searchingCreateMember = ref(false)
 const searchingInviteMember = ref(false)
-const sharing = ref(false)
 const requestingBookId = ref<number | null>(null)
 const handlingRequestId = ref<number | null>(null)
 
 const groups = ref<Group[]>([])
-const selectedGroupId = ref(0)
 const members = ref<GroupUser[]>([])
-const shareRecords = ref<ShareRecord[]>([])
 const publicShelves = ref<GroupPublicShelf[]>([])
 const publicBooks = ref<GroupPublicBook[]>([])
 const borrowRequests = ref<GroupBorrowRequest[]>([])
-const myBooks = ref<MyBookList | null>(null)
-const myShelves = ref<Shelf[]>([])
 
+const selectedGroupId = ref(0)
 const showCreateDialog = ref(false)
 const showInviteDialog = ref(false)
 const memberDetailUserId = ref<number | null>(null)
+const selectedShelfId = ref<number | null>(null)
 
-const selectedCreateMembers = ref<UserInfo[]>([])
-const selectedInviteMembers = ref<UserInfo[]>([])
 const createMemberPhone = ref('')
 const inviteMemberPhone = ref('')
+const selectedCreateMembers = ref<UserInfo[]>([])
+const selectedInviteMembers = ref<UserInfo[]>([])
 
 const groupForm = reactive({
   groupName: '',
   remark: '',
 })
 
-const shareType = ref<'book' | 'bookshelf'>('book')
-const shareTargetId = ref(0)
+const toId = (value: number | string | null | undefined) => Number(value || 0)
+const isSameId = (left: number | string | null | undefined, right: number | string | null | undefined) =>
+  toId(left) === toId(right)
 
+const currentUserId = computed(() => toId(userStore.userInfo?.id || userStore.loginId))
 const selectedGroup = computed(
-  () => groups.value.find((item) => item.id === selectedGroupId.value) || null,
+  () => groups.value.find((item) => isSameId(item.id, selectedGroupId.value)) || null,
 )
-const currentUserId = computed(() => Number(userStore.userInfo?.id || 0))
-const isOwner = computed(() => selectedGroup.value?.ownerId === currentUserId.value)
+const isOwner = computed(() => isSameId(selectedGroup.value?.ownerId, currentUserId.value))
 const selectedMember = computed(
-  () => members.value.find((item) => item.userId === memberDetailUserId.value) || null,
+  () => members.value.find((item) => isSameId(item.userId, memberDetailUserId.value)) || null,
 )
-
-const shareTargetOptions = computed(() => {
-  if (shareType.value === 'book') {
-    return (myBooks.value?.books || []).map((book) => ({
-      id: book.id,
-      label: book.title,
-    }))
-  }
-
-  return myShelves.value.map((shelf) => ({
-    id: shelf.id,
-    label: shelf.shelfName,
-  }))
-})
-
-const incomingRequests = computed(() =>
-  borrowRequests.value.filter((item) => item.ownerUserId === currentUserId.value),
-)
-
-const outgoingRequests = computed(() =>
-  borrowRequests.value.filter((item) => item.borrowerUserId === currentUserId.value),
-)
-
 const selectedMemberShelves = computed(() =>
   memberDetailUserId.value == null
     ? []
-    : publicShelves.value.filter((item) => item.ownerUserId === memberDetailUserId.value),
+    : publicShelves.value.filter((item) => isSameId(item.ownerUserId, memberDetailUserId.value)),
 )
-
-const selectedMemberBooks = computed(() =>
-  memberDetailUserId.value == null
-    ? []
-    : publicBooks.value.filter((item) => item.ownerUserId === memberDetailUserId.value),
+const selectedShelf = computed(
+  () => selectedMemberShelves.value.find((item) => isSameId(item.id, selectedShelfId.value)) || null,
 )
+const selectedShelfBooks = computed(() => {
+  if (memberDetailUserId.value == null || selectedShelfId.value == null) {
+    return []
+  }
 
-const loadBaseResources = async () => {
-  const [booksResult, shelvesResult] = await Promise.all([getMyBooks(), getShelves()])
-  myBooks.value = booksResult
-  myShelves.value = shelvesResult
-}
+  return publicBooks.value.filter(
+    (item) =>
+      isSameId(item.ownerUserId, memberDetailUserId.value) &&
+      isSameId(item.shelfId, selectedShelfId.value),
+  )
+})
+const incomingRequests = computed(() =>
+  borrowRequests.value.filter((item) => isSameId(item.ownerUserId, currentUserId.value)),
+)
+const outgoingRequests = computed(() =>
+  borrowRequests.value.filter((item) => isSameId(item.borrowerUserId, currentUserId.value)),
+)
 
 const loadWorkspace = async (groupId: number) => {
-  const [membersResult, recordsResult, shelvesResult, booksResult, requestsResult] =
-    await Promise.allSettled([
-      getGroupUsers(groupId, 'in'),
-      getShareRecords(groupId),
-      getGroupPublicShelves(groupId),
-      getGroupPublicBooks(groupId),
-      getGroupBorrowRequests(groupId),
-    ])
+  const [membersResult, shelvesResult, booksResult, requestsResult] = await Promise.allSettled([
+    getGroupUsers(groupId, 'in'),
+    getGroupPublicShelves(groupId),
+    getGroupPublicBooks(groupId),
+    getGroupBorrowRequests(groupId),
+  ])
 
   members.value = membersResult.status === 'fulfilled' ? membersResult.value : []
-  shareRecords.value = recordsResult.status === 'fulfilled' ? recordsResult.value : []
   publicShelves.value = shelvesResult.status === 'fulfilled' ? shelvesResult.value : []
   publicBooks.value = booksResult.status === 'fulfilled' ? booksResult.value : []
   borrowRequests.value = requestsResult.status === 'fulfilled' ? requestsResult.value : []
@@ -169,7 +144,7 @@ const loadGroups = async () => {
 const loadPage = async () => {
   loading.value = true
   try {
-    await Promise.all([loadBaseResources(), loadGroups()])
+    await loadGroups()
   } finally {
     loading.value = false
   }
@@ -191,7 +166,7 @@ const findUserByPhone = async (phone: string) => {
   const records = normalizePage(result).records
   const exact = records.find((user) => user.phone === normalized) || records[0]
   if (!exact) {
-    notifyError('未找到该手机号对应的用户')
+    notifyError('没有找到该手机号对应的用户')
     return null
   }
 
@@ -205,6 +180,11 @@ const resetCreateDialog = () => {
   selectedCreateMembers.value = []
 }
 
+const resetInviteDialog = () => {
+  inviteMemberPhone.value = ''
+  selectedInviteMembers.value = []
+}
+
 const openCreateDialog = () => {
   resetCreateDialog()
   showCreateDialog.value = true
@@ -215,20 +195,16 @@ const closeCreateDialog = () => {
   resetCreateDialog()
 }
 
-const resetInviteDialog = () => {
-  inviteMemberPhone.value = ''
-  selectedInviteMembers.value = []
-}
-
 const openInviteDialog = () => {
   if (!selectedGroup.value) {
     notifyError('请先选择群组')
     return
   }
   if (!isOwner.value) {
-    notifyError('只有群主可以邀请新成员')
+    notifyError('只有群主可以邀请成员')
     return
   }
+
   resetInviteDialog()
   showInviteDialog.value = true
 }
@@ -240,20 +216,28 @@ const closeInviteDialog = () => {
 
 const openMemberDetail = (member: GroupUser) => {
   memberDetailUserId.value = member.userId
+  selectedShelfId.value = null
 }
 
 const closeMemberDetail = () => {
   memberDetailUserId.value = null
+  selectedShelfId.value = null
 }
 
+const selectShelf = (shelfId: number) => {
+  selectedShelfId.value = shelfId
+}
+
+const isCurrentMember = (member: GroupUser) => isSameId(member.userId, currentUserId.value)
+
 const getMemberRoleText = (member: GroupUser) =>
-  selectedGroup.value?.ownerId === member.userId ? '群主' : '群成员'
+  isSameId(selectedGroup.value?.ownerId, member.userId) ? '群主' : '成员'
 
 const getMemberPublicShelfCount = (userId: number) =>
-  publicShelves.value.filter((item) => item.ownerUserId === userId).length
+  publicShelves.value.filter((item) => isSameId(item.ownerUserId, userId)).length
 
-const getMemberPublicBookCount = (userId: number) =>
-  publicBooks.value.filter((item) => item.ownerUserId === userId).length
+const getMemberBorrowableBookCount = (userId: number) =>
+  publicBooks.value.filter((item) => isSameId(item.ownerUserId, userId) && item.borrowable).length
 
 const handleAddCreateMember = async () => {
   searchingCreateMember.value = true
@@ -262,11 +246,11 @@ const handleAddCreateMember = async () => {
     if (!user) {
       return
     }
-    if (user.id === currentUserId.value) {
+    if (isSameId(user.id, currentUserId.value)) {
       notifyError('只需要添加其他初始成员')
       return
     }
-    if (selectedCreateMembers.value.some((item) => item.id === user.id)) {
+    if (selectedCreateMembers.value.some((item) => isSameId(item.id, user.id))) {
       notifyError('该用户已经在初始成员列表中')
       return
     }
@@ -291,15 +275,15 @@ const handleAddInviteMember = async () => {
     if (!user) {
       return
     }
-    if (user.id === currentUserId.value) {
-      notifyError('你已经在该群组中')
+    if (isSameId(user.id, currentUserId.value)) {
+      notifyError('你已经在这个群组里了')
       return
     }
-    if (members.value.some((member) => member.userId === user.id)) {
+    if (members.value.some((member) => isSameId(member.userId, user.id))) {
       notifyError('该用户已经是群成员')
       return
     }
-    if (selectedInviteMembers.value.some((item) => item.id === user.id)) {
+    if (selectedInviteMembers.value.some((item) => isSameId(item.id, user.id))) {
       notifyError('该用户已经在待邀请列表中')
       return
     }
@@ -321,7 +305,8 @@ const removeSelectedInviteMember = (userId: number) => {
 }
 
 const handleCreateGroup = async () => {
-  if (!groupForm.groupName.trim()) {
+  const groupName = groupForm.groupName.trim()
+  if (!groupName) {
     notifyError('请先填写群组名称')
     return
   }
@@ -329,7 +314,7 @@ const handleCreateGroup = async () => {
   savingGroup.value = true
   try {
     const result = await createGroup({
-      groupName: groupForm.groupName.trim(),
+      groupName,
       remark: groupForm.remark.trim() || undefined,
       userIds: selectedCreateMembers.value.map((user) => user.id),
     })
@@ -364,7 +349,7 @@ const handleInviteMembers = async () => {
 }
 
 const handleRemoveMember = async (member: GroupUser) => {
-  if (!selectedGroup.value || !isOwner.value) {
+  if (!selectedGroup.value || !isOwner.value || isCurrentMember(member)) {
     return
   }
 
@@ -373,14 +358,10 @@ const handleRemoveMember = async (member: GroupUser) => {
     return
   }
 
-  await operateGroupUsers({
-    groupId: selectedGroup.value.id,
-    userIds: [member.userId],
-    type: 'minus',
-  })
-  notifySuccess('成员已移出群聊')
+  await removeGroupMember(selectedGroup.value.id, member.userId)
+  notifySuccess('成员已被移出群聊')
 
-  if (member.userId === memberDetailUserId.value) {
+  if (isSameId(member.userId, memberDetailUserId.value)) {
     closeMemberDetail()
   }
   await loadWorkspace(selectedGroup.value.id)
@@ -392,13 +373,13 @@ const handleExitGroup = async () => {
   }
 
   const groupName = selectedGroup.value.groupName
-  const ok = window.confirm(`确认退出群聊「${groupName}」吗？`)
+  const ok = window.confirm(`确认退出群聊“${groupName}”吗？`)
   if (!ok) {
     return
   }
 
   await exitGroup(selectedGroup.value.id)
-  notifySuccess(`你已退出群聊「${groupName}」`)
+  notifySuccess(`你已退出群聊“${groupName}”`)
   closeMemberDetail()
   await loadGroups()
 }
@@ -409,7 +390,7 @@ const handleDeleteGroup = async () => {
   }
 
   const groupName = selectedGroup.value.groupName
-  const ok = window.confirm(`确认解散群组「${groupName}」吗？此操作不可撤销。`)
+  const ok = window.confirm(`确认解散群组“${groupName}”吗？此操作不可撤销。`)
   if (!ok) {
     return
   }
@@ -422,41 +403,21 @@ const handleDeleteGroup = async () => {
   await loadGroups()
 }
 
-const handleShare = async () => {
-  if (!selectedGroup.value || !shareTargetId.value) {
-    notifyError('请选择要分享的内容')
-    return
-  }
-
-  sharing.value = true
-  try {
-    await shareToGroup({
-      groupId: selectedGroup.value.id,
-      bookId: shareType.value === 'book' ? shareTargetId.value : undefined,
-      bookshelfId: shareType.value === 'bookshelf' ? shareTargetId.value : undefined,
-    })
-    notifySuccess('内容已分享至群组')
-    await loadWorkspace(selectedGroup.value.id)
-  } finally {
-    sharing.value = false
-  }
-}
-
 const hasPendingRequest = (bookId: number) =>
   borrowRequests.value.some(
     (item) =>
-      item.bookId === bookId &&
-      item.borrowerUserId === currentUserId.value &&
+      isSameId(item.bookId, bookId) &&
+      isSameId(item.borrowerUserId, currentUserId.value) &&
       item.status === PENDING_STATUS,
   )
 
 const canRequestBorrow = (book: GroupPublicBook) =>
   Boolean(book.borrowable) &&
-  book.ownerUserId !== currentUserId.value &&
+  !isSameId(book.ownerUserId, currentUserId.value) &&
   !hasPendingRequest(book.bookId)
 
 const getBorrowButtonLabel = (book: GroupPublicBook) => {
-  if (book.ownerUserId === currentUserId.value) {
+  if (isSameId(book.ownerUserId, currentUserId.value)) {
     return '我的图书'
   }
   if (hasPendingRequest(book.bookId)) {
@@ -479,7 +440,7 @@ const handleBorrowRequest = async (book: GroupPublicBook) => {
       groupId: selectedGroup.value.id,
       bookId: book.bookId,
     })
-    notifySuccess(`已向 ${book.ownerNickname || '书主'} 发起借阅申请`)
+    notifySuccess(`已向 ${book.ownerNickname || '书主'} 发起借阅请求`)
     await loadWorkspace(selectedGroup.value.id)
   } finally {
     requestingBookId.value = null
@@ -494,7 +455,7 @@ const handleApproveRequest = async (request: GroupBorrowRequest) => {
   handlingRequestId.value = request.id
   try {
     await approveGroupBorrowRequest(request.id)
-    notifySuccess('借阅申请已同意')
+    notifySuccess('借阅请求已同意')
     await loadWorkspace(selectedGroup.value.id)
   } finally {
     handlingRequestId.value = null
@@ -509,7 +470,7 @@ const handleRejectRequest = async (request: GroupBorrowRequest) => {
   handlingRequestId.value = request.id
   try {
     await rejectGroupBorrowRequest(request.id)
-    notifySuccess('借阅申请已拒绝')
+    notifySuccess('借阅请求已拒绝')
     await loadWorkspace(selectedGroup.value.id)
   } finally {
     handlingRequestId.value = null
@@ -536,21 +497,19 @@ const requestStatusClass = (status: number) => ({
 watch(selectedGroupId, async (groupId) => {
   closeInviteDialog()
   closeMemberDetail()
-  shareTargetId.value = 0
 
   if (groupId) {
     await loadWorkspace(groupId)
   } else {
     members.value = []
-    shareRecords.value = []
     publicShelves.value = []
     publicBooks.value = []
     borrowRequests.value = []
   }
 })
 
-watch(shareType, () => {
-  shareTargetId.value = 0
+watch(memberDetailUserId, () => {
+  selectedShelfId.value = null
 })
 
 useRegisterPageRefresh(loadPage)
@@ -561,13 +520,13 @@ onMounted(loadPage)
   <div class="page-shell page-stack">
     <PageIntro
       eyebrow="Community Desk"
-      title="把群组协作放进同一个阅读工作区"
-      description="在这里选择群组、邀请成员、处理借阅申请，也可以把自己的图书和书架分享给群成员。"
+      title="把群组协作收进同一个阅读工作区"
+      description="在这里选择群组、邀请成员、处理借阅申请，并通过成员卡片查看对方公开出来的书架与可借图书。"
     />
 
     <section class="community-layout">
       <div class="community-sidebar">
-        <SectionPanel title="选择群组" hint="切换群组后，中间工作区会同步更新。">
+        <SectionPanel title="选择群组" hint="切换群组后，中间工作区会同步刷新。">
           <template #actions>
             <button class="button button--primary" type="button" @click="openCreateDialog">
               创建群组
@@ -579,52 +538,28 @@ onMounted(loadPage)
               v-for="group in groups"
               :key="group.id"
               class="group-switcher__item focus-ring"
-              :class="{ 'is-active': selectedGroupId === group.id }"
+              :class="{ 'is-active': isSameId(selectedGroupId, group.id) }"
               type="button"
               @click="selectedGroupId = group.id"
             >
-              <strong>{{ group.groupName }}</strong>
-              <p>{{ group.remark || '暂无群组说明' }}</p>
+              <div class="group-switcher__head">
+                <strong>{{ group.groupName }}</strong>
+                <span class="group-switcher__badge">
+                  {{ isSameId(group.ownerId, currentUserId) ? '我是群主' : '群成员' }}
+                </span>
+              </div>
+              <p>{{ group.remark || '这个群组还没有补充说明。' }}</p>
             </button>
+
             <p v-if="!groups.length" class="muted">还没有可用群组，先创建一个吧。</p>
           </div>
-        </SectionPanel>
-
-        <SectionPanel
-          title="分享工作台"
-          hint="把自己的图书或书架分享给当前群组，让协作从内容流动开始。"
-        >
-          <div v-if="selectedGroup" class="section-stack">
-            <div class="field">
-              <label>分享类型</label>
-              <select v-model="shareType">
-                <option value="book">图书</option>
-                <option value="bookshelf">书架</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label>目标内容</label>
-              <select v-model.number="shareTargetId">
-                <option :value="0" disabled>选择内容</option>
-                <option v-for="item in shareTargetOptions" :key="item.id" :value="item.id">
-                  {{ item.label }}
-                </option>
-              </select>
-            </div>
-
-            <button class="button button--primary" type="button" :disabled="sharing" @click="handleShare">
-              {{ sharing ? '分享中...' : `分享至 ${selectedGroup.groupName}` }}
-            </button>
-          </div>
-          <EmptyState v-else title="先选择群组" />
         </SectionPanel>
       </div>
 
       <SectionPanel
         class="community-workspace"
         title="群组工作区"
-        hint="成员、借阅申请和分享记录集中在这里处理。"
+        hint="成员、书架和借阅申请都集中在这里处理。"
       >
         <LoadingState v-if="loading && !selectedGroup" />
 
@@ -687,29 +622,34 @@ onMounted(loadPage)
             <section class="section-block">
               <div class="section-title">
                 <h4>群成员</h4>
-                <p>点击成员卡片查看对方公开书架和可借图书。仅群主可以移除成员。</p>
+                <p>点击成员卡片先查看对方公开书架，再进入书架详情浏览图书并发起借阅。</p>
               </div>
 
               <div v-if="members.length" class="member-grid">
                 <article
                   v-for="member in members"
-                  :key="member.id"
+                  :key="member.userId"
                   class="panel-card member-profile-card focus-ring"
+                  :class="{ 'is-self': isCurrentMember(member) }"
                   @click="openMemberDetail(member)"
                 >
-                  <UserAvatar :name="member.nickname" :size="68" />
+                  <UserAvatar :src="member.avatar" :name="member.nickname" :size="72" />
+
+                  <div class="member-profile-card__tags">
+                    <span class="member-profile-card__role">{{ getMemberRoleText(member) }}</span>
+                    <span v-if="isCurrentMember(member)" class="member-profile-card__self-badge">本人</span>
+                  </div>
+
                   <strong>{{ member.nickname }}</strong>
-                  <span class="member-profile-card__role">{{ getMemberRoleText(member) }}</span>
                   <p class="member-profile-card__meta">
-                    {{ member.joinTime ? formatDateTime(member.joinTime) : '刚加入' }}
+                    {{ getMemberPublicShelfCount(member.userId) }} 个公开书架
                   </p>
                   <p class="member-profile-card__meta">
-                    {{ getMemberPublicShelfCount(member.userId) }} 个公开书架 ·
-                    {{ getMemberPublicBookCount(member.userId) }} 本公开图书
+                    {{ getMemberBorrowableBookCount(member.userId) }} 本可借图书
                   </p>
 
                   <button
-                    v-if="isOwner && member.userId !== currentUserId"
+                    v-if="isOwner && !isCurrentMember(member)"
                     class="button button--ghost member-profile-card__remove"
                     type="button"
                     @click.stop="handleRemoveMember(member)"
@@ -718,6 +658,7 @@ onMounted(loadPage)
                   </button>
                 </article>
               </div>
+
               <EmptyState v-else title="当前群组还没有成员" />
             </section>
 
@@ -742,14 +683,15 @@ onMounted(loadPage)
                     >
                       <div class="request-card__head">
                         <strong>{{ request.bookName }}</strong>
-                        <span :class="requestStatusClass(request.status)">{{ requestStatusText(request.status) }}</span>
+                        <span :class="requestStatusClass(request.status)">
+                          {{ requestStatusText(request.status) }}
+                        </span>
                       </div>
-                      <p>
-                        {{ request.borrowerNickname || `用户 ${request.borrowerUserId}` }}
-                        想借阅这本书
-                      </p>
+                      <p>{{ request.borrowerNickname || `用户 ${request.borrowerUserId}` }} 想借这本书。</p>
                       <span>来源书架：{{ request.shelfName || '公开书架' }}</span>
-                      <span>申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}</span>
+                      <span>
+                        申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}
+                      </span>
                       <span>预计归还：{{ request.dueTime || '未填写' }}</span>
                       <span v-if="request.requestRemark">备注：{{ request.requestRemark }}</span>
 
@@ -773,6 +715,7 @@ onMounted(loadPage)
                       </div>
                     </article>
                   </div>
+
                   <EmptyState v-else title="还没有收到借阅申请" />
                 </div>
 
@@ -790,36 +733,22 @@ onMounted(loadPage)
                     >
                       <div class="request-card__head">
                         <strong>{{ request.bookName }}</strong>
-                        <span :class="requestStatusClass(request.status)">{{ requestStatusText(request.status) }}</span>
+                        <span :class="requestStatusClass(request.status)">
+                          {{ requestStatusText(request.status) }}
+                        </span>
                       </div>
-                      <p>向 {{ request.ownerNickname || `用户 ${request.ownerUserId}` }} 发起了借阅申请</p>
+                      <p>向 {{ request.ownerNickname || `用户 ${request.ownerUserId}` }} 发起了借阅申请。</p>
                       <span>来源书架：{{ request.shelfName || '公开书架' }}</span>
-                      <span>申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}</span>
+                      <span>
+                        申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}
+                      </span>
                       <span>预计归还：{{ request.dueTime || '未填写' }}</span>
                     </article>
                   </div>
+
                   <EmptyState v-else title="你还没有发起借阅申请" />
                 </div>
               </div>
-            </section>
-
-            <section class="section-block">
-              <div class="section-title">
-                <h4>群组分享记录</h4>
-                <p>记录图书和书架的分享轨迹，方便群内成员快速回顾内容流转。</p>
-              </div>
-
-              <div v-if="shareRecords.length" class="share-log">
-                <article v-for="record in shareRecords" :key="record.id" class="panel-card share-log__item">
-                  <strong>{{ record.name || `目标 #${record.targetId}` }}</strong>
-                  <p>
-                    {{ record.nickName || `用户 ${record.sharePerson}` }}
-                    · {{ record.shareType }}
-                    · {{ record.shareTime ? formatDateTime(record.shareTime) : '未知时间' }}
-                  </p>
-                </article>
-              </div>
-              <EmptyState v-else title="当前群组还没有分享记录" />
             </section>
           </div>
         </template>
@@ -835,7 +764,7 @@ onMounted(loadPage)
             <div>
               <span class="eyebrow">Create Group</span>
               <h2>创建群组</h2>
-              <p>可以按手机号补充初始成员，也可以先创建群组后再邀请。</p>
+              <p>先完成群名称和说明，再按手机号补充初始成员。</p>
             </div>
             <button class="button button--ghost desk-dialog__close" type="button" @click="closeCreateDialog">
               关闭
@@ -846,12 +775,15 @@ onMounted(loadPage)
             <div class="section-stack">
               <div class="field">
                 <label>群组名称</label>
-                <input v-model="groupForm.groupName" type="text" placeholder="例如：设计书共读组" />
+                <input v-model="groupForm.groupName" type="text" placeholder="例如：设计阅读共学组" />
               </div>
 
               <div class="field">
                 <label>群组说明</label>
-                <textarea v-model="groupForm.remark" placeholder="描述这个群组的阅读主题和协作方式。" />
+                <textarea
+                  v-model="groupForm.remark"
+                  placeholder="描述这个群组的阅读主题、协作方式或适合加入的人。"
+                />
               </div>
 
               <div class="field">
@@ -875,10 +807,17 @@ onMounted(loadPage)
               </div>
 
               <div class="selected-user-list">
-                <article v-for="user in selectedCreateMembers" :key="user.id" class="selected-user-card">
-                  <div>
-                    <strong>{{ user.nickName || user.userName }}</strong>
-                    <p>{{ user.phone || '未绑定手机号' }}</p>
+                <article
+                  v-for="user in selectedCreateMembers"
+                  :key="user.id"
+                  class="selected-user-card"
+                >
+                  <div class="selected-user-card__info">
+                    <UserAvatar :src="user.avatar" :name="user.nickName || user.userName" :size="44" />
+                    <div>
+                      <strong>{{ user.nickName || user.userName }}</strong>
+                      <p>{{ user.phone || '未绑定手机号' }}</p>
+                    </div>
                   </div>
                   <button class="button button--ghost" type="button" @click="removeSelectedCreateMember(user.id)">
                     移除
@@ -906,7 +845,7 @@ onMounted(loadPage)
             <div>
               <span class="eyebrow">Invite Members</span>
               <h2>邀请成员</h2>
-              <p>按手机号查找用户，然后加入待邀请列表。</p>
+              <p>通过手机号查找用户，加入待邀请列表后统一邀请入群。</p>
             </div>
             <button class="button button--ghost desk-dialog__close" type="button" @click="closeInviteDialog">
               关闭
@@ -936,10 +875,17 @@ onMounted(loadPage)
               </div>
 
               <div class="selected-user-list">
-                <article v-for="user in selectedInviteMembers" :key="user.id" class="selected-user-card">
-                  <div>
-                    <strong>{{ user.nickName || user.userName }}</strong>
-                    <p>{{ user.phone || '未绑定手机号' }}</p>
+                <article
+                  v-for="user in selectedInviteMembers"
+                  :key="user.id"
+                  class="selected-user-card"
+                >
+                  <div class="selected-user-card__info">
+                    <UserAvatar :src="user.avatar" :name="user.nickName || user.userName" :size="44" />
+                    <div>
+                      <strong>{{ user.nickName || user.userName }}</strong>
+                      <p>{{ user.phone || '未绑定手机号' }}</p>
+                    </div>
                   </div>
                   <button class="button button--ghost" type="button" @click="removeSelectedInviteMember(user.id)">
                     移除
@@ -970,76 +916,111 @@ onMounted(loadPage)
         <section class="surface-card desk-dialog desk-dialog--wide member-detail-dialog">
           <header class="desk-dialog__head">
             <div>
-              <span class="eyebrow">Member Profile</span>
+              <span class="eyebrow">Member Shelves</span>
               <h2>{{ selectedMember.nickname }}</h2>
-              <p>查看这位成员公开出来的书架与可借图书。</p>
+              <p>先查看对方公开书架，再进入书架详情浏览图书并发起借阅。</p>
             </div>
-            <button class="button button--ghost desk-dialog__close" type="button" @click="closeMemberDetail">
-              关闭
-            </button>
+
+            <div class="desk-dialog__head-actions">
+              <button
+                v-if="isOwner && !isCurrentMember(selectedMember)"
+                class="button button--ghost"
+                type="button"
+                @click="handleRemoveMember(selectedMember)"
+              >
+                踢出群聊
+              </button>
+              <button class="button button--ghost desk-dialog__close" type="button" @click="closeMemberDetail">
+                关闭
+              </button>
+            </div>
           </header>
 
           <div class="desk-dialog__body">
             <div class="member-detail-head panel-card">
-              <UserAvatar :name="selectedMember.nickname" :size="72" />
+              <UserAvatar :src="selectedMember.avatar" :name="selectedMember.nickname" :size="76" />
               <div>
                 <strong>{{ selectedMember.nickname }}</strong>
-                <p>{{ getMemberRoleText(selectedMember) }}</p>
-                <span>{{ selectedMember.joinTime ? formatDateTime(selectedMember.joinTime) : '加入时间未知' }}</span>
+                <div class="member-detail-head__tags">
+                  <span class="member-profile-card__role">{{ getMemberRoleText(selectedMember) }}</span>
+                  <span v-if="isCurrentMember(selectedMember)" class="member-profile-card__self-badge">本人</span>
+                </div>
+                <p>
+                  {{ getMemberPublicShelfCount(selectedMember.userId) }} 个公开书架 ·
+                  {{ getMemberBorrowableBookCount(selectedMember.userId) }} 本可借图书
+                </p>
               </div>
             </div>
 
-            <div class="section-stack">
-              <section class="section-block">
-                <div class="section-title">
-                  <h4>公开书架</h4>
-                  <p>只有群成员主动公开的书架会显示在这里。</p>
-                </div>
+            <section class="section-block">
+              <div class="section-title">
+                <h4>公开书架</h4>
+                <p>点击“查看书架详情”后，再显示这个书架下可供借阅的图书。</p>
+              </div>
 
-                <div v-if="selectedMemberShelves.length" class="public-shelf-grid">
-                  <article v-for="shelf in selectedMemberShelves" :key="shelf.id" class="panel-card public-shelf-card">
+              <div v-if="selectedMemberShelves.length" class="public-shelf-grid">
+                <article
+                  v-for="shelf in selectedMemberShelves"
+                  :key="shelf.id"
+                  class="panel-card public-shelf-card"
+                  :class="{ 'is-active': selectedShelfId === shelf.id }"
+                >
+                  <div class="public-shelf-card__content">
                     <strong>{{ shelf.shelfName }}</strong>
                     <p>{{ shelf.remark || '这个书架还没有补充说明。' }}</p>
-                  </article>
-                </div>
-                <EmptyState v-else title="这个成员还没有公开书架" />
-              </section>
-
-              <section class="section-block">
-                <div class="section-title">
-                  <h4>可借公开图书</h4>
-                  <p>如果图书当前可借，你可以在这里直接发起借阅申请。</p>
-                </div>
-
-                <div v-if="selectedMemberBooks.length" class="public-book-list">
-                  <article
-                    v-for="book in selectedMemberBooks"
-                    :key="`${book.shelfId}-${book.bookId}`"
-                    class="panel-card public-book-card"
+                  </div>
+                  <button
+                    class="button"
+                    :class="selectedShelfId === shelf.id ? 'button--primary' : 'button--ghost'"
+                    type="button"
+                    @click="selectShelf(shelf.id)"
                   >
-                    <img v-if="book.coverUrl" :src="book.coverUrl" :alt="book.title" class="public-book-card__cover" />
-                    <div v-else class="public-book-card__cover is-placeholder">书</div>
+                    {{ selectedShelfId === shelf.id ? '正在查看' : '查看书架详情' }}
+                  </button>
+                </article>
+              </div>
+              <EmptyState v-else title="这个成员还没有公开书架" />
+            </section>
 
-                    <div class="public-book-card__body">
-                      <strong>{{ book.title }}</strong>
-                      <p>{{ book.author || '作者未填写' }}</p>
-                      <span>{{ book.shelfName }}</span>
-                    </div>
+            <section v-if="selectedShelf" class="section-block">
+              <div class="section-title">
+                <h4>书架详情</h4>
+                <p>当前书架：{{ selectedShelf.shelfName }}</p>
+              </div>
 
-                    <button
-                      class="button public-book-card__action"
-                      :class="canRequestBorrow(book) ? 'button--primary' : 'button--ghost'"
-                      type="button"
-                      :disabled="!canRequestBorrow(book) || requestingBookId === book.bookId"
-                      @click="handleBorrowRequest(book)"
-                    >
-                      {{ requestingBookId === book.bookId ? '申请中...' : getBorrowButtonLabel(book) }}
-                    </button>
-                  </article>
-                </div>
-                <EmptyState v-else title="这个成员还没有公开图书" />
-              </section>
-            </div>
+              <div v-if="selectedShelfBooks.length" class="public-book-list">
+                <article
+                  v-for="book in selectedShelfBooks"
+                  :key="`${book.shelfId}-${book.bookId}`"
+                  class="panel-card public-book-card"
+                >
+                  <img
+                    v-if="book.coverUrl"
+                    :src="book.coverUrl"
+                    :alt="book.title"
+                    class="public-book-card__cover"
+                  />
+                  <div v-else class="public-book-card__cover is-placeholder">书</div>
+
+                  <div class="public-book-card__body">
+                    <strong>{{ book.title }}</strong>
+                    <p>{{ book.author || '作者未填写' }}</p>
+                    <span>{{ selectedShelf.shelfName }}</span>
+                  </div>
+
+                  <button
+                    class="button public-book-card__action"
+                    :class="canRequestBorrow(book) ? 'button--primary' : 'button--ghost'"
+                    type="button"
+                    :disabled="!canRequestBorrow(book) || requestingBookId === book.bookId"
+                    @click="handleBorrowRequest(book)"
+                  >
+                    {{ requestingBookId === book.bookId ? '申请中...' : getBorrowButtonLabel(book) }}
+                  </button>
+                </article>
+              </div>
+              <EmptyState v-else title="这个书架下还没有公开图书" />
+            </section>
           </div>
         </section>
       </div>
@@ -1050,8 +1031,8 @@ onMounted(loadPage)
 <style scoped>
 .community-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -1067,7 +1048,6 @@ onMounted(loadPage)
 
 .section-stack,
 .request-list,
-.share-log,
 .group-switcher {
   display: grid;
   gap: 14px;
@@ -1084,13 +1064,20 @@ onMounted(loadPage)
 
 .group-switcher__item {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   padding: 16px;
   text-align: left;
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
     background 0.18s ease;
+}
+
+.group-switcher__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .group-switcher__item strong,
@@ -1101,6 +1088,19 @@ onMounted(loadPage)
 .group-switcher__item p {
   color: var(--sl-ink-soft);
   line-height: 1.6;
+}
+
+.group-switcher__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(31, 95, 107, 0.12);
+  color: var(--sl-brand-strong);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .group-switcher__item.is-active {
@@ -1189,16 +1189,25 @@ onMounted(loadPage)
 .field textarea,
 .field select {
   width: 100%;
-  border: 1px solid var(--sl-border-color);
-  border-radius: 14px;
+  border: 1px solid var(--sl-line);
+  border-radius: var(--sl-radius-md);
   padding: 12px 14px;
-  background: var(--sl-card-bg);
+  background: var(--sl-input-bg);
   color: var(--sl-ink);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .field textarea {
   min-height: 108px;
   resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: rgba(31, 95, 107, 0.44);
+  box-shadow: 0 0 0 4px rgba(31, 95, 107, 0.08);
+  outline: none;
 }
 
 .field-inline {
@@ -1220,6 +1229,13 @@ onMounted(loadPage)
   padding: 14px 16px;
 }
 
+.selected-user-card__info {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
 .selected-user-card strong,
 .selected-user-card p {
   margin: 0;
@@ -1232,7 +1248,7 @@ onMounted(loadPage)
 
 .member-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 14px;
 }
 
@@ -1240,10 +1256,15 @@ onMounted(loadPage)
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 18px 14px 16px;
   text-align: center;
   cursor: pointer;
+}
+
+.member-profile-card.is-self {
+  border-color: rgba(31, 95, 107, 0.42);
+  box-shadow: 0 12px 28px rgba(31, 95, 107, 0.12);
 }
 
 .member-profile-card strong,
@@ -1251,17 +1272,33 @@ onMounted(loadPage)
   margin: 0;
 }
 
-.member-profile-card__role {
+.member-profile-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.member-profile-card__role,
+.member-profile-card__self-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(31, 95, 107, 0.12);
-  color: var(--sl-brand-strong);
   font-size: 0.88rem;
   font-weight: 600;
+}
+
+.member-profile-card__role {
+  background: rgba(31, 95, 107, 0.12);
+  color: var(--sl-brand-strong);
+}
+
+.member-profile-card__self-badge {
+  background: rgba(201, 119, 46, 0.18);
+  color: var(--sl-accent);
 }
 
 .member-profile-card__meta {
@@ -1308,13 +1345,11 @@ onMounted(loadPage)
 }
 
 .request-card span,
-.request-card p,
-.share-log__item p {
+.request-card p {
   color: var(--sl-ink-soft);
 }
 
-.request-card p,
-.share-log__item p {
+.request-card p {
   margin: 0;
   line-height: 1.6;
 }
@@ -1330,12 +1365,6 @@ onMounted(loadPage)
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.share-log__item {
-  padding: 16px;
-  display: grid;
-  gap: 8px;
 }
 
 .status-badge {
@@ -1376,11 +1405,11 @@ onMounted(loadPage)
 }
 
 .desk-dialog {
-  width: min(100%, 720px);
+  width: min(100%, 760px);
   max-height: min(88vh, 920px);
   overflow: auto;
   border-radius: 28px;
-  background: var(--sl-card-bg);
+  background: var(--sl-paper-strong);
   border: 1px solid var(--sl-border-color);
 }
 
@@ -1409,6 +1438,12 @@ onMounted(loadPage)
   line-height: 1.6;
 }
 
+.desk-dialog__head-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .desk-dialog__body {
   display: grid;
   gap: 18px;
@@ -1433,19 +1468,25 @@ onMounted(loadPage)
 }
 
 .member-detail-head strong,
-.member-detail-head p,
-.member-detail-head span {
+.member-detail-head p {
   display: block;
+  margin: 0;
 }
 
-.member-detail-head p,
-.member-detail-head span {
+.member-detail-head p {
+  margin-top: 8px;
   color: var(--sl-ink-soft);
+}
+
+.member-detail-head__tags {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .public-shelf-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 14px;
 }
 
@@ -1455,6 +1496,16 @@ onMounted(loadPage)
 }
 
 .public-shelf-card {
+  display: grid;
+  gap: 14px;
+}
+
+.public-shelf-card.is-active {
+  border-color: rgba(31, 95, 107, 0.42);
+  box-shadow: 0 14px 28px rgba(31, 95, 107, 0.12);
+}
+
+.public-shelf-card__content {
   display: grid;
   gap: 8px;
 }
@@ -1519,6 +1570,11 @@ onMounted(loadPage)
     var(--sl-soft-panel-bg);
 }
 
+[data-theme='dark'] .member-profile-card.is-self,
+[data-theme='dark'] .public-shelf-card.is-active {
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
+}
+
 [data-theme='dark'] .status-badge.is-pending {
   color: #f2c287;
 }
@@ -1551,7 +1607,8 @@ onMounted(loadPage)
     display: grid;
   }
 
-  .workspace-head__actions {
+  .workspace-head__actions,
+  .desk-dialog__head-actions {
     justify-content: flex-start;
   }
 
@@ -1561,6 +1618,10 @@ onMounted(loadPage)
 
   .public-book-card {
     grid-template-columns: 1fr;
+  }
+
+  .public-book-card__action {
+    justify-self: stretch;
   }
 }
 
@@ -1580,13 +1641,15 @@ onMounted(loadPage)
     padding: 18px;
   }
 
-  .workspace-overview {
+  .workspace-overview,
+  .member-grid,
+  .public-shelf-grid {
     grid-template-columns: 1fr;
   }
 
-  .member-grid,
-  .public-shelf-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .selected-user-card,
+  .member-detail-head {
+    align-items: flex-start;
   }
 }
 </style>

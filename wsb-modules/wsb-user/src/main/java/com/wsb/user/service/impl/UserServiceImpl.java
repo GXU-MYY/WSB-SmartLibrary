@@ -174,6 +174,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             UserNicknameDTO dto = new UserNicknameDTO();
             dto.setId(user.getId());
             dto.setNickName(user.getNickName());
+            dto.setAvatar(user.getAvatar());
             return dto;
         }).collect(Collectors.toList());
     }
@@ -185,6 +186,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             UserNicknameDTO dto = new UserNicknameDTO();
             dto.setId(user.getId());
             dto.setNickName(user.getNickName());
+            dto.setAvatar(user.getAvatar());
             return dto;
         }).collect(Collectors.toList());
     }

@@ -289,7 +289,7 @@ export interface GroupUser {
   id: number
   userId: number
   nickname: string
-  joinTime?: string
+  avatar?: string
 }
 
 export interface GroupUserOperatePayload {

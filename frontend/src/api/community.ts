@@ -49,6 +49,14 @@ export const getGroupUsers = (groupId: number, type: 'in' | 'out') =>
 export const operateGroupUsers = (payload: GroupUserOperatePayload) =>
   request.post<void>('/v1/group/user', payload)
 
+export const removeGroupMember = (groupId: number, userId: number) =>
+  request.delete<void>('/v1/group/user', {
+    params: {
+      group_id: groupId,
+      user_id: userId,
+    },
+  })
+
 export const shareToGroup = (payload: SharePayload) =>
   request.post<ShareInfo>('/v1/group/share', payload)
 

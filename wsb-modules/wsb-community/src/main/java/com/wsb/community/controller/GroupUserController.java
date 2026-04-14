@@ -9,7 +9,13 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -24,20 +30,18 @@ public class GroupUserController {
 
     private final GroupUserService groupUserService;
 
-    @Operation(summary = "群组成员列表", description = "查询群组内的成员列表，用户需在目标群组中")
+    @Operation(summary = "群组成员列表", description = "查询群组内成员或非群组成员")
     @GetMapping
     public Result<List<GroupUserVO>> getGroupUsers(
-            @Parameter(description = "群组ID")
-            @RequestParam("group_id") Long groupId,
-            @Parameter(description = "类型：in-群组成员，out-非群组成员")
-            @RequestParam("type") String type) {
+            @Parameter(description = "群组ID") @RequestParam("group_id") Long groupId,
+            @Parameter(description = "类型：in-群组成员，out-非群组成员") @RequestParam("type") String type) {
         if ("in".equals(type)) {
             return Result.success(groupUserService.getGroupUsers(groupId));
-        } else if ("out".equals(type)) {
-            return Result.success(groupUserService.getNonGroupUsers(groupId));
-        } else {
-            return Result.error("type参数错误，可选值：in、out");
         }
+        if ("out".equals(type)) {
+            return Result.success(groupUserService.getNonGroupUsers(groupId));
+        }
+        return Result.error("type参数错误，可选值：in、out");
     }
 
     @Operation(summary = "群组成员操作", description = "拉用户进群(type=add)或将用户移出群聊(type=minus)")
@@ -45,11 +49,21 @@ public class GroupUserController {
     public Result<Void> operateGroupUser(@Valid @RequestBody GroupUserOperateDTO dto) {
         if ("add".equals(dto.getType())) {
             groupUserService.addUsers(dto);
-        } else if ("minus".equals(dto.getType())) {
-            groupUserService.removeUsers(dto);
-        } else {
-            return Result.error("type参数错误，可选值：add、minus");
+            return Result.success();
         }
+        if ("minus".equals(dto.getType())) {
+            groupUserService.removeUsers(dto);
+            return Result.success();
+        }
+        return Result.error("type参数错误，可选值：add、minus");
+    }
+
+    @Operation(summary = "踢出群聊")
+    @DeleteMapping
+    public Result<Void> kickUser(
+            @Parameter(description = "群组ID") @RequestParam("group_id") Long groupId,
+            @Parameter(description = "成员ID") @RequestParam("user_id") Long userId) {
+        groupUserService.kickUser(groupId, userId);
         return Result.success();
     }
 

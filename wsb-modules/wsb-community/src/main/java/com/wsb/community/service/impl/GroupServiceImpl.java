@@ -1,7 +1,7 @@
 package com.wsb.community.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
@@ -10,8 +10,12 @@ import com.wsb.community.api.dto.GroupUpdateDTO;
 import com.wsb.community.api.vo.GroupVO;
 import com.wsb.community.convert.GroupConverter;
 import com.wsb.community.domain.Group;
+import com.wsb.community.domain.GroupBorrowRequest;
 import com.wsb.community.domain.GroupUser;
+import com.wsb.community.domain.Share;
+import com.wsb.community.mapper.GroupBorrowRequestMapper;
 import com.wsb.community.mapper.GroupMapper;
+import com.wsb.community.mapper.ShareMapper;
 import com.wsb.community.service.GroupService;
 import com.wsb.community.service.GroupUserService;
 import com.wsb.user.api.RemoteUserService;
@@ -33,6 +37,8 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, Group> implements
     private final GroupUserService groupUserService;
     private final RemoteUserService remoteUserService;
     private final GroupConverter groupConverter;
+    private final ShareMapper shareMapper;
+    private final GroupBorrowRequestMapper groupBorrowRequestMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -105,9 +111,24 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, Group> implements
             throw new ServiceException("无权限");
         }
 
-        groupUserService.remove(new LambdaQueryWrapper<GroupUser>()
-                .eq(GroupUser::getGroupId, groupId));
+        this.update(Wrappers.<Group>lambdaUpdate()
+                .eq(Group::getId, groupId)
+                .eq(Group::getIsDeleted, false)
+                .set(Group::getIsDeleted, true));
 
-        this.removeById(groupId);
+        groupUserService.update(Wrappers.<GroupUser>lambdaUpdate()
+                .eq(GroupUser::getGroupId, groupId)
+                .eq(GroupUser::getIsDeleted, false)
+                .set(GroupUser::getIsDeleted, true));
+
+        shareMapper.update(null, Wrappers.<Share>lambdaUpdate()
+                .eq(Share::getGroupId, groupId)
+                .eq(Share::getIsDeleted, false)
+                .set(Share::getIsDeleted, true));
+
+        groupBorrowRequestMapper.update(null, Wrappers.<GroupBorrowRequest>lambdaUpdate()
+                .eq(GroupBorrowRequest::getGroupId, groupId)
+                .eq(GroupBorrowRequest::getIsDeleted, false)
+                .set(GroupBorrowRequest::getIsDeleted, true));
     }
 }

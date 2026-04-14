@@ -17,6 +17,7 @@ import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -52,7 +53,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
 
         List<Long> userIds = groupUsers.stream()
                 .map(GroupUser::getUserId)
-                .collect(Collectors.toList());
+                .toList();
         Result<List<UserNicknameDTO>> nicknamesResult = remoteUserService.getUserNicknamesByIds(userIds);
         if (nicknamesResult == null || nicknamesResult.getData() == null) {
             return List.of();
@@ -71,10 +72,11 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         return groupUsers.stream()
                 .map(groupUser -> groupUserConverter.toGroupUserVO(groupUser, userMap.get(groupUser.getUserId())))
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void addUsers(GroupUserOperateDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
         Group group = requireOwner(dto.getGroupId(), currentUserId);
@@ -88,7 +90,10 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
             throw new ServiceException("没有可加入的成员");
         }
 
-        remoteUserService.checkUserExists(targetUserIds);
+        Result<Void> checkResult = remoteUserService.checkUserExists(targetUserIds);
+        if (checkResult.getCode() != 200) {
+            throw new ServiceException(checkResult.getMsg());
+        }
 
         Set<Long> existingUserIds = this.list(Wrappers.<GroupUser>lambdaQuery()
                         .eq(GroupUser::getGroupId, dto.getGroupId())
@@ -118,27 +123,43 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void removeUsers(GroupUserOperateDTO dto) {
-        Long currentUserId = StpUtil.getLoginIdAsLong();
-        Group group = requireOwner(dto.getGroupId(), currentUserId);
-
         List<Long> targetUserIds = dto.getUserIds().stream()
                 .filter(Objects::nonNull)
                 .distinct()
-                .filter(userId -> !Objects.equals(userId, group.getOwnerId()))
                 .toList();
         if (targetUserIds.isEmpty()) {
-            throw new ServiceException("不能移除群主");
+            throw new ServiceException("请至少选择一名成员");
         }
 
-        this.update(Wrappers.<GroupUser>lambdaUpdate()
-                .eq(GroupUser::getGroupId, dto.getGroupId())
-                .in(GroupUser::getUserId, targetUserIds)
-                .eq(GroupUser::getIsDeleted, false)
-                .set(GroupUser::getIsDeleted, true));
+        for (Long userId : targetUserIds) {
+            kickUser(dto.getGroupId(), userId);
+        }
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void kickUser(Long groupId, Long userId) {
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireOwner(groupId, currentUserId);
+
+        if (Objects.equals(userId, group.getOwnerId())) {
+            throw new ServiceException("不能移除群主");
+        }
+
+        boolean removed = this.update(Wrappers.<GroupUser>lambdaUpdate()
+                .eq(GroupUser::getGroupId, groupId)
+                .eq(GroupUser::getUserId, userId)
+                .eq(GroupUser::getIsDeleted, false)
+                .set(GroupUser::getIsDeleted, true));
+        if (!removed) {
+            throw new ServiceException("该成员已不在群组中");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void exitGroup(Long groupId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
         Group group = requireGroupAccessible(groupId, currentUserId);
@@ -193,9 +214,10 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
                     GroupUserVO vo = new GroupUserVO();
                     vo.setUserId(user.getId());
                     vo.setNickname(user.getNickName());
+                    vo.setAvatar(user.getAvatar());
                     return vo;
                 })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private Group requireGroupAccessible(Long groupId, Long userId) {

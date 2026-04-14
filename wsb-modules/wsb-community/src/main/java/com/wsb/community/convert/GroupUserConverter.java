@@ -12,7 +12,7 @@ import org.mapstruct.Mapper;
 public interface GroupUserConverter {
 
     /**
-     * 组装群组成员VO（需要用户昵称）
+     * 组装群组成员 VO（附带昵称与头像）
      */
     default GroupUserVO toGroupUserVO(GroupUser groupUser, UserNicknameDTO user) {
         if (groupUser == null || user == null) {
@@ -22,7 +22,7 @@ public interface GroupUserConverter {
         vo.setId(groupUser.getId());
         vo.setUserId(groupUser.getUserId());
         vo.setNickname(user.getNickName());
-        vo.setJoinTime(groupUser.getCreateTime());
+        vo.setAvatar(user.getAvatar());
         return vo;
     }
 }
