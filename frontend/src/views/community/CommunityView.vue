@@ -38,6 +38,7 @@ import { notifyError, notifySuccess } from '@/utils/notify'
 const PENDING_STATUS = 0
 const APPROVED_STATUS = 1
 const REJECTED_STATUS = 2
+const REQUESTS_PAGE_SIZE = 5
 
 const userStore = useUserStore()
 
@@ -48,6 +49,8 @@ const searchingCreateMember = ref(false)
 const searchingInviteMember = ref(false)
 const requestingBookId = ref<number | null>(null)
 const handlingRequestId = ref<number | null>(null)
+const incomingRequestPage = ref(1)
+const outgoingRequestPage = ref(1)
 
 const groups = ref<Group[]>([])
 const members = ref<GroupUser[]>([])
@@ -81,6 +84,21 @@ const borrowRequestForm = reactive({
 const toId = (value: number | string | null | undefined) => Number(value || 0)
 const isSameId = (left: number | string | null | undefined, right: number | string | null | undefined) =>
   toId(left) === toId(right)
+const formatDateInputValue = (value: Date) => {
+  const year = value.getFullYear()
+  const month = `${value.getMonth() + 1}`.padStart(2, '0')
+  const day = `${value.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const getDefaultDueDate = () => {
+  const nextMonth = new Date()
+  nextMonth.setMonth(nextMonth.getMonth() + 1)
+  return formatDateInputValue(nextMonth)
+}
+const paginateRequests = (records: GroupBorrowRequest[], page: number) => {
+  const startIndex = (page - 1) * REQUESTS_PAGE_SIZE
+  return records.slice(startIndex, startIndex + REQUESTS_PAGE_SIZE)
+}
 
 const currentUserId = computed(() => toId(userStore.userInfo?.id || userStore.loginId))
 const todayDate = computed(() => {
@@ -119,6 +137,24 @@ const incomingRequests = computed(() =>
 )
 const outgoingRequests = computed(() =>
   borrowRequests.value.filter((item) => isSameId(item.borrowerUserId, currentUserId.value)),
+)
+const incomingRequestTotalPages = computed(() =>
+  Math.max(1, Math.ceil(incomingRequests.value.length / REQUESTS_PAGE_SIZE)),
+)
+const outgoingRequestTotalPages = computed(() =>
+  Math.max(1, Math.ceil(outgoingRequests.value.length / REQUESTS_PAGE_SIZE)),
+)
+const pagedIncomingRequests = computed(() =>
+  paginateRequests(incomingRequests.value, incomingRequestPage.value),
+)
+const pagedOutgoingRequests = computed(() =>
+  paginateRequests(outgoingRequests.value, outgoingRequestPage.value),
+)
+const incomingRequestPlaceholderRows = computed(() =>
+  Math.max(0, REQUESTS_PAGE_SIZE - pagedIncomingRequests.value.length),
+)
+const outgoingRequestPlaceholderRows = computed(() =>
+  Math.max(0, REQUESTS_PAGE_SIZE - pagedOutgoingRequests.value.length),
 )
 
 const loadWorkspace = async (groupId: number) => {
@@ -238,7 +274,7 @@ const closeMemberDetail = () => {
 
 const resetBorrowRequestDialog = () => {
   borrowRequestTarget.value = null
-  borrowRequestForm.dueTime = ''
+  borrowRequestForm.dueTime = getDefaultDueDate()
   borrowRequestForm.requestRemark = ''
 }
 
@@ -248,7 +284,7 @@ const openBorrowRequestDialog = (book: GroupPublicBook) => {
   }
 
   borrowRequestTarget.value = book
-  borrowRequestForm.dueTime = ''
+  borrowRequestForm.dueTime = getDefaultDueDate()
   borrowRequestForm.requestRemark = ''
   showBorrowRequestDialog.value = true
 }
@@ -535,11 +571,19 @@ const requestStatusClass = (status: number) => ({
   'is-approved': status === APPROVED_STATUS,
   'is-rejected': status === REJECTED_STATUS,
 })
+const changeIncomingRequestPage = (nextPage: number) => {
+  incomingRequestPage.value = Math.min(Math.max(1, nextPage), incomingRequestTotalPages.value)
+}
+const changeOutgoingRequestPage = (nextPage: number) => {
+  outgoingRequestPage.value = Math.min(Math.max(1, nextPage), outgoingRequestTotalPages.value)
+}
 
 watch(selectedGroupId, async (groupId) => {
   closeInviteDialog()
   closeBorrowRequestDialog()
   closeMemberDetail()
+  incomingRequestPage.value = 1
+  outgoingRequestPage.value = 1
 
   if (groupId) {
     await loadWorkspace(groupId)
@@ -553,6 +597,18 @@ watch(selectedGroupId, async (groupId) => {
 
 watch(memberDetailUserId, () => {
   selectedShelfId.value = null
+})
+
+watch(incomingRequests, () => {
+  if (incomingRequestPage.value > incomingRequestTotalPages.value) {
+    incomingRequestPage.value = incomingRequestTotalPages.value
+  }
+})
+
+watch(outgoingRequests, () => {
+  if (outgoingRequestPage.value > outgoingRequestTotalPages.value) {
+    outgoingRequestPage.value = outgoingRequestTotalPages.value
+  }
 })
 
 useRegisterPageRefresh(loadPage)
@@ -604,6 +660,33 @@ onMounted(loadPage)
         title="群组工作区"
         hint="成员、书架和借阅申请都集中在这里处理。"
       >
+        <template v-if="selectedGroup" #actions>
+          <button
+            v-if="isOwner"
+            class="button button--secondary workspace-head__action"
+            type="button"
+            @click="openInviteDialog"
+          >
+            邀请成员
+          </button>
+          <button
+            v-if="isOwner"
+            class="button button--danger workspace-head__action"
+            type="button"
+            @click="handleDeleteGroup"
+          >
+            解散群组
+          </button>
+          <button
+            v-else
+            class="button button--ghost workspace-head__action"
+            type="button"
+            @click="handleExitGroup"
+          >
+            退出群组
+          </button>
+        </template>
+
         <LoadingState v-if="loading && !selectedGroup" />
 
         <template v-else-if="selectedGroup">
@@ -691,14 +774,6 @@ onMounted(loadPage)
                     {{ getMemberBorrowableBookCount(member.userId) }} 本可借图书
                   </p>
 
-                  <button
-                    v-if="isOwner && !isCurrentMember(member)"
-                    class="button button--ghost member-profile-card__remove"
-                    type="button"
-                    @click.stop="handleRemoveMember(member)"
-                  >
-                    踢出群组
-                  </button>
                 </article>
               </div>
 
@@ -708,10 +783,9 @@ onMounted(loadPage)
             <section class="section-block">
               <div class="section-title">
                 <h4>借阅申请</h4>
-                <p>先申请，后借阅。出借方同意后，系统才会创建正式借阅记录。</p>
               </div>
 
-              <div class="request-columns">
+              <div class="request-stack">
                 <div class="request-column">
                   <div class="request-column__head">
                     <h5>收到的申请</h5>
@@ -719,44 +793,85 @@ onMounted(loadPage)
                   </div>
 
                   <div v-if="incomingRequests.length" class="request-list">
-                    <article
-                      v-for="request in incomingRequests"
-                      :key="request.id"
-                      class="panel-card request-card"
-                    >
-                      <div class="request-card__head">
-                        <strong>{{ request.bookName }}</strong>
-                        <span :class="requestStatusClass(request.status)">
-                          {{ requestStatusText(request.status) }}
-                        </span>
-                      </div>
-                      <p>{{ request.borrowerNickname || `用户 ${request.borrowerUserId}` }} 想借这本书。</p>
-                      <span>来源书架：{{ request.shelfName || '公开书架' }}</span>
-                      <span>
-                        申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}
-                      </span>
-                      <span>预计归还：{{ request.dueTime || '未填写' }}</span>
-                      <span v-if="request.requestRemark">备注：{{ request.requestRemark }}</span>
+                    <div class="request-table-wrapper">
+                      <table class="request-table">
+                        <thead>
+                          <tr>
+                            <th>图书</th>
+                            <th>申请人</th>
+                            <th>来源书架</th>
+                            <th>申请时间</th>
+                            <th>预计归还</th>
+                            <th>状态</th>
+                            <th>备注</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="request in pagedIncomingRequests" :key="request.id">
+                            <td>{{ request.bookName }}</td>
+                            <td>{{ request.borrowerNickname || `用户 ${request.borrowerUserId}` }}</td>
+                            <td>{{ request.shelfName || '公开书架' }}</td>
+                            <td>{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}</td>
+                            <td>{{ request.dueTime || '未填写' }}</td>
+                            <td>
+                              <span :class="requestStatusClass(request.status)">
+                                {{ requestStatusText(request.status) }}
+                              </span>
+                            </td>
+                            <td>{{ request.requestRemark || '无' }}</td>
+                            <td>
+                              <div v-if="request.status === PENDING_STATUS" class="request-table__actions">
+                                <button
+                                  class="button button--primary request-table__action-btn"
+                                  type="button"
+                                  :disabled="handlingRequestId === request.id"
+                                  @click="handleApproveRequest(request)"
+                                >
+                                  {{ handlingRequestId === request.id ? '处理中...' : '同意' }}
+                                </button>
+                                <button
+                                  class="button button--ghost request-table__action-btn"
+                                  type="button"
+                                  :disabled="handlingRequestId === request.id"
+                                  @click="handleRejectRequest(request)"
+                                >
+                                  拒绝
+                                </button>
+                              </div>
+                              <span v-else class="muted">-</span>
+                            </td>
+                          </tr>
+                          <tr
+                            v-for="placeholderIndex in incomingRequestPlaceholderRows"
+                            :key="`incoming-placeholder-${placeholderIndex}`"
+                            class="request-table__placeholder"
+                          >
+                            <td colspan="8">&nbsp;</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
 
-                      <div v-if="request.status === PENDING_STATUS" class="request-card__actions">
-                        <button
-                          class="button button--primary"
-                          type="button"
-                          :disabled="handlingRequestId === request.id"
-                          @click="handleApproveRequest(request)"
-                        >
-                          {{ handlingRequestId === request.id ? '处理中...' : '同意借阅' }}
-                        </button>
-                        <button
-                          class="button button--ghost"
-                          type="button"
-                          :disabled="handlingRequestId === request.id"
-                          @click="handleRejectRequest(request)"
-                        >
-                          拒绝
-                        </button>
-                      </div>
-                    </article>
+                    <div class="request-pagination">
+                      <button
+                        class="button button--ghost"
+                        type="button"
+                        :disabled="incomingRequestPage === 1"
+                        @click="changeIncomingRequestPage(incomingRequestPage - 1)"
+                      >
+                        上一页
+                      </button>
+                      <span>第 {{ incomingRequestPage }} / {{ incomingRequestTotalPages }} 页</span>
+                      <button
+                        class="button button--ghost"
+                        type="button"
+                        :disabled="incomingRequestPage === incomingRequestTotalPages"
+                        @click="changeIncomingRequestPage(incomingRequestPage + 1)"
+                      >
+                        下一页
+                      </button>
+                    </div>
                   </div>
 
                   <EmptyState v-else title="还没有收到借阅申请" />
@@ -764,29 +879,66 @@ onMounted(loadPage)
 
                 <div class="request-column">
                   <div class="request-column__head">
-                    <h5>我发出的申请</h5>
+                    <h5>发出的申请</h5>
                     <span>{{ outgoingRequests.length }}</span>
                   </div>
 
                   <div v-if="outgoingRequests.length" class="request-list">
-                    <article
-                      v-for="request in outgoingRequests"
-                      :key="request.id"
-                      class="panel-card request-card"
-                    >
-                      <div class="request-card__head">
-                        <strong>{{ request.bookName }}</strong>
-                        <span :class="requestStatusClass(request.status)">
-                          {{ requestStatusText(request.status) }}
-                        </span>
-                      </div>
-                      <p>向 {{ request.ownerNickname || `用户 ${request.ownerUserId}` }} 发起了借阅申请。</p>
-                      <span>来源书架：{{ request.shelfName || '公开书架' }}</span>
-                      <span>
-                        申请时间：{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}
-                      </span>
-                      <span>预计归还：{{ request.dueTime || '未填写' }}</span>
-                    </article>
+                    <div class="request-table-wrapper">
+                      <table class="request-table">
+                        <thead>
+                          <tr>
+                            <th>图书</th>
+                            <th>出借人</th>
+                            <th>来源书架</th>
+                            <th>申请时间</th>
+                            <th>预计归还</th>
+                            <th>状态</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="request in pagedOutgoingRequests" :key="request.id">
+                            <td>{{ request.bookName }}</td>
+                            <td>{{ request.ownerNickname || `用户 ${request.ownerUserId}` }}</td>
+                            <td>{{ request.shelfName || '公开书架' }}</td>
+                            <td>{{ request.createTime ? formatDateTime(request.createTime) : '未知' }}</td>
+                            <td>{{ request.dueTime || '未填写' }}</td>
+                            <td>
+                              <span :class="requestStatusClass(request.status)">
+                                {{ requestStatusText(request.status) }}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr
+                            v-for="placeholderIndex in outgoingRequestPlaceholderRows"
+                            :key="`outgoing-placeholder-${placeholderIndex}`"
+                            class="request-table__placeholder"
+                          >
+                            <td colspan="6">&nbsp;</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="request-pagination">
+                      <button
+                        class="button button--ghost"
+                        type="button"
+                        :disabled="outgoingRequestPage === 1"
+                        @click="changeOutgoingRequestPage(outgoingRequestPage - 1)"
+                      >
+                        上一页
+                      </button>
+                      <span>第 {{ outgoingRequestPage }} / {{ outgoingRequestTotalPages }} 页</span>
+                      <button
+                        class="button button--ghost"
+                        type="button"
+                        :disabled="outgoingRequestPage === outgoingRequestTotalPages"
+                        @click="changeOutgoingRequestPage(outgoingRequestPage + 1)"
+                      >
+                        下一页
+                      </button>
+                    </div>
                   </div>
 
                   <EmptyState v-else title="你还没有发起借阅申请" />
@@ -883,7 +1035,7 @@ onMounted(loadPage)
 
     <Teleport to="body">
       <div v-if="showInviteDialog" class="dialog-scrim" @click.self="closeInviteDialog">
-        <section class="surface-card desk-dialog desk-dialog--wide">
+        <section class="surface-card desk-dialog desk-dialog--wide invite-dialog">
           <header class="desk-dialog__head">
             <div>
               <span class="eyebrow">Invite Members</span>
@@ -955,7 +1107,11 @@ onMounted(loadPage)
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="showBorrowRequestDialog && borrowRequestTarget" class="dialog-scrim" @click.self="closeBorrowRequestDialog">
+      <div
+        v-if="showBorrowRequestDialog && borrowRequestTarget"
+        class="dialog-scrim dialog-scrim--front"
+        @click.self="closeBorrowRequestDialog"
+      >
         <section class="surface-card desk-dialog desk-dialog--compact">
           <header class="desk-dialog__head">
             <div>
@@ -1158,6 +1314,13 @@ onMounted(loadPage)
   align-content: start;
 }
 
+.request-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--sl-border-color);
+  border-radius: 18px;
+  background: var(--sl-soft-panel-bg);
+}
+
 .panel-card,
 .group-switcher__item,
 .selected-user-card,
@@ -1220,6 +1383,7 @@ onMounted(loadPage)
   justify-content: space-between;
   gap: 16px;
   padding: 20px;
+  display: none;
 }
 
 .workspace-head h3,
@@ -1244,6 +1408,8 @@ onMounted(loadPage)
   min-height: 36px;
   padding-inline: 12px;
   font-size: 0.88rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .workspace-overview {
@@ -1418,19 +1584,13 @@ onMounted(loadPage)
   line-height: 1.5;
 }
 
-.member-profile-card__remove {
-  width: 100%;
-}
-
-.request-columns {
+.request-stack {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
   align-items: start;
 }
 
-.request-column,
-.request-card {
+.request-column {
   display: grid;
   gap: 12px;
 }
@@ -1457,31 +1617,60 @@ onMounted(loadPage)
   font-weight: 700;
 }
 
-.request-card {
-  padding: 16px;
-}
-
-.request-card span,
-.request-card p {
+.request-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
   color: var(--sl-ink-soft);
 }
 
-.request-card p {
-  margin: 0;
-  line-height: 1.6;
+.request-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
 }
 
-.request-card__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
+.request-table th,
+.request-table td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--sl-border-color);
+  vertical-align: top;
 }
 
-.request-card__actions {
+.request-table th {
+  color: var(--sl-brand-strong);
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.request-table td {
+  color: var(--sl-ink-soft);
+  line-height: 1.55;
+}
+
+.request-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.request-table__actions {
   display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 10px;
+}
+
+.request-table__action-btn {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.request-table__placeholder td {
+  height: 57px;
+  color: transparent;
 }
 
 .borrow-request-preview {
@@ -1543,6 +1732,10 @@ onMounted(loadPage)
   backdrop-filter: blur(8px);
 }
 
+.dialog-scrim--front {
+  z-index: 70;
+}
+
 .desk-dialog {
   width: min(100%, 760px);
   max-height: min(88vh, 920px);
@@ -1550,6 +1743,10 @@ onMounted(loadPage)
   border-radius: 28px;
   background: var(--sl-paper-strong);
   border: 1px solid var(--sl-border-color);
+}
+
+.invite-dialog {
+  width: min(100%, 840px);
 }
 
 .desk-dialog__head,
@@ -1586,6 +1783,17 @@ onMounted(loadPage)
 .desk-dialog__body {
   display: grid;
   gap: 18px;
+}
+
+.invite-dialog .desk-dialog__body {
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+}
+
+.invite-dialog .selected-user-list {
+  max-height: min(34vh, 300px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .desk-dialog__foot {
@@ -1737,10 +1945,6 @@ onMounted(loadPage)
 }
 
 @media (max-width: 860px) {
-  .request-columns {
-    grid-template-columns: 1fr;
-  }
-
   .workspace-head,
   .desk-dialog__head {
     display: grid;
@@ -1749,6 +1953,15 @@ onMounted(loadPage)
   .workspace-head__actions,
   .desk-dialog__head-actions {
     justify-content: flex-start;
+  }
+
+  .request-pagination {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .invite-dialog {
+    width: 100%;
   }
 
   .field-inline {

@@ -2,12 +2,49 @@ import type { BookCardModel, PageResult } from '@/types/models'
 
 const pictureEndpoint = `${import.meta.env.VITE_API_BASE_URL || '/api'}/v1/picture?pic=`
 
+const parseDateValue = (value?: string) => {
+  if (!value) {
+    return null
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const dateOnlyMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch
+    return new Date(Number(year), Number(month) - 1, Number(day))
+  }
+
+  const localDateTimeMatch = normalized.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/,
+  )
+  if (localDateTimeMatch) {
+    const [, year, month, day, hour, minute, second = '0'] = localDateTimeMatch
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    )
+  }
+
+  return new Date(normalized.includes(' ') && !normalized.includes('T') ? normalized.replace(' ', 'T') : normalized)
+}
+
 export const formatDate = (value?: string) => {
   if (!value) {
     return '未记录'
   }
 
-  const date = new Date(value)
+  const date = parseDateValue(value)
+  if (!date) {
+    return value
+  }
   if (Number.isNaN(date.getTime())) {
     return value
   }
@@ -24,7 +61,10 @@ export const formatDateTime = (value?: string) => {
     return '刚刚'
   }
 
-  const date = new Date(value)
+  const date = parseDateValue(value)
+  if (!date) {
+    return value
+  }
   if (Number.isNaN(date.getTime())) {
     return value
   }
