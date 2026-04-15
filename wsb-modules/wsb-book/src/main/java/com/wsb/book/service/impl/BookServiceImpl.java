@@ -203,6 +203,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BookAddVO add(BookAddDTO dto) {
+        validateBorrowedBookShelfConstraint(Boolean.TRUE.equals(dto.getIsBorrowed()), dto.getShelfId());
         Book book = bookConverter.toBook(dto);
         book.setUserId(StpUtil.getLoginIdAsLong());
         book.setIsDeleted(false);
@@ -321,6 +322,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
             throw new ServiceException("无权操作他人的图书");
+        }
+
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入图书不能上架");
         }
 
         Shelf shelf = shelfMapper.selectById(dto.getShelfId());
@@ -479,6 +484,12 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 .eq(Book::getId, bookId)
                 .set(Book::getIsOnShelf, isOnShelf)
                 .update();
+    }
+
+    private void validateBorrowedBookShelfConstraint(boolean isBorrowed, Long shelfId) {
+        if (isBorrowed && shelfId != null) {
+            throw new ServiceException("借入图书不能上架");
+        }
     }
 
     private LambdaQueryWrapper<Book> buildSearchWrapper(String keyword, String classify) {

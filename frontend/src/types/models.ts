@@ -221,6 +221,7 @@ export interface BorrowRecord {
   title: string
   book_id: number
   user_id: number
+  group_id?: number | null
   borrow_name: string
   borrowing_time: string
   due_time?: string

@@ -167,6 +167,8 @@ const attachBookTitle = computed(
     attachBook.value?.title ||
     '当前图书',
 )
+const canManageBookShelf = (book: Book | null | undefined) =>
+  Boolean(book?.isOnShelf) || !Boolean(book?.isBorrowed)
 const isOffShelfAction = computed(() => Boolean(attachBook.value?.isOnShelf))
 const attachDialogTitle = computed(() =>
   isOffShelfAction.value
@@ -521,6 +523,11 @@ const closeEditDialog = () => {
 }
 
 const openAttachDialog = (book: Book) => {
+  if (!canManageBookShelf(book)) {
+    notifyError('借入图书不能上架')
+    return
+  }
+
   closeAllDialogs()
   attachForm.bookId = book.id
   attachForm.shelfId = 0
@@ -844,6 +851,10 @@ const handleAttachToShelf = async () => {
     )
     return
   }
+  if (attachBook.value?.isBorrowed && !isOffShelfAction.value) {
+    notifyError('借入图书不能上架')
+    return
+  }
 
   attachingShelf.value = true
 
@@ -870,6 +881,18 @@ const handleAttachToShelf = async () => {
 watch(hasOpenDialog, (open) => {
   document.body.style.overflow = open ? 'hidden' : ''
 })
+
+watch(
+  () => createForm.isBorrowed,
+  (isBorrowed) => {
+    if (!isBorrowed) {
+      return
+    }
+
+    createForm.shelfId = null
+    createForm.isOnShelf = false
+  },
+)
 
 onUnmounted(() => {
   document.body.style.overflow = ''
@@ -992,6 +1015,7 @@ onMounted(() => {
               编辑
             </button>
             <button
+              v-if="canManageBookShelf(book)"
               class="button button--ghost book-card-action"
               type="button"
               @click="openAttachDialog(book)"
@@ -1229,7 +1253,7 @@ onMounted(() => {
                 <div class="field-grid field-grid--single">
                   <div class="field">
                     <label>目标书架</label>
-                    <select v-model="createForm.shelfId">
+                    <select v-model="createForm.shelfId" :disabled="createForm.isBorrowed">
                       <option :value="null">暂不入架</option>
                       <option
                         v-for="shelf in shelves"
@@ -1244,7 +1268,7 @@ onMounted(() => {
 
                 <div class="toggle-row">
                   <label
-                    ><input v-model="createForm.isOnShelf" type="checkbox" />
+                    ><input v-model="createForm.isOnShelf" type="checkbox" :disabled="createForm.isBorrowed" />
                     已上架</label
                   >
                   <label

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import {
@@ -39,6 +39,10 @@ const editingRecord = ref<BorrowRecord | null>(null)
 const borrowTypeFilter = ref(0)
 const statusFilter = ref(-1)
 const lendableBooks = computed(() => (bookList.value?.books || []).filter(book => !book.isBorrowed))
+const isCommunityBorrowRecord = (record: BorrowRecord) => Boolean(record.group_id)
+const canEditBorrowRecord = (record: BorrowRecord) => !isCommunityBorrowRecord(record)
+const canReturnBorrowRecord = (record: BorrowRecord) =>
+  record.status !== 1 && (!isCommunityBorrowRecord(record) || record.borrow_type === 1)
 
 const pagination = reactive({
   current: 1,
@@ -83,9 +87,9 @@ const summaryCards = computed(() => {
   }
 
   return [
-    { label: '记录总数', value: summary.total, hint: '当前账号下所有借阅记录。', tone: 'brand' as const },
-    { label: '借入', value: summary.borrowedIn, hint: '你从外部借来的书。', tone: 'plain' as const },
-    { label: '借出', value: summary.borrowedOut, hint: '你借给别人的书。', tone: 'plain' as const },
+    { label: '记录总数', value: summary.total, hint: '当前账号下的全部借阅记录。', tone: 'brand' as const },
+    { label: '借入', value: summary.borrowedIn, hint: '你从外部借来的图书。', tone: 'plain' as const },
+    { label: '借出', value: summary.borrowedOut, hint: '你借给别人的图书。', tone: 'plain' as const },
     {
       label: '进行中 / 已逾期',
       value: `${summary.active} / ${summary.overdue}`,
@@ -167,6 +171,11 @@ const resetUpdateForm = () => {
 }
 
 const openEditDialog = (record: BorrowRecord) => {
+  if (!canEditBorrowRecord(record)) {
+    notifyError('群组借阅记录不支持编辑')
+    return
+  }
+
   editingRecord.value = record
   updateForm.borrow_id = record.id
   updateForm.borrow_name = record.borrow_name
@@ -274,6 +283,11 @@ const handleUpdateRecord = async () => {
 }
 
 const handleReturn = async (record: BorrowRecord) => {
+  if (!canReturnBorrowRecord(record)) {
+    notifyError('群组借阅记录仅借入方可归还')
+    return
+  }
+
   returningId.value = record.id
 
   try {
@@ -281,7 +295,7 @@ const handleReturn = async (record: BorrowRecord) => {
       borrow_id: record.id,
       return_time: today(),
     })
-    notifySuccess('还书已登记', `《${record.title}》的归还时间已写入。`)
+    notifySuccess('已登记归还', `《${record.title}》的归还时间已写入。`)
     await Promise.all([loadBorrowRecords(pagination.current), loadBorrowSummary()])
   } finally {
     returningId.value = 0
@@ -379,6 +393,8 @@ onMounted(loadPage)
             </div>
           </div>
 
+          <p class="field-hint">借入的图书不会上架到个人书架。</p>
+
           <div class="field">
             <label>书名</label>
             <input v-model="borrowForm.title" type="text" placeholder="借入书籍的书名" />
@@ -407,7 +423,7 @@ onMounted(loadPage)
             </div>
             <div class="field">
               <label>放入书架</label>
-              <select v-model.number="borrowForm.shelf_id">
+              <select v-model.number="borrowForm.shelf_id" disabled>
                 <option :value="0">暂不上架</option>
                 <option v-for="shelf in shelfList" :key="shelf.id" :value="shelf.id">
                   {{ shelf.shelfName }}
@@ -491,17 +507,22 @@ onMounted(loadPage)
                 <td>{{ record.return_time ? formatDate(record.return_time) : '未归还' }}</td>
                 <td>
                   <div class="inline-actions borrow-table__actions">
-                    <button class="button button--ghost" type="button" @click="openEditDialog(record)">
+                    <button
+                      v-if="canEditBorrowRecord(record)"
+                      class="button button--ghost"
+                      type="button"
+                      @click="openEditDialog(record)"
+                    >
                       编辑
                     </button>
                     <button
-                      v-if="record.status !== 1"
+                      v-if="canReturnBorrowRecord(record)"
                       class="button button--secondary"
                       type="button"
                       :disabled="returningId === record.id"
                       @click="handleReturn(record)"
                     >
-                      {{ returningId === record.id ? '还书中...' : '还书' }}
+                      {{ returningId === record.id ? '处理中...' : '已归还' }}
                     </button>
                   </div>
                 </td>
@@ -556,17 +577,22 @@ onMounted(loadPage)
               </div>
 
               <div class="inline-actions borrow-record-card__actions">
-                <button class="button button--ghost" type="button" @click="openEditDialog(record)">
+                <button
+                  v-if="canEditBorrowRecord(record)"
+                  class="button button--ghost"
+                  type="button"
+                  @click="openEditDialog(record)"
+                >
                   编辑
                 </button>
                 <button
-                  v-if="record.status !== 1"
+                  v-if="canReturnBorrowRecord(record)"
                   class="button button--secondary"
                   type="button"
                   :disabled="returningId === record.id"
                   @click="handleReturn(record)"
                 >
-                  {{ returningId === record.id ? '还书中...' : '还书' }}
+                  {{ returningId === record.id ? '处理中...' : '已归还' }}
                 </button>
               </div>
             </article>
@@ -1015,3 +1041,4 @@ onMounted(loadPage)
   }
 }
 </style>
+

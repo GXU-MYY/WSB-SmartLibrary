@@ -66,10 +66,12 @@ const coverUrl = computed(() => resolvePictureUrl(book.value?.coverUrl))
 const tagItems = computed(() => parseTagList(book.value?.label))
 const attachedShelfIds = computed(() => (bookShelf.value?.id ? [bookShelf.value.id] : []))
 const attachedShelfNames = computed(() => (bookShelf.value?.shelfName ? [bookShelf.value.shelfName] : []))
+const isBorrowedBook = computed(() => Boolean(book.value?.isBorrowed))
 const isOnShelf = computed(() => Boolean(bookShelf.value) || Boolean(book.value?.isOnShelf))
 const isSelectedShelfAttached = computed(
   () => attachShelfId.value > 0 && attachedShelfIds.value.includes(attachShelfId.value),
 )
+const canManageShelf = computed(() => !isBorrowedBook.value || isOnShelf.value)
 const shelfStatusText = computed(() =>
   attachedShelfNames.value.length > 0 ? attachedShelfNames.value.join('、') : '当前未上架',
 )
@@ -243,6 +245,11 @@ const handleShelfAction = async () => {
     return
   }
 
+  if (isBorrowedBook.value && !isSelectedShelfAttached.value) {
+    notifyError('借入图书不能上架')
+    return
+  }
+
   shelfLoading.value = true
 
   try {
@@ -370,8 +377,8 @@ onMounted(loadPage)
             </div>
             <div class="field">
               <label>{{ shelfFieldLabel }}</label>
-              <div class="detail-hero__attach">
-                <select v-model.number="attachShelfId">
+              <div v-if="canManageShelf" class="detail-hero__attach">
+                <select v-model.number="attachShelfId" :disabled="isBorrowedBook">
                   <option :value="0" disabled hidden>选择书架</option>
                   <option v-for="item in shelves" :key="item.id" :value="item.id">{{ item.shelfName }}</option>
                 </select>
@@ -379,6 +386,7 @@ onMounted(loadPage)
                   {{ shelfActionText }}
                 </button>
               </div>
+              <p v-else class="detail-hero__shelf-note">借入的图书不能上架到个人书架。</p>
             </div>
           </div>
         </div>
@@ -599,6 +607,12 @@ onMounted(loadPage)
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.detail-hero__shelf-note {
+  margin: 8px 0 0;
+  color: var(--sl-ink-soft);
+  line-height: 1.6;
 }
 
 .detail-grid > * {

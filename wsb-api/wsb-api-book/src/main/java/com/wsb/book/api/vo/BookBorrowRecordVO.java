@@ -81,4 +81,10 @@ public class BookBorrowRecordVO implements Serializable {
      */
     @JsonProperty("pic")
     private String coverUrl;
+
+    /**
+     * 群组ID，非空表示这条记录来源于群组借阅
+     */
+    @JsonProperty("group_id")
+    private Long groupId;
 }

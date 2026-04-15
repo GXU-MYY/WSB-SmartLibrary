@@ -210,6 +210,10 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
     }
 
     private Book createOfflineBorrowedBook(BookBorrowDTO dto, Long currentUserId) {
+        if (dto.getShelfId() != null) {
+            throw new ServiceException("借入图书不能上架");
+        }
+
         Book book = new Book();
         String isbn = StringUtils.trimToNull(dto.getIsbn());
 
@@ -231,13 +235,9 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         book.setIsDeleted(false);
         book.setIsBorrowed(true);
         book.setIsLentOut(false);
-        book.setIsOnShelf(dto.getShelfId() != null);
+        book.setIsOnShelf(false);
         book.setEmbeddingStatus(0);
         bookMapper.insert(book);
-
-        if (dto.getShelfId() != null) {
-            attachToShelf(book.getId(), dto.getShelfId(), currentUserId);
-        }
 
         enqueueSummaryAfterCommit(book.getId());
         return book;
@@ -494,6 +494,10 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
             throw new ServiceException("归还时间不能早于借阅时间");
         }
 
+        if (borrow.getGroupId() != null && (borrow.getBorrowType() == null || borrow.getBorrowType() != BORROW_TYPE_IN)) {
+            throw new ServiceException("群组借阅记录仅借入方可归还");
+        }
+
         borrow.setReturnTime(dto.getReturnTime());
         borrow.setStatus(BookBorrowStatus.RETURNED);
         this.updateById(borrow);
@@ -553,6 +557,10 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
                 .last("LIMIT 1"));
         if (borrow == null) {
             throw new ServiceException("借阅记录不存在");
+        }
+
+        if (borrow.getGroupId() != null) {
+            throw new ServiceException("群组借阅记录不支持编辑");
         }
 
         LocalDate targetBorrowTime = dto.getBorrowTime() != null ? dto.getBorrowTime() : borrow.getBorrowTime();
