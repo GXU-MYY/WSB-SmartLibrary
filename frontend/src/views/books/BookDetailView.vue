@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
   addCollect,
   addReadingRecord,
-  borrowBook,
   deleteCollect,
   getBookDetail,
   getBookShelves,
@@ -40,7 +39,6 @@ const router = useRouter()
 const loading = ref(false)
 const reviewLoading = ref(false)
 const collectLoading = ref(false)
-const borrowLoading = ref(false)
 const shelfLoading = ref(false)
 const activeAiPane = ref<'summary' | 'reviews'>('summary')
 
@@ -52,12 +50,6 @@ const bookShelf = ref<Shelf | null>(null)
 const similarBooks = ref<Book[]>([])
 const aiSummary = ref('')
 const reviewDigest = ref('')
-
-const borrowForm = reactive({
-  borrow_name: '',
-  borrowing_time: new Date().toISOString().slice(0, 10),
-  borrow_type: 2,
-})
 
 const attachShelfId = ref(0)
 
@@ -213,32 +205,6 @@ const handleAggregateReviews = async () => {
   }
 }
 
-const handleBorrow = async () => {
-  if (!book.value) {
-    return
-  }
-
-  if (!borrowForm.borrow_name.trim()) {
-    notifyError('请填写借阅对象')
-    return
-  }
-
-  borrowLoading.value = true
-
-  try {
-    await borrowBook({
-      book_id: book.value.id,
-      borrow_name: borrowForm.borrow_name,
-      borrowing_time: borrowForm.borrowing_time,
-      borrow_type: borrowForm.borrow_type,
-    })
-    notifySuccess('借阅记录已创建')
-    router.push('/borrow')
-  } finally {
-    borrowLoading.value = false
-  }
-}
-
 const handleShelfAction = async () => {
   if (!book.value || !attachShelfId.value) {
     notifyError('请选择目标书架')
@@ -291,7 +257,7 @@ onMounted(loadPage)
     <PageIntro
       eyebrow="Book Detail"
       :title="book?.title || '图书详情'"
-      :description="book?.summary || '查看图书元数据、AI 摘要、借阅登记与相似图书推荐。'"
+      :description="book?.summary || '查看图书元数据、AI 摘要与相似图书推荐。'"
     >
       <template #actions>
         <button
@@ -420,34 +386,16 @@ onMounted(loadPage)
           <div v-else class="copy-block">
             <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '暂未聚合。' }}</p>
             <div class="copy-block__footer">
-              <button class="button button--ghost copy-block__trigger" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
+              <button
+                class="button button--ghost copy-block__trigger"
+                type="button"
+                :disabled="reviewLoading"
+                @click="handleAggregateReviews"
+              >
                 {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
               </button>
             </div>
           </div>
-        </SectionPanel>
-
-        <SectionPanel title="借阅登记" hint="需要把这本书借出或借入时，可以在这里直接登记。">
-          <div class="field">
-            <label>借阅对象</label>
-            <input v-model="borrowForm.borrow_name" type="text" placeholder="填写借阅对象姓名" />
-          </div>
-          <div class="field-grid">
-            <div class="field">
-              <label>借阅类型</label>
-              <select v-model.number="borrowForm.borrow_type">
-                <option :value="1">借入</option>
-                <option :value="2">借出</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>借阅日期</label>
-              <input v-model="borrowForm.borrowing_time" type="date" />
-            </div>
-          </div>
-          <button class="button button--primary" type="button" :disabled="borrowLoading" @click="handleBorrow">
-            {{ borrowLoading ? '登记中...' : '保存借阅记录' }}
-          </button>
         </SectionPanel>
 
         <SectionPanel title="相似图书" hint="来自 RAG 相似检索结果，适合继续扩展阅读链路。">
@@ -658,12 +606,6 @@ onMounted(loadPage)
   box-shadow: 0 10px 24px rgba(22, 40, 28, 0.14);
 }
 
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
 .similar-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -683,7 +625,6 @@ onMounted(loadPage)
 
   .detail-hero__meta,
   .detail-hero__tools,
-  .field-grid,
   .similar-grid {
     grid-template-columns: 1fr;
   }
