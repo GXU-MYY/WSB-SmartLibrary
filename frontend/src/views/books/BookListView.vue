@@ -483,6 +483,11 @@ const closeDeleteDialog = () => {
 }
 
 const openEditDialog = (book: Book) => {
+  if (book.isBorrowed) {
+    notifyError('借入图书暂不支持编辑')
+    return
+  }
+
   closeAllDialogs()
   editForm.id = book.id
   editForm.title = book.title || ''
@@ -962,6 +967,8 @@ onMounted(() => {
               secondary: `${formatCurrency(book.price)} · ${book.publisher || '出版社待补充'}`,
               badge: book.isBorrowed
                 ? '借阅中'
+                : book.isLentOut
+                  ? '借出中'
                 : book.isOnShelf
                   ? '已上架'
                   : '',
@@ -977,6 +984,7 @@ onMounted(() => {
               详情
             </button>
             <button
+              v-if="!book.isBorrowed"
               class="button button--secondary book-card-action"
               type="button"
               @click="openEditDialog(book)"
@@ -1115,7 +1123,7 @@ onMounted(() => {
 
           <footer class="desk-dialog__foot desk-dialog__foot--align-end">
             <button
-              v-if="detailBook"
+              v-if="detailBook && !detailBook.isBorrowed"
               class="button button--secondary"
               type="button"
               @click="openEditDialog(detailBook)"

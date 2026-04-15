@@ -201,11 +201,6 @@
             </dependency>
             <dependency>
                 <groupId>com.wsb</groupId>
-                <artifactId>wsb-api-social</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.wsb</groupId>
                 <artifactId>wsb-api-community</artifactId>
                 <version>${project.version}</version>
             </dependency>

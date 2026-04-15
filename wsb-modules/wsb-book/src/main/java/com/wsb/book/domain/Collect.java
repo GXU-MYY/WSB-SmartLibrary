@@ -1,4 +1,4 @@
-package com.wsb.social.domain;
+package com.wsb.book.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -12,56 +12,36 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 图书评论表
+ * 收藏表
  */
 @Data
-@TableName("t_comment")
-public class Comment implements Serializable {
+@TableName("t_collect")
+public class Collect implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 主键ID
+     * 主键 ID
      */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
     /**
-     * 图书ID
-     */
-    @TableField("book_id")
-    private Long bookId;
-
-    /**
-     * 评论用户ID
+     * 收藏用户 ID
      */
     @TableField("user_id")
     private Long userId;
 
     /**
-     * 评论者昵称（冗余）
+     * 收藏目标 ID
      */
-    private String userNickname;
+    @TableField("target_id")
+    private Long targetId;
 
     /**
-     * 评论者头像（冗余）
+     * 收藏类型：1-图书，2-书架
      */
-    private String userAvatar;
-
-    /**
-     * 评论内容
-     */
-    private String content;
-
-    /**
-     * 评分：1-5星
-     */
-    private Integer starRating;
-
-    /**
-     * 点赞数
-     */
-    private Integer likeCount;
+    private Integer collectType;
 
     /**
      * 是否删除

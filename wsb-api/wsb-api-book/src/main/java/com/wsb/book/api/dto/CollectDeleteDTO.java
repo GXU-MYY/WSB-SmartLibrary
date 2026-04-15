@@ -1,4 +1,4 @@
-package com.wsb.social.api.dto;
+package com.wsb.book.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotNull;
@@ -19,6 +19,6 @@ public class CollectDeleteDTO implements Serializable {
      * 收藏 ID
      */
     @JsonAlias({"collectId", "collect_id"})
-    @NotNull(message = "收藏ID不能为空")
+    @NotNull(message = "收藏 ID 不能为空")
     private Long collectId;
 }

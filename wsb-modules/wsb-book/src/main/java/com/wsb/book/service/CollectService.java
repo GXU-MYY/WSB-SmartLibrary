@@ -1,12 +1,12 @@
-package com.wsb.social.service;
+package com.wsb.book.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.wsb.social.api.dto.CollectAddDTO;
-import com.wsb.social.api.dto.CollectDeleteDTO;
-import com.wsb.social.api.vo.CollectBookVO;
-import com.wsb.social.api.vo.CollectShelfVO;
-import com.wsb.social.api.vo.CollectVO;
-import com.wsb.social.domain.Collect;
+import com.wsb.book.api.dto.CollectAddDTO;
+import com.wsb.book.api.dto.CollectDeleteDTO;
+import com.wsb.book.api.vo.CollectBookVO;
+import com.wsb.book.api.vo.CollectShelfVO;
+import com.wsb.book.api.vo.CollectVO;
+import com.wsb.book.domain.Collect;
 
 import java.util.List;
 
@@ -16,7 +16,7 @@ import java.util.List;
 public interface CollectService extends IService<Collect> {
 
     /**
-     * 添加收藏（书籍或书架）
+     * 添加收藏
      */
     CollectVO addCollect(CollectAddDTO dto);
 
@@ -26,12 +26,12 @@ public interface CollectService extends IService<Collect> {
     void deleteCollect(CollectDeleteDTO dto);
 
     /**
-     * 获取我的书籍收藏列表
+     * 获取我的图书收藏
      */
     List<CollectBookVO> getMyBookCollects();
 
     /**
-     * 获取我的书架收藏列表
+     * 获取我的书架收藏
      */
     List<CollectShelfVO> getMyShelfCollects();
 }

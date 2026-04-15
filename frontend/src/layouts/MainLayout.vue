@@ -18,7 +18,6 @@ const navItems = [
   { path: '/books', title: '图书' },
   { path: '/borrow', title: '借阅' },
   { path: '/community', title: '社区' },
-  { path: '/social', title: '社交' },
   { path: '/statistics', title: '统计' },
   { path: '/profile', title: '个人' },
 ]
@@ -76,11 +75,7 @@ watch(
         <ThemeToggle compact icon-only class="main-layout__mobile-theme" />
 
         <RouterLink to="/profile" class="main-layout__account surface-card focus-ring">
-          <UserAvatar
-            :src="userStore.userInfo?.avatar"
-            :name="userStore.displayName"
-            :size="32"
-          />
+          <UserAvatar :src="userStore.userInfo?.avatar" :name="userStore.displayName" :size="32" />
           <div class="main-layout__account-copy">
             <strong>{{ userStore.displayName }}</strong>
           </div>
@@ -103,11 +98,7 @@ watch(
 
     <section v-if="mobileMenuOpen" class="main-layout__mobile-sheet surface-card">
       <RouterLink to="/profile" class="main-layout__mobile-account focus-ring">
-        <UserAvatar
-          :src="userStore.userInfo?.avatar"
-          :name="userStore.displayName"
-          :size="42"
-        />
+        <UserAvatar :src="userStore.userInfo?.avatar" :name="userStore.displayName" :size="42" />
         <div class="main-layout__mobile-account-copy">
           <strong>{{ userStore.displayName }}</strong>
         </div>
@@ -191,7 +182,10 @@ watch(
   border: 1px solid transparent;
   color: var(--sl-ink-soft);
   background: transparent;
-  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease,
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
     transform 180ms ease;
 }
 
@@ -244,9 +238,6 @@ watch(
 
 .main-layout__account-copy strong {
   margin: 0;
-}
-
-.main-layout__account-copy strong {
   font-size: 0.94rem;
   white-space: nowrap;
   line-height: 1;

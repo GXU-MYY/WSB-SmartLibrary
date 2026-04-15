@@ -94,6 +94,7 @@ export interface Book {
   remark?: string
   isOnShelf?: boolean
   isBorrowed?: boolean
+  isLentOut?: boolean
   userId?: number
   createTime?: string
   updateTime?: string
@@ -371,26 +372,6 @@ export interface GroupBorrowRequest {
   createTime?: string
 }
 
-export interface CommentItem {
-  id: number
-  bookId: number
-  userId: number
-  comment: string
-  comTime?: string
-  stars: number
-}
-
-export interface BookCommentList {
-  starMean: number
-  comments: CommentItem[]
-}
-
-export interface CommentPayload {
-  bookId: number
-  comment: string
-  starRating: number
-}
-
 export interface CollectBook {
   id: number
   bookId: number
@@ -409,13 +390,6 @@ export interface CollectShelf {
 export interface CollectPayload {
   bookId?: number
   bookshelfId?: number
-}
-
-export interface TopRatedBook {
-  id: number
-  title: string
-  stars: number
-  pic?: string
 }
 
 export interface PersonalStats {

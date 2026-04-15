@@ -1,4 +1,4 @@
-package com.wsb.social.api.dto;
+package com.wsb.book.api.dto;
 
 import lombok.Data;
 
@@ -6,7 +6,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 书籍收藏统计DTO
+ * 图书收藏统计 DTO
  */
 @Data
 public class BookCollectCountDTO implements Serializable {
@@ -14,7 +14,7 @@ public class BookCollectCountDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 书籍ID
+     * 图书 ID
      */
     private Long bookId;
 

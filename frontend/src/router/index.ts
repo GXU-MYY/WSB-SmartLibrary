@@ -71,12 +71,6 @@ const router = createRouter({
           meta: { title: '社区' },
         },
         {
-          path: 'social',
-          name: 'social',
-          component: () => import('@/views/social/SocialView.vue'),
-          meta: { title: '社交动态' },
-        },
-        {
           path: 'profile',
           name: 'profile',
           component: () => import('@/views/profile/ProfileView.vue'),
@@ -117,7 +111,7 @@ router.beforeEach((to) => {
 })
 
 router.afterEach((to) => {
-  const title = typeof to.meta.title === 'string' ? to.meta.title : '智能书库'
+  const title = typeof to.meta.title === 'string' ? to.meta.title : '智能书包'
   document.title = `${title} | ${appTitle}`
 })
 

@@ -41,6 +41,7 @@ public class BookVO implements Serializable {
     private String remark;
     private Boolean isOnShelf;
     private Boolean isBorrowed;
+    private Boolean isLentOut;
     private Long userId;
     private Boolean isDeleted;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

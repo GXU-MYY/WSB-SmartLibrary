@@ -1,4 +1,4 @@
-package com.wsb.social.api.dto;
+package com.wsb.book.api.dto;
 
 import lombok.Data;
 
@@ -6,7 +6,7 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 收藏分类统计DTO
+ * 收藏分类统计 DTO
  */
 @Data
 public class CollectCategoryStatsDTO implements Serializable {

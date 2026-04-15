@@ -5,14 +5,13 @@ import { useRouter } from 'vue-router'
 import { getReadingRecords, getRecentBooks } from '@/api/book'
 import { getPersonalStats } from '@/api/community'
 import { recommendBooks } from '@/api/rag'
-import { getTopRatedBooks } from '@/api/social'
 import BookCard from '@/components/BookCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
-import type { BookCardModel, PersonalStats, ReadingRecord, RecentBook, TopRatedBook } from '@/types/models'
+import type { BookCardModel, PersonalStats, ReadingRecord, RecentBook } from '@/types/models'
 import { buildBookCard, formatDateTime, initialsFromName, readingStatusLabel, resolvePictureUrl } from '@/utils/format'
 
 const router = useRouter()
@@ -22,7 +21,6 @@ const recommendationLoading = ref(false)
 
 const personalStats = ref<PersonalStats | null>(null)
 const recentBooks = ref<RecentBook[]>([])
-const topRatedBooks = ref<TopRatedBook[]>([])
 const readingRecords = ref<ReadingRecord[]>([])
 const recommendedBooks = ref<BookCardModel[]>([])
 
@@ -37,25 +35,25 @@ const metricCards = computed(() => {
     {
       label: '藏书总数',
       value: stats?.owned.totalBooks ?? 0,
-      hint: '你已经录入到私人书库中的图书数量。',
+      hint: '已经整理进个人书库的图书数量。',
       tone: 'brand' as const,
     },
     {
-      label: '借阅未归还',
+      label: '未归还借阅',
       value: stats?.borrowed.unreturned ?? 0,
-      hint: '需要继续跟进回收的借阅记录。',
+      hint: '还在流转中的借阅记录。',
       tone: 'accent' as const,
-    },
-    {
-      label: '被收藏次数',
-      value: stats?.owned.booksBeingCollected ?? 0,
-      hint: '社区对你书库内容的关注热度。',
-      tone: 'plain' as const,
     },
     {
       label: '我的收藏',
       value: stats?.collected.totalCollected ?? 0,
-      hint: '你主动收藏的图书与书架内容。',
+      hint: '主动保存下来的图书与书架内容。',
+      tone: 'plain' as const,
+    },
+    {
+      label: '被收藏次数',
+      value: stats?.owned.booksBeingCollected ?? 0,
+      hint: '社区对你公开内容的关注热度。',
       tone: 'plain' as const,
     },
   ]
@@ -65,10 +63,9 @@ const loadDashboard = async () => {
   loading.value = true
 
   try {
-    const [statsResult, recentBooksResult, topRatedResult, readingResult] = await Promise.allSettled([
+    const [statsResult, recentBooksResult, readingResult] = await Promise.allSettled([
       getPersonalStats(),
       getRecentBooks(),
-      getTopRatedBooks(4),
       getReadingRecords(),
     ])
 
@@ -78,10 +75,6 @@ const loadDashboard = async () => {
 
     if (recentBooksResult.status === 'fulfilled') {
       recentBooks.value = recentBooksResult.value
-    }
-
-    if (topRatedResult.status === 'fulfilled') {
-      topRatedBooks.value = topRatedResult.value
     }
 
     if (readingResult.status === 'fulfilled' && Array.isArray(readingResult.value)) {
@@ -136,7 +129,7 @@ onMounted(loadDashboard)
     </section>
 
     <section class="page-grid home-grid">
-      <SectionPanel title="最近整理的藏书" hint="最近录入或修改过的图书，方便你继续补全信息。">
+      <SectionPanel title="最近整理的藏书" hint="最近录入或修改过的图书，方便继续补全信息。">
         <LoadingState v-if="loading && recentBooks.length === 0" />
         <div v-else class="recent-books-grid">
           <button
@@ -147,8 +140,15 @@ onMounted(loadDashboard)
             @click="router.push(`/books/${book.id}`)"
           >
             <div class="recent-book-card__cover">
-              <img v-if="resolvePictureUrl(book.coverUrl)" :src="resolvePictureUrl(book.coverUrl)" :alt="book.title" loading="lazy" />
-              <div v-else class="recent-book-card__placeholder serif-title">{{ initialsFromName(book.title) }}</div>
+              <img
+                v-if="resolvePictureUrl(book.coverUrl)"
+                :src="resolvePictureUrl(book.coverUrl)"
+                :alt="book.title"
+                loading="lazy"
+              />
+              <div v-else class="recent-book-card__placeholder serif-title">
+                {{ initialsFromName(book.title) }}
+              </div>
             </div>
             <p class="recent-book-card__title">{{ book.title }}</p>
           </button>
@@ -163,7 +163,7 @@ onMounted(loadDashboard)
 
       <SectionPanel
         title="AI 选书助手"
-        hint="输入主题、使用场景或读者画像，让 RAG 服务帮你找方向接近的图书。"
+        hint="输入主题、场景或读者画像，让 RAG 服务帮你找到方向接近的图书。"
       >
         <div class="field">
           <label for="recommend-query">推荐语句</label>
@@ -199,29 +199,7 @@ onMounted(loadDashboard)
         </div>
       </SectionPanel>
 
-      <SectionPanel title="社区高分书目" hint="来自评论模块的高分榜，适合快速发现值得跟进的新书。">
-        <div class="books-grid books-grid--compact">
-          <BookCard
-            v-for="item in topRatedBooks"
-            :key="item.id"
-            :book="{
-              id: item.id,
-              title: item.title,
-              coverUrl: item.pic,
-              secondary: `社区均分 ${item.stars}/5`,
-              badge: '高分',
-            }"
-          >
-            <template #actions>
-              <button class="button button--ghost" type="button" @click="router.push(`/books/${item.id}`)">
-                去看看
-              </button>
-            </template>
-          </BookCard>
-        </div>
-      </SectionPanel>
-
-      <SectionPanel title="阅读轨迹" hint="最近调整过的阅读状态会显示在这里，帮助你保持阅读节奏。">
+      <SectionPanel title="阅读轨迹" hint="最近调整过的阅读状态会显示在这里，帮助保持阅读节奏。">
         <LoadingState v-if="loading && readingRecords.length === 0" />
         <ul v-else-if="readingRecords.length" class="timeline list-reset">
           <li v-for="item in readingRecords" :key="item.id" class="timeline__item">
@@ -248,9 +226,8 @@ onMounted(loadDashboard)
   grid-column: span 6;
 }
 
-.home-grid > *:nth-child(3),
-.home-grid > *:nth-child(4) {
-  grid-column: span 6;
+.home-grid > *:nth-child(3) {
+  grid-column: span 12;
 }
 
 .books-grid {
@@ -317,15 +294,11 @@ onMounted(loadDashboard)
   line-height: 1.35;
   color: var(--sl-ink);
   text-align: center;
-  font-family: "STSong", "SimSun", serif;
+  font-family: 'STSong', 'SimSun', serif;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.books-grid--compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .recommend-row {
@@ -364,7 +337,6 @@ onMounted(loadDashboard)
   }
 
   .books-grid,
-  .books-grid--compact,
   .recommend-row {
     grid-template-columns: 1fr;
   }

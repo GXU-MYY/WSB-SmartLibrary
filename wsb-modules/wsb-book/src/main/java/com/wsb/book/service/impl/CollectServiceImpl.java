@@ -1,28 +1,28 @@
-package com.wsb.social.service.impl;
+package com.wsb.book.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.wsb.book.api.RemoteBookService;
-import com.wsb.book.api.dto.BookRemoteDTO;
-import com.wsb.book.api.dto.ShelfRemoteDTO;
-import com.wsb.common.core.domain.Result;
+import com.wsb.book.api.dto.CollectAddDTO;
+import com.wsb.book.api.dto.CollectDeleteDTO;
+import com.wsb.book.api.vo.CollectBookVO;
+import com.wsb.book.api.vo.CollectShelfVO;
+import com.wsb.book.api.vo.CollectVO;
+import com.wsb.book.convert.CollectConverter;
+import com.wsb.book.domain.Book;
+import com.wsb.book.domain.Collect;
+import com.wsb.book.domain.Shelf;
+import com.wsb.book.mapper.CollectMapper;
+import com.wsb.book.service.BookService;
+import com.wsb.book.service.CollectService;
+import com.wsb.book.service.ShelfService;
 import com.wsb.common.core.exception.ServiceException;
-import com.wsb.social.api.dto.CollectAddDTO;
-import com.wsb.social.api.dto.CollectDeleteDTO;
-import com.wsb.social.api.vo.CollectBookVO;
-import com.wsb.social.api.vo.CollectShelfVO;
-import com.wsb.social.api.vo.CollectVO;
-import com.wsb.social.convert.CollectConverter;
-import com.wsb.social.domain.Collect;
-import com.wsb.social.mapper.CollectMapper;
-import com.wsb.social.service.CollectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -33,15 +33,15 @@ import java.util.stream.Collectors;
 public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> implements CollectService {
 
     private final CollectConverter collectConverter;
-    private final RemoteBookService remoteBookService;
+    private final BookService bookService;
+    private final ShelfService shelfService;
 
     @Override
     public CollectVO addCollect(CollectAddDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
-        // 校验参数：bookId和bookshelfId只能填一个
         if ((dto.getBookId() == null) == (dto.getBookshelfId() == null)) {
-            throw new ServiceException("请选择收藏书籍或收藏书架");
+            throw new ServiceException("请选择要收藏的图书或书架");
         }
 
         Collect collect = new Collect();
@@ -49,32 +49,28 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
         collect.setIsDeleted(false);
 
         if (dto.getBookId() != null) {
-            // 收藏书籍
-            Result<BookRemoteDTO> bookResult = remoteBookService.getBookById(dto.getBookId());
-            if (bookResult == null || bookResult.getData() == null) {
-                throw new ServiceException("书籍不存在");
+            Book book = bookService.getById(dto.getBookId());
+            if (book == null || Boolean.TRUE.equals(book.getIsDeleted())) {
+                throw new ServiceException("图书不存在");
             }
 
-            // 检查是否已收藏
             boolean exists = this.exists(Wrappers.<Collect>lambdaQuery()
                     .eq(Collect::getUserId, currentUserId)
                     .eq(Collect::getTargetId, dto.getBookId())
                     .eq(Collect::getCollectType, 1)
                     .eq(Collect::getIsDeleted, false));
             if (exists) {
-                throw new ServiceException("已收藏该书籍");
+                throw new ServiceException("已收藏该图书");
             }
 
             collect.setTargetId(dto.getBookId());
             collect.setCollectType(1);
         } else {
-            // 收藏书架
-            Result<ShelfRemoteDTO> shelfResult = remoteBookService.getShelfById(dto.getBookshelfId());
-            if (shelfResult == null || shelfResult.getData() == null) {
+            Shelf shelf = shelfService.getById(dto.getBookshelfId());
+            if (shelf == null || Boolean.TRUE.equals(shelf.getIsDeleted())) {
                 throw new ServiceException("书架不存在");
             }
 
-            // 检查是否已收藏
             boolean exists = this.exists(Wrappers.<Collect>lambdaQuery()
                     .eq(Collect::getUserId, currentUserId)
                     .eq(Collect::getTargetId, dto.getBookshelfId())
@@ -97,16 +93,14 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
         Collect collect = this.getById(dto.getCollectId());
-        if (collect == null || collect.getIsDeleted()) {
+        if (collect == null || Boolean.TRUE.equals(collect.getIsDeleted())) {
             throw new ServiceException("收藏记录不存在");
         }
 
-        // 校验是否是本人的收藏
         if (!collect.getUserId().equals(currentUserId)) {
             throw new ServiceException("无权限删除他人收藏");
         }
 
-        // 软删除
         collect.setIsDeleted(true);
         this.updateById(collect);
     }
@@ -114,8 +108,6 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
     @Override
     public List<CollectBookVO> getMyBookCollects() {
         Long currentUserId = StpUtil.getLoginIdAsLong();
-
-        // 查询书籍收藏
         List<Collect> collects = this.list(Wrappers.<Collect>lambdaQuery()
                 .eq(Collect::getUserId, currentUserId)
                 .eq(Collect::getCollectType, 1)
@@ -126,36 +118,27 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
             return List.of();
         }
 
-        // 批量获取书籍信息
         List<Long> bookIds = collects.stream()
                 .map(Collect::getTargetId)
-                .collect(Collectors.toList());
-        Result<List<BookRemoteDTO>> booksResult = remoteBookService.getBooksByIds(bookIds);
-        if (booksResult == null || booksResult.getData() == null) {
-            return List.of();
-        }
+                .toList();
+        List<Book> books = bookService.listByIds(bookIds);
+        var bookMap = books.stream().collect(Collectors.toMap(Book::getId, Function.identity(), (a, b) -> a));
 
-        Map<Long, BookRemoteDTO> bookMap = booksResult.getData().stream()
-                .collect(Collectors.toMap(BookRemoteDTO::getId, b -> b, (a, b) -> a));
-
-        // 转换VO
         return collects.stream()
-                .map(c -> {
-                    BookRemoteDTO book = bookMap.get(c.getTargetId());
-                    if (book != null) {
-                        return collectConverter.toCollectBookVO(book, c.getId(), c.getCreateTime());
+                .map(collect -> {
+                    Book book = bookMap.get(collect.getTargetId());
+                    if (book == null || Boolean.TRUE.equals(book.getIsDeleted())) {
+                        return null;
                     }
-                    return null;
+                    return collectConverter.toCollectBookVO(book, collect.getId(), collect.getCreateTime());
                 })
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
     public List<CollectShelfVO> getMyShelfCollects() {
         Long currentUserId = StpUtil.getLoginIdAsLong();
-
-        // 查询书架收藏
         List<Collect> collects = this.list(Wrappers.<Collect>lambdaQuery()
                 .eq(Collect::getUserId, currentUserId)
                 .eq(Collect::getCollectType, 2)
@@ -166,28 +149,21 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
             return List.of();
         }
 
-        // 批量获取书架信息
         List<Long> shelfIds = collects.stream()
                 .map(Collect::getTargetId)
-                .collect(Collectors.toList());
-        Result<List<ShelfRemoteDTO>> shelvesResult = remoteBookService.getShelfByIds(shelfIds);
-        if (shelvesResult == null || shelvesResult.getData() == null) {
-            return List.of();
-        }
+                .toList();
+        List<Shelf> shelves = shelfService.listByIds(shelfIds);
+        var shelfMap = shelves.stream().collect(Collectors.toMap(Shelf::getId, Function.identity(), (a, b) -> a));
 
-        Map<Long, ShelfRemoteDTO> shelfMap = shelvesResult.getData().stream()
-                .collect(Collectors.toMap(ShelfRemoteDTO::getId, s -> s, (a, b) -> a));
-
-        // 转换VO
         return collects.stream()
-                .map(c -> {
-                    ShelfRemoteDTO shelf = shelfMap.get(c.getTargetId());
-                    if (shelf != null) {
-                        return collectConverter.toCollectShelfVO(shelf, c.getId(), c.getCreateTime());
+                .map(collect -> {
+                    Shelf shelf = shelfMap.get(collect.getTargetId());
+                    if (shelf == null || Boolean.TRUE.equals(shelf.getIsDeleted())) {
+                        return null;
                     }
-                    return null;
+                    return collectConverter.toCollectShelfVO(shelf, collect.getId(), collect.getCreateTime());
                 })
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 }

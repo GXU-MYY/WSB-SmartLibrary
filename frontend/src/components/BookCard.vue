@@ -145,11 +145,17 @@ const handleOpen = () => {
   position: absolute;
   top: 14px;
   left: 14px;
-  padding: 6px 10px;
+  padding: 6px 11px;
   border-radius: 999px;
-  background: rgba(255, 253, 248, 0.92);
-  color: var(--sl-brand-strong);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(16, 24, 40, 0.86), rgba(28, 39, 58, 0.82));
+  color: rgba(255, 255, 255, 0.96);
   font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 10px 22px rgba(7, 10, 18, 0.18);
+  backdrop-filter: blur(10px);
 }
 
 .book-card__copy {

@@ -104,10 +104,11 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
 
         validateActiveBorrow(book.getId());
+        Book borrowedBook = createCommunityBorrowedBook(book, dto.getBorrowerUserId());
 
         String flowId = UUID.randomUUID().toString();
         BookBorrow inBorrow = buildCommunityBorrowRecord(
-                book,
+                borrowedBook,
                 dto.getBorrowerUserId(),
                 dto.getOwnerNickname(),
                 BORROW_TYPE_IN,
@@ -239,6 +240,22 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         }
 
         enqueueSummaryAfterCommit(book.getId());
+        return book;
+    }
+
+    private Book createCommunityBorrowedBook(Book source, Long borrowerUserId) {
+        Book book = new Book();
+        applyBookMetadata(book, source);
+        book.setClassify(source.getClassify());
+        book.setLabel(source.getLabel());
+        book.setRemark(source.getRemark());
+        book.setUserId(borrowerUserId);
+        book.setIsDeleted(false);
+        book.setIsBorrowed(true);
+        book.setIsLentOut(false);
+        book.setIsOnShelf(false);
+        book.setEmbeddingStatus(source.getEmbeddingStatus());
+        bookMapper.insert(book);
         return book;
     }
 
@@ -481,7 +498,8 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
         borrow.setStatus(BookBorrowStatus.RETURNED);
         this.updateById(borrow);
         syncFlowReturnIfNeeded(borrow);
-        refreshBookLentOutStatus(borrow.getBookId());
+        cleanupReturnedBorrowedBooks(borrow);
+        refreshRelatedBookStates(borrow);
 
         return bookBorrowConverter.toBookBorrowVO(borrow);
     }
@@ -595,6 +613,47 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
                 .set(BookBorrow::getStatus, BookBorrowStatus.RETURNED));
     }
 
+    private void cleanupReturnedBorrowedBooks(BookBorrow borrow) {
+        if (borrow == null) {
+            return;
+        }
+
+        List<BookBorrow> relatedBorrows = StringUtils.isBlank(borrow.getBorrowFlowId())
+                ? List.of(borrow)
+                : this.list(Wrappers.<BookBorrow>lambdaQuery()
+                .eq(BookBorrow::getBorrowFlowId, borrow.getBorrowFlowId())
+                .eq(BookBorrow::getIsDeleted, false));
+
+        relatedBorrows.stream()
+                .filter(item -> item.getBorrowType() != null && item.getBorrowType() == BORROW_TYPE_IN)
+                .map(BookBorrow::getBookId)
+                .distinct()
+                .forEach(this::deleteBorrowedBookIfInactive);
+    }
+
+    private void deleteBorrowedBookIfInactive(Long bookId) {
+        if (bookId == null) {
+            return;
+        }
+
+        Book book = bookMapper.selectById(bookId);
+        if (book == null || Boolean.TRUE.equals(book.getIsDeleted()) || !Boolean.TRUE.equals(book.getIsBorrowed())) {
+            return;
+        }
+
+        Long activeCount = this.baseMapper.selectCount(Wrappers.<BookBorrow>lambdaQuery()
+                .eq(BookBorrow::getBookId, bookId)
+                .eq(BookBorrow::getIsDeleted, false)
+                .in(BookBorrow::getStatus, BookBorrowStatus.BORROWING, BookBorrowStatus.OVERDUE));
+        if (activeCount != null && activeCount > 0) {
+            return;
+        }
+
+        bookShelfMapper.delete(Wrappers.<BookShelf>lambdaQuery()
+                .eq(BookShelf::getBookId, bookId));
+        bookMapper.deleteById(bookId);
+    }
+
     private void syncFlowUpdateIfNeeded(BookBorrow borrow) {
         if (borrow == null || StringUtils.isBlank(borrow.getBorrowFlowId())) {
             return;
@@ -612,6 +671,26 @@ public class BookBorrowServiceImpl extends ServiceImpl<BookBorrowMapper, BookBor
                 .set(BookBorrow::getDueTime, borrow.getDueTime())
                 .set(borrow.getReturnTime() != null, BookBorrow::getReturnTime, borrow.getReturnTime())
                 .set(BookBorrow::getStatus, syncedStatus));
+    }
+
+    private void refreshRelatedBookStates(BookBorrow borrow) {
+        if (borrow == null) {
+            return;
+        }
+
+        List<Long> relatedBookIds = StringUtils.isBlank(borrow.getBorrowFlowId())
+                ? List.of(borrow.getBookId())
+                : this.list(Wrappers.<BookBorrow>lambdaQuery()
+                .eq(BookBorrow::getBorrowFlowId, borrow.getBorrowFlowId())
+                .eq(BookBorrow::getIsDeleted, false))
+                .stream()
+                .map(BookBorrow::getBookId)
+                .distinct()
+                .toList();
+
+        relatedBookIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .forEach(this::refreshBookLentOutStatus);
     }
 
     private void refreshBookLentOutStatus(Long bookId) {

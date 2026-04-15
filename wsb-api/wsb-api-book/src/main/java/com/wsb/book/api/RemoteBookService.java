@@ -24,7 +24,7 @@ import java.util.List;
 /**
  * 书籍远程调用服务
  */
-@FeignClient(value = "wsb-book", path = "/v1/inner")
+@FeignClient(contextId = "remoteBookService", value = "wsb-book", path = "/v1/inner")
 public interface RemoteBookService {
 
     /**

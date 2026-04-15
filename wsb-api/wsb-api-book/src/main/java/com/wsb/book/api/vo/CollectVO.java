@@ -1,4 +1,4 @@
-package com.wsb.social.api.vo;
+package com.wsb.book.api.vo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
@@ -8,27 +8,27 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 书架收藏VO
+ * 收藏 VO
  */
 @Data
-public class CollectShelfVO implements Serializable {
+public class CollectVO implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
     /**
-     * 收藏ID
+     * 收藏 ID
      */
     private Long id;
 
     /**
-     * 书架ID
+     * 目标 ID
      */
-    private Long shelfId;
+    private Long targetId;
 
     /**
-     * 书架名称
+     * 收藏类型：1-图书，2-书架
      */
-    private String shelfName;
+    private Integer collectType;
 
     /**
      * 收藏时间

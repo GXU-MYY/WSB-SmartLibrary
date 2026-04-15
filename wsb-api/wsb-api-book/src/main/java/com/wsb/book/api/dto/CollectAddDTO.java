@@ -1,4 +1,4 @@
-package com.wsb.social.api.dto;
+package com.wsb.book.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;

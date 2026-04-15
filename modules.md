@@ -1,58 +1,64 @@
-### 1️⃣ wsb-user (用户域)
-```
-核心职责：用户管理、认证授权
+### 1. `wsb-user`（用户域）
 
-表结构：
-✅ t_user
-```
+核心职责：
+- 用户注册、登录、鉴权
+- 用户资料维护
+- 用户基础信息对外查询
 
+涉及表：
+- `t_user`
 
-### 2️⃣ wsb-book (图书域) - **核心域**
-```
-核心职责：图书管理、书架管理、阅读追踪
+### 2. `wsb-book`（图书域）
 
-表结构：
-✅ t_book
-✅ t_shelf
-✅ t_book_shelf
-✅ t_book_label
-✅ t_book_reading
-```
+核心职责：
+- 图书管理
+- 书架管理
+- 上下架管理
+- 阅读记录
+- 借阅记录
+- 收藏能力
 
+涉及表：
+- `t_book`
+- `t_shelf`
+- `t_book_shelf`
+- `t_book_label`
+- `t_book_reading`
+- `t_book_borrow`
+- `t_collect`
 
-### 3️⃣ wsb-borrow (借阅域)
-```
-核心职责：借阅管理
+补充说明：
+- `t_collect` 已从原社交模块迁移到图书域。
+- 收藏能力当前只保留图书收藏和书架收藏，不再支持评论收藏。
 
-表结构：
-✅ t_book_borrow
+### 3. `wsb-community`（社区域）
 
-冗余字段：
-- book_name (冗余，避免每次JOIN t_book)
-```
+核心职责：
+- 群组管理
+- 群成员管理
+- 图书/书架分享
+- 群内借阅申请与协作
+- 统计聚合
 
+涉及表：
+- `t_group`
+- `t_group_user`
+- `t_share`
+- `t_group_borrow_request`
 
-### 4️⃣wsb-social（社交域）
-```
-核心职责：评论、点赞、收藏
+### 4. `wsb-file`（文件域）
 
-表结构：
-✅ t_comment - 评论表
-✅ t_comment_like - 评论点赞表
-✅ t_collect - 收藏表
+核心职责：
+- 图片上传
+- 文件资源管理
 
-冗余字段：
-- book_name (t_comment中冗余)
-- user_nickname (t_comment中冗余)
-```
+### 5. `wsb-rag`（智能检索域）
 
+核心职责：
+- 图书摘要生成
+- 向量化
+- 相似图书检索
+- AI 推荐
 
-### 5️⃣ wsb-community (社区域)
-```
-核心职责：群组管理、内容分享
-
-表结构：
-✅ t_group
-✅ t_group_user
-✅ t_share
-```
+补充说明：
+- 向量数据当前落在 PostgreSQL + pgvector，不在主业务 MySQL 中。

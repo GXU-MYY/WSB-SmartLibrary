@@ -58,8 +58,10 @@ const borrowRequests = ref<GroupBorrowRequest[]>([])
 const selectedGroupId = ref(0)
 const showCreateDialog = ref(false)
 const showInviteDialog = ref(false)
+const showBorrowRequestDialog = ref(false)
 const memberDetailUserId = ref<number | null>(null)
 const selectedShelfId = ref<number | null>(null)
+const borrowRequestTarget = ref<GroupPublicBook | null>(null)
 
 const createMemberPhone = ref('')
 const inviteMemberPhone = ref('')
@@ -71,11 +73,21 @@ const groupForm = reactive({
   remark: '',
 })
 
+const borrowRequestForm = reactive({
+  dueTime: '',
+  requestRemark: '',
+})
+
 const toId = (value: number | string | null | undefined) => Number(value || 0)
 const isSameId = (left: number | string | null | undefined, right: number | string | null | undefined) =>
   toId(left) === toId(right)
 
 const currentUserId = computed(() => toId(userStore.userInfo?.id || userStore.loginId))
+const todayDate = computed(() => {
+  const now = new Date()
+  const timezoneOffset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10)
+})
 const selectedGroup = computed(
   () => groups.value.find((item) => isSameId(item.id, selectedGroupId.value)) || null,
 )
@@ -224,6 +236,28 @@ const closeMemberDetail = () => {
   selectedShelfId.value = null
 }
 
+const resetBorrowRequestDialog = () => {
+  borrowRequestTarget.value = null
+  borrowRequestForm.dueTime = ''
+  borrowRequestForm.requestRemark = ''
+}
+
+const openBorrowRequestDialog = (book: GroupPublicBook) => {
+  if (!selectedGroup.value || !canRequestBorrow(book)) {
+    return
+  }
+
+  borrowRequestTarget.value = book
+  borrowRequestForm.dueTime = ''
+  borrowRequestForm.requestRemark = ''
+  showBorrowRequestDialog.value = true
+}
+
+const closeBorrowRequestDialog = () => {
+  showBorrowRequestDialog.value = false
+  resetBorrowRequestDialog()
+}
+
 const selectShelf = (shelfId: number) => {
   selectedShelfId.value = shelfId
 }
@@ -353,13 +387,13 @@ const handleRemoveMember = async (member: GroupUser) => {
     return
   }
 
-  const ok = window.confirm(`确认将 ${member.nickname} 移出群聊吗？`)
+  const ok = window.confirm(`确认将 ${member.nickname} 移出群组吗？`)
   if (!ok) {
     return
   }
 
   await removeGroupMember(selectedGroup.value.id, member.userId)
-  notifySuccess('成员已被移出群聊')
+  notifySuccess('成员已被移出群组')
 
   if (isSameId(member.userId, memberDetailUserId.value)) {
     closeMemberDetail()
@@ -373,13 +407,13 @@ const handleExitGroup = async () => {
   }
 
   const groupName = selectedGroup.value.groupName
-  const ok = window.confirm(`确认退出群聊“${groupName}”吗？`)
+  const ok = window.confirm(`确认退出群组“${groupName}”吗？`)
   if (!ok) {
     return
   }
 
   await exitGroup(selectedGroup.value.id)
-  notifySuccess(`你已退出群聊“${groupName}”`)
+  notifySuccess(`你已退出群组“${groupName}”`)
   closeMemberDetail()
   await loadGroups()
 }
@@ -429,18 +463,26 @@ const getBorrowButtonLabel = (book: GroupPublicBook) => {
   return '请求借入'
 }
 
-const handleBorrowRequest = async (book: GroupPublicBook) => {
-  if (!selectedGroup.value || !canRequestBorrow(book)) {
+const handleBorrowRequest = (book: GroupPublicBook) => {
+  openBorrowRequestDialog(book)
+}
+
+const handleSubmitBorrowRequest = async () => {
+  if (!selectedGroup.value || !borrowRequestTarget.value || !canRequestBorrow(borrowRequestTarget.value)) {
     return
   }
 
+  const book = borrowRequestTarget.value
   requestingBookId.value = book.bookId
   try {
     await createGroupBorrowRequest({
       groupId: selectedGroup.value.id,
       bookId: book.bookId,
+      dueTime: borrowRequestForm.dueTime || undefined,
+      requestRemark: borrowRequestForm.requestRemark.trim() || undefined,
     })
     notifySuccess(`已向 ${book.ownerNickname || '书主'} 发起借阅请求`)
+    closeBorrowRequestDialog()
     await loadWorkspace(selectedGroup.value.id)
   } finally {
     requestingBookId.value = null
@@ -496,6 +538,7 @@ const requestStatusClass = (status: number) => ({
 
 watch(selectedGroupId, async (groupId) => {
   closeInviteDialog()
+  closeBorrowRequestDialog()
   closeMemberDetail()
 
   if (groupId) {
@@ -575,7 +618,7 @@ onMounted(loadPage)
               <div class="workspace-head__actions">
                 <button
                   v-if="isOwner"
-                  class="button button--secondary"
+                  class="button button--secondary workspace-head__action"
                   type="button"
                   @click="openInviteDialog"
                 >
@@ -583,7 +626,7 @@ onMounted(loadPage)
                 </button>
                 <button
                   v-if="isOwner"
-                  class="button button--danger"
+                  class="button button--danger workspace-head__action"
                   type="button"
                   @click="handleDeleteGroup"
                 >
@@ -591,11 +634,11 @@ onMounted(loadPage)
                 </button>
                 <button
                   v-else
-                  class="button button--ghost"
+                  class="button button--ghost workspace-head__action"
                   type="button"
                   @click="handleExitGroup"
                 >
-                  退出群聊
+                  退出群组
                 </button>
               </div>
             </article>
@@ -654,7 +697,7 @@ onMounted(loadPage)
                     type="button"
                     @click.stop="handleRemoveMember(member)"
                   >
-                    踢出群聊
+                    踢出群组
                   </button>
                 </article>
               </div>
@@ -912,6 +955,64 @@ onMounted(loadPage)
     </Teleport>
 
     <Teleport to="body">
+      <div v-if="showBorrowRequestDialog && borrowRequestTarget" class="dialog-scrim" @click.self="closeBorrowRequestDialog">
+        <section class="surface-card desk-dialog desk-dialog--compact">
+          <header class="desk-dialog__head">
+            <div>
+              <span class="eyebrow">Borrow Request</span>
+              <h2>申请借入图书</h2>
+              <p>向 {{ borrowRequestTarget.ownerNickname || '书主' }} 发起借阅申请，并可选填写预计归还时间。</p>
+            </div>
+            <button class="button button--ghost desk-dialog__close" type="button" @click="closeBorrowRequestDialog">
+              关闭
+            </button>
+          </header>
+
+          <div class="desk-dialog__body">
+            <div class="section-stack">
+              <article class="panel-card borrow-request-preview">
+                <div class="borrow-request-preview__copy">
+                  <strong>{{ borrowRequestTarget.title }}</strong>
+                  <p>{{ borrowRequestTarget.author || '作者未填写' }}</p>
+                  <span>{{ borrowRequestTarget.shelfName || '公开书架' }}</span>
+                </div>
+              </article>
+
+              <div class="field">
+                <label>预计归还时间</label>
+                <input
+                  v-model="borrowRequestForm.dueTime"
+                  :min="todayDate"
+                  type="date"
+                />
+              </div>
+
+              <div class="field">
+                <label>申请备注</label>
+                <textarea
+                  v-model="borrowRequestForm.requestRemark"
+                  placeholder="例如：我计划阅读两周左右，读完会及时归还。"
+                />
+              </div>
+            </div>
+          </div>
+
+          <footer class="desk-dialog__foot desk-dialog__foot--align-end">
+            <button class="button button--ghost" type="button" @click="closeBorrowRequestDialog">取消</button>
+            <button
+              class="button button--primary"
+              type="button"
+              :disabled="requestingBookId === borrowRequestTarget.bookId"
+              @click="handleSubmitBorrowRequest"
+            >
+              {{ requestingBookId === borrowRequestTarget.bookId ? '申请中...' : '提交申请' }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
       <div v-if="selectedMember" class="dialog-scrim" @click.self="closeMemberDetail">
         <section class="surface-card desk-dialog desk-dialog--wide member-detail-dialog">
           <header class="desk-dialog__head">
@@ -928,7 +1029,7 @@ onMounted(loadPage)
                 type="button"
                 @click="handleRemoveMember(selectedMember)"
               >
-                踢出群聊
+                踢出群组
               </button>
               <button class="button button--ghost desk-dialog__close" type="button" @click="closeMemberDetail">
                 关闭
@@ -1053,6 +1154,10 @@ onMounted(loadPage)
   gap: 14px;
 }
 
+.request-list {
+  align-content: start;
+}
+
 .panel-card,
 .group-switcher__item,
 .selected-user-card,
@@ -1133,6 +1238,12 @@ onMounted(loadPage)
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.workspace-head__action {
+  min-height: 36px;
+  padding-inline: 12px;
+  font-size: 0.88rem;
 }
 
 .workspace-overview {
@@ -1315,12 +1426,18 @@ onMounted(loadPage)
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  align-items: start;
 }
 
 .request-column,
 .request-card {
   display: grid;
   gap: 12px;
+}
+
+.request-column {
+  align-self: start;
+  align-content: start;
 }
 
 .request-column__head {
@@ -1365,6 +1482,28 @@ onMounted(loadPage)
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.borrow-request-preview {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.borrow-request-preview__copy {
+  display: grid;
+  gap: 6px;
+}
+
+.borrow-request-preview__copy strong,
+.borrow-request-preview__copy p,
+.borrow-request-preview__copy span {
+  margin: 0;
+}
+
+.borrow-request-preview__copy p,
+.borrow-request-preview__copy span {
+  color: var(--sl-ink-soft);
 }
 
 .status-badge {

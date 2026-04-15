@@ -75,12 +75,13 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             }
 
             LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
+            applyVisibleBookFilter(wrapper, currentUserId);
             wrapper.in(Book::getId, bookIds);
             return bookConverter.toVOPage(this.page(pageParam, wrapper));
         }
 
         LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
-        wrapper.eq(Book::getUserId, currentUserId);
+        applyVisibleBookFilter(wrapper, currentUserId);
         return bookConverter.toVOPage(this.page(pageParam, wrapper));
     }
 
@@ -89,6 +90,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Long currentUserId = StpUtil.getLoginIdAsLong();
         List<Book> books = this.list(Wrappers.<Book>lambdaQuery()
                 .eq(Book::getUserId, currentUserId)
+                .and(wrapper -> wrapper
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false))
                 .orderByDesc(Book::getCreateTime));
 
         List<MyBookVO> bookVOs = books.stream()
@@ -107,6 +112,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Page<Book> pageParam = new Page<>(1, 6, false);
         LambdaQueryWrapper<Book> wrapper = Wrappers.<Book>lambdaQuery()
                 .eq(Book::getUserId, currentUserId)
+                .and(query -> query
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false))
                 .orderByDesc(Book::getUpdateTime)
                 .orderByDesc(Book::getCreateTime);
 
@@ -254,6 +263,9 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
             throw new ServiceException("无权修改他人书籍");
+        }
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入图书暂不支持编辑");
         }
 
         if (dto.getTitle() != null && StringUtils.isBlank(dto.getTitle())) {
@@ -477,6 +489,14 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         }
         wrapper.orderByDesc(Book::getCreateTime);
         return wrapper;
+    }
+
+    private void applyVisibleBookFilter(LambdaQueryWrapper<Book> wrapper, Long currentUserId) {
+        wrapper.eq(Book::getUserId, currentUserId)
+                .and(query -> query
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false));
     }
 
     private void applyKeywordSearch(LambdaQueryWrapper<Book> wrapper, String keyword) {
