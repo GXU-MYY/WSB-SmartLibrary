@@ -109,8 +109,8 @@ const summaryCards = computed(() => {
 
   return [
     { label: '记录总数', value: summary.total, hint: '当前账号下的全部借阅记录。', tone: 'brand' as const },
-    { label: '借入', value: summary.borrowedIn, hint: '你从外部借来的图书。', tone: 'plain' as const },
-    { label: '借出', value: summary.borrowedOut, hint: '你借给别人的图书。', tone: 'plain' as const },
+    { label: '借入记录数', value: summary.borrowedIn, hint: '你从外部借来的图书。', tone: 'plain' as const },
+    { label: '借出记录数', value: summary.borrowedOut, hint: '你借给别人的图书。', tone: 'plain' as const },
     {
       label: '进行中 / 已逾期',
       value: `${summary.active} / ${summary.overdue}`,
@@ -467,12 +467,12 @@ onMounted(loadPage)
       <SectionPanel title="借阅记录" class="borrow-layout__records">
         <template #actions>
           <div class="record-toolbar">
-            <select v-model.number="borrowTypeFilter" @change="handleFilterChange">
+            <select class="record-toolbar__select" v-model.number="borrowTypeFilter" @change="handleFilterChange">
               <option :value="0">全部类型</option>
               <option :value="1">只看借入</option>
               <option :value="2">只看借出</option>
             </select>
-            <select v-model.number="statusFilter" @change="handleFilterChange">
+            <select class="record-toolbar__select" v-model.number="statusFilter" @change="handleFilterChange">
               <option :value="-1">全部状态</option>
               <option :value="0">借阅中</option>
               <option :value="1">已归还</option>
@@ -760,6 +760,66 @@ onMounted(loadPage)
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.record-toolbar__select {
+  min-width: 118px;
+  padding: 10px 40px 10px 14px;
+  border: 1px solid rgba(31, 95, 107, 0.18);
+  border-radius: 999px;
+  background-color: rgba(250, 252, 252, 0.96);
+  background-image:
+    linear-gradient(135deg, rgba(31, 95, 107, 0.08), rgba(31, 95, 107, 0.02)),
+    linear-gradient(45deg, transparent 50%, rgba(31, 95, 107, 0.72) 50%),
+    linear-gradient(135deg, rgba(31, 95, 107, 0.72) 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:
+    100% 100%,
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  box-shadow: 0 12px 24px rgba(31, 95, 107, 0.06);
+  color: var(--sl-brand-strong);
+  font-weight: 600;
+  line-height: 1.2;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.record-toolbar__select:hover {
+  border-color: rgba(31, 95, 107, 0.28);
+  background-color: rgba(255, 255, 255, 1);
+}
+
+.record-toolbar__select:focus {
+  border-color: rgba(31, 95, 107, 0.38);
+  box-shadow: 0 0 0 4px rgba(31, 95, 107, 0.1), 0 12px 24px rgba(31, 95, 107, 0.08);
+  outline: none;
+}
+
+[data-theme='dark'] .record-toolbar__select {
+  border-color: rgba(159, 217, 228, 0.18);
+  background-color: rgba(18, 28, 37, 0.96);
+  background-image:
+    linear-gradient(135deg, rgba(108, 185, 199, 0.18), rgba(18, 28, 37, 0.08)),
+    linear-gradient(45deg, transparent 50%, rgba(159, 217, 228, 0.88) 50%),
+    linear-gradient(135deg, rgba(159, 217, 228, 0.88) 50%, transparent 50%);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+  color: var(--sl-brand-strong);
+}
+
+[data-theme='dark'] .record-toolbar__select:hover {
+  border-color: rgba(159, 217, 228, 0.28);
+  background-color: rgba(22, 34, 45, 0.98);
+}
+
+[data-theme='dark'] .record-toolbar__select:focus {
+  border-color: rgba(159, 217, 228, 0.34);
+  box-shadow: 0 0 0 4px rgba(108, 185, 199, 0.14), 0 14px 28px rgba(0, 0, 0, 0.24);
 }
 
 .borrow-records-shell {
