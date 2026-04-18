@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface RagService {
 
-    List<BookRemoteDTO> recommend(String query, int limit);
+    List<BookRemoteDTO> recommend(String query, int limit, Long ownerId);
 
     List<BookRemoteDTO> getSimilarBooks(Long bookId, int limit);
 

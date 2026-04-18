@@ -1,5 +1,6 @@
 package com.wsb.rag.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
@@ -36,8 +37,10 @@ public class RagController {
     @PostMapping("/recommend")
     public Result<List<BookRemoteDTO>> recommend(
             @RequestParam("query") String query,
-            @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
-        return Result.success(ragService.recommend(query, limit));
+            @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+            @RequestParam(value = "mineOnly", defaultValue = "false") Boolean mineOnly) {
+        Long ownerId = Boolean.TRUE.equals(mineOnly) ? StpUtil.getLoginIdAsLong() : null;
+        return Result.success(ragService.recommend(query, limit, ownerId));
     }
 
     @Operation(summary = "相似图书", description = "获取与指定书籍相似的其他书籍")
