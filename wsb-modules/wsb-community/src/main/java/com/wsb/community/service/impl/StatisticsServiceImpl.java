@@ -53,7 +53,6 @@ public class StatisticsServiceImpl implements StatisticsService {
                 .sorted((a, b) -> b.getCollectCount().compareTo(a.getCollectCount()))
                 .collect(Collectors.toList());
 
-        // 分页
         int total = sortedList.size();
         int fromIndex = (page - 1) * pageSize;
         int toIndex = Math.min(fromIndex + pageSize, total);
@@ -64,7 +63,6 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<BookCollectCountDTO> pageList = sortedList.subList(fromIndex, toIndex);
 
-        // 批量获取书籍信息
         List<Long> bookIds = pageList.stream().map(BookCollectCountDTO::getBookId).collect(Collectors.toList());
         Result<List<BookRemoteDTO>> booksResult = remoteBookService.getBooksByIds(bookIds);
         Map<Long, BookRemoteDTO> bookMap = booksResult != null && booksResult.getData() != null

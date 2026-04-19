@@ -61,7 +61,9 @@ public class BookInnerServiceImpl implements BookInnerService {
         if (bookIds == null || bookIds.isEmpty()) {
             return List.of();
         }
-        return bookInnerConverter.toBookRemoteDTOList(bookService.listByIds(bookIds));
+        return bookInnerConverter.toBookRemoteDTOList(bookService.listByIds(bookIds).stream()
+                .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
+                .toList());
     }
 
     @Override

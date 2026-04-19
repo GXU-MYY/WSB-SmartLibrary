@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +45,21 @@ public class CollectInnerController {
                     .eq(Collect::getIsDeleted, false));
         }
 
+        if (collects.isEmpty()) {
+            return Result.success(List.of());
+        }
+
+        Set<Long> validBookIds = bookService.listByIds(collects.stream()
+                        .map(Collect::getTargetId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
+                .map(Book::getId)
+                .collect(Collectors.toSet());
+
         Map<Long, Long> countMap = collects.stream()
+                .filter(collect -> validBookIds.contains(collect.getTargetId()))
                 .collect(Collectors.groupingBy(Collect::getTargetId, Collectors.counting()));
 
         List<BookCollectCountDTO> result = countMap.entrySet().stream()

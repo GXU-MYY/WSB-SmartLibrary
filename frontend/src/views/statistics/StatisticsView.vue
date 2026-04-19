@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { getBookRank, getBorrowSummary, getCollectSummary, getPersonalStats, getUserRank } from '@/api/community'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
+import CategoryPieChart from '@/components/CategoryPieChart.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
@@ -12,11 +13,25 @@ import type { BookRank, BorrowStats, CollectStats, PersonalStats, UserRank } fro
 import { normalizePage } from '@/utils/format'
 
 const loading = ref(false)
+const rankLoading = ref(false)
 const personalStats = ref<PersonalStats | null>(null)
 const borrowStats = ref<BorrowStats | null>(null)
 const collectStats = ref<CollectStats | null>(null)
 const bookRank = ref<BookRank[]>([])
 const userRank = ref<UserRank[]>([])
+const RANK_PAGE_SIZE = 5
+const bookRankPagination = reactive({
+  current: 1,
+  size: RANK_PAGE_SIZE,
+  total: 0,
+  pages: 1,
+})
+const userRankPagination = reactive({
+  current: 1,
+  size: RANK_PAGE_SIZE,
+  total: 0,
+  pages: 1,
+})
 
 const overviewCards = computed(() => {
   const stats = personalStats.value
@@ -28,40 +43,95 @@ const overviewCards = computed(() => {
   ]
 })
 
-const ownedDistributionMax = computed(() => {
-  const counts = personalStats.value?.owned.booksByCategory?.map((item) => item.count ?? 0) ?? []
-  return counts.length ? Math.max(...counts, 1) : 1
-})
+const ownedDistributionItems = computed(() =>
+  personalStats.value?.owned.booksByCategory?.map((item) => ({
+    category: item.category,
+    value: item.count ?? 0,
+  })) ?? [],
+)
+const borrowDistributionItems = computed(() =>
+  borrowStats.value?.classifyList?.map((item) => ({
+    category: item.category,
+    value: item.total ?? 0,
+  })) ?? [],
+)
+const collectDistributionItems = computed(() =>
+  collectStats.value?.classifyList?.map((item) => ({
+    category: item.category,
+    value: item.collect ?? 0,
+  })) ?? [],
+)
 
-const borrowDistributionMax = computed(() => {
-  const counts = borrowStats.value?.classifyList?.map((item) => item.total ?? 0) ?? []
-  return counts.length ? Math.max(...counts, 1) : 1
-})
+const updateBookRankPagination = (pageData: ReturnType<typeof normalizePage<BookRank>>) => {
+  bookRankPagination.current = pageData.current
+  bookRankPagination.size = pageData.size
+  bookRankPagination.total = pageData.total
+  bookRankPagination.pages = pageData.pages
+}
 
-const collectDistributionMax = computed(() => {
-  const counts = collectStats.value?.classifyList?.map((item) => item.collect ?? 0) ?? []
-  return counts.length ? Math.max(...counts, 1) : 1
-})
+const updateUserRankPagination = (pageData: ReturnType<typeof normalizePage<UserRank>>) => {
+  userRankPagination.current = pageData.current
+  userRankPagination.size = pageData.size
+  userRankPagination.total = pageData.total
+  userRankPagination.pages = pageData.pages
+}
+
+const loadBookRank = async (page = bookRankPagination.current) => {
+  const result = await getBookRank({ page, page_size: RANK_PAGE_SIZE })
+  const normalized = normalizePage(result)
+  bookRank.value = normalized.records
+  updateBookRankPagination(normalized)
+}
+
+const loadUserRank = async (page = userRankPagination.current) => {
+  const result = await getUserRank({ page, page_size: RANK_PAGE_SIZE })
+  const normalized = normalizePage(result)
+  userRank.value = normalized.records
+  updateUserRankPagination(normalized)
+}
 
 const loadStatistics = async () => {
   loading.value = true
 
   try {
-    const [personal, borrow, collect, books, users] = await Promise.all([
+    const [personal, borrow, collect] = await Promise.all([
       getPersonalStats(),
       getBorrowSummary('mine'),
       getCollectSummary('mine'),
-      getBookRank({ page: 1, page_size: 8 }),
-      getUserRank({ page: 1, page_size: 8 }),
     ])
 
     personalStats.value = personal
     borrowStats.value = borrow
     collectStats.value = collect
-    bookRank.value = normalizePage(books).records
-    userRank.value = normalizePage(users).records
+    await Promise.all([loadBookRank(bookRankPagination.current), loadUserRank(userRankPagination.current)])
   } finally {
     loading.value = false
+  }
+}
+
+const handleBookRankPageChange = async (page: number) => {
+  if (page < 1 || page > bookRankPagination.pages || page === bookRankPagination.current) {
+    return
+  }
+
+  rankLoading.value = true
+  try {
+    await loadBookRank(page)
+  } finally {
+    rankLoading.value = false
+  }
+}
+
+const handleUserRankPageChange = async (page: number) => {
+  if (page < 1 || page > userRankPagination.pages || page === userRankPagination.current) {
+    return
+  }
+
+  rankLoading.value = true
+  try {
+    await loadUserRank(page)
+  } finally {
+    rankLoading.value = false
   }
 }
 
@@ -91,60 +161,14 @@ onMounted(loadStatistics)
 
     <section class="page-grid statistics-layout">
       <SectionPanel
-        title="我的图书分布"
-        hint="按中图分类号首字母聚合，展示个人书库覆盖最多的图书大类。"
+        title="分布统计"
+        hint="按中图分类号首字母聚合，用三个饼图对比个人藏书、借阅和收藏的分类结构。"
       >
         <LoadingState v-if="loading && !personalStats" />
-        <div v-else-if="personalStats?.owned.booksByCategory?.length" class="bar-list">
-          <article v-for="item in personalStats.owned.booksByCategory" :key="item.category" class="bar-list__item">
-            <div class="split-actions">
-              <strong>{{ item.category }}</strong>
-              <span>{{ item.count }}</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-track__fill" :style="{ width: `${(item.count / ownedDistributionMax) * 100}%` }" />
-            </div>
-          </article>
-        </div>
-        <EmptyState v-else title="还没有形成图书分布" />
-      </SectionPanel>
-
-      <SectionPanel
-        title="借阅与收藏分布"
-        hint="同样按中图分类号首字母聚合，观察哪些大类更常被借阅，哪些大类更容易被收藏。"
-      >
-        <div class="mini-panels">
-          <article class="surface-card mini-panel">
-            <h3>借阅分布</h3>
-            <div v-if="borrowStats?.classifyList?.length" class="bar-list">
-              <article v-for="item in borrowStats.classifyList" :key="item.category" class="bar-list__item">
-                <div class="split-actions">
-                  <strong>{{ item.category }}</strong>
-                  <span>{{ item.total }}</span>
-                </div>
-                <div class="bar-track">
-                  <div class="bar-track__fill bar-track__fill--warm" :style="{ width: `${(item.total / borrowDistributionMax) * 100}%` }" />
-                </div>
-              </article>
-            </div>
-            <EmptyState v-else title="还没有形成借阅分布" />
-          </article>
-
-          <article class="surface-card mini-panel">
-            <h3>收藏分布</h3>
-            <div v-if="collectStats?.classifyList?.length" class="bar-list">
-              <article v-for="item in collectStats.classifyList" :key="item.category" class="bar-list__item">
-                <div class="split-actions">
-                  <strong>{{ item.category }}</strong>
-                  <span>{{ item.collect }}</span>
-                </div>
-                <div class="bar-track">
-                  <div class="bar-track__fill" :style="{ width: `${(item.collect / collectDistributionMax) * 100}%` }" />
-                </div>
-              </article>
-            </div>
-            <EmptyState v-else title="还没有形成收藏分布" />
-          </article>
+        <div v-else class="distribution-pie-grid">
+          <CategoryPieChart title="我的图书分布" :items="ownedDistributionItems" />
+          <CategoryPieChart title="借阅分布" :items="borrowDistributionItems" />
+          <CategoryPieChart title="收藏分布" :items="collectDistributionItems" />
         </div>
       </SectionPanel>
 
@@ -152,11 +176,54 @@ onMounted(loadStatistics)
         title="热门图书排行"
         hint="哪些书最容易被收藏，也最值得在社区里二次扩散。"
       >
-        <div v-if="bookRank.length" class="rank-list">
-          <article v-for="item in bookRank" :key="item.bookId" class="rank-list__item">
-            <strong>#{{ item.ranking }} {{ item.title }}</strong>
-            <p>收藏 {{ item.collectCount }} 次</p>
-          </article>
+        <div v-if="bookRank.length" class="rank-table-stack">
+          <div class="table-shell">
+            <table class="table rank-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>图书</th>
+                  <th>收藏数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in bookRank" :key="item.bookId">
+                  <td>
+                    <span class="rank-badge">#{{ item.ranking }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ item.title }}</strong>
+                  </td>
+                  <td>{{ item.collectCount }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination-bar">
+            <p class="pagination-bar__info">
+              第 {{ bookRankPagination.current }} / {{ Math.max(bookRankPagination.pages, 1) }} 页 · 共
+              {{ bookRankPagination.total }} 条
+            </p>
+            <div class="inline-actions">
+              <button
+                class="button button--ghost"
+                type="button"
+                :disabled="bookRankPagination.current <= 1 || rankLoading"
+                @click="handleBookRankPageChange(bookRankPagination.current - 1)"
+              >
+                上一页
+              </button>
+              <button
+                class="button button--secondary"
+                type="button"
+                :disabled="bookRankPagination.current >= bookRankPagination.pages || rankLoading"
+                @click="handleBookRankPageChange(bookRankPagination.current + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
         </div>
         <EmptyState v-else title="图书排行还未生成" />
       </SectionPanel>
@@ -165,11 +232,54 @@ onMounted(loadStatistics)
         title="用户排行"
         hint="从用户维度看，谁的书库已经形成了更明显的规模。"
       >
-        <div v-if="userRank.length" class="rank-list">
-          <article v-for="item in userRank" :key="item.id" class="rank-list__item">
-            <strong>#{{ item.ranking }} {{ item.nickName || item.userName || `用户 ${item.id}` }}</strong>
-            <p>书库规模 {{ item.bookCount }} 本</p>
-          </article>
+        <div v-if="userRank.length" class="rank-table-stack">
+          <div class="table-shell">
+            <table class="table rank-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>用户</th>
+                  <th>书库规模</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in userRank" :key="item.id">
+                  <td>
+                    <span class="rank-badge">#{{ item.ranking }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ item.nickName || item.userName || `用户 ${item.id}` }}</strong>
+                  </td>
+                  <td>{{ item.bookCount }} 本</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination-bar">
+            <p class="pagination-bar__info">
+              第 {{ userRankPagination.current }} / {{ Math.max(userRankPagination.pages, 1) }} 页 · 共
+              {{ userRankPagination.total }} 条
+            </p>
+            <div class="inline-actions">
+              <button
+                class="button button--ghost"
+                type="button"
+                :disabled="userRankPagination.current <= 1 || rankLoading"
+                @click="handleUserRankPageChange(userRankPagination.current - 1)"
+              >
+                上一页
+              </button>
+              <button
+                class="button button--secondary"
+                type="button"
+                :disabled="userRankPagination.current >= userRankPagination.pages || rankLoading"
+                @click="handleUserRankPageChange(userRankPagination.current + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
         </div>
         <EmptyState v-else title="用户排行还未生成" />
       </SectionPanel>
@@ -182,73 +292,64 @@ onMounted(loadStatistics)
   grid-column: span 3;
 }
 
+.statistics-layout {
+  align-items: start;
+}
+
 .statistics-layout > *:nth-child(1),
-.statistics-layout > *:nth-child(2) {
+.statistics-layout > *:nth-child(2),
+.statistics-layout > *:nth-child(3) {
+  grid-column: span 12;
+}
+
+.statistics-layout > *:nth-child(2),
+.statistics-layout > *:nth-child(3) {
   grid-column: span 6;
 }
 
-.statistics-layout > *:nth-child(3),
-.statistics-layout > *:nth-child(4) {
-  grid-column: span 6;
-}
-
-.bar-list {
+.distribution-pie-grid {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.bar-list__item {
+.rank-table-stack {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
-.bar-track {
-  height: 12px;
+.rank-table th:first-child,
+.rank-table td:first-child {
+  width: 86px;
+}
+
+.rank-table th:last-child,
+.rank-table td:last-child {
+  width: 110px;
+  text-align: right;
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(34, 48, 67, 0.08);
-  overflow: hidden;
+  background: rgba(31, 95, 107, 0.1);
+  color: var(--sl-brand-strong);
+  font-weight: 800;
 }
 
-.bar-track__fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--sl-brand), var(--sl-brand-strong));
-}
-
-.bar-track__fill--warm {
-  background: linear-gradient(90deg, var(--sl-accent), #a45f20);
-}
-
-.mini-panels {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 14px;
 }
 
-.mini-panel {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-}
-
-.mini-panel h3 {
+.pagination-bar__info {
   margin: 0;
-}
-
-.rank-list {
-  display: grid;
-  gap: 12px;
-}
-
-.rank-list__item {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--sl-line);
-  background: var(--sl-soft-panel-bg);
-}
-
-.rank-list__item p {
-  margin: 6px 0 0;
   color: var(--sl-ink-soft);
 }
 
@@ -260,8 +361,13 @@ onMounted(loadStatistics)
 }
 
 @media (max-width: 720px) {
-  .mini-panels {
+  .distribution-pie-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pagination-bar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>
