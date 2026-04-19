@@ -183,12 +183,6 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
             GoogleBooksResponse.BookItem searchItem = response.getItems().get(0);
             VolumeInfo volumeInfo = searchItem.getVolumeInfo();
-            if (StringUtils.isNotBlank(searchItem.getId())) {
-                GoogleBooksResponse.BookItem detailItem = googleBooksClient.getVolumeById(searchItem.getId(), googleApiKey);
-                if (detailItem != null && detailItem.getVolumeInfo() != null) {
-                    volumeInfo = detailItem.getVolumeInfo();
-                }
-            }
             if (volumeInfo == null || StringUtils.isBlank(volumeInfo.getTitle())) {
                 return null;
             }
