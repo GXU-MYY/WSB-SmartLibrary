@@ -692,6 +692,38 @@ onMounted(loadDashboard)
 }
 
 @media (max-width: 720px) {
+  .metrics-grid {
+    gap: 10px;
+  }
+
+  .metrics-grid > * {
+    grid-column: span 6 !important;
+  }
+
+  .metrics-grid :deep(.metric-card) {
+    min-height: 0;
+    gap: 6px;
+    padding: 13px 12px;
+  }
+
+  .metrics-grid :deep(.metric-card__head) {
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .metrics-grid :deep(.metric-card span) {
+    overflow: hidden;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .metrics-grid :deep(.metric-card strong) {
+    font-size: 1.48rem;
+    line-height: 1;
+  }
+
   .compact-book-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -703,6 +735,10 @@ onMounted(loadDashboard)
   .reading-pagination {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .reading-table__placeholder {
+    display: none;
   }
 }
 </style>
