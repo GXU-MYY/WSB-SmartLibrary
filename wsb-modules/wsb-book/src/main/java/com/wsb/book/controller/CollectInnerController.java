@@ -7,7 +7,7 @@ import com.wsb.book.domain.Book;
 import com.wsb.book.domain.Collect;
 import com.wsb.book.service.BookService;
 import com.wsb.book.service.CollectService;
-import com.wsb.book.util.BookKeywordUtils;
+import com.wsb.book.util.BookClcUtils;
 import com.wsb.common.core.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -87,13 +87,13 @@ public class CollectInnerController {
         }
 
         List<Long> targetBookIds = collects.stream().map(Collect::getTargetId).distinct().toList();
-        Map<Long, List<String>> keywordMap = bookService.listByIds(targetBookIds).stream()
+        Map<Long, String> categoryMap = bookService.listByIds(targetBookIds).stream()
                 .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
-                .collect(Collectors.toMap(Book::getId, book -> BookKeywordUtils.splitKeywords(book.getKeyword()), (a, b) -> a));
+                .collect(Collectors.toMap(Book::getId, book -> BookClcUtils.resolveCategory(book.getClc()), (a, b) -> a));
 
         List<CollectCategoryStatsDTO> result = collects.stream()
-                .flatMap(collect -> keywordMap.getOrDefault(collect.getTargetId(), List.of()).stream())
-                .collect(Collectors.groupingBy(keyword -> keyword, Collectors.counting()))
+                .map(collect -> categoryMap.getOrDefault(collect.getTargetId(), "未分类"))
+                .collect(Collectors.groupingBy(category -> category, Collectors.counting()))
                 .entrySet()
                 .stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue(java.util.Comparator.reverseOrder())

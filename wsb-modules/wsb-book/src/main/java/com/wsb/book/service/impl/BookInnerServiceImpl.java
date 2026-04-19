@@ -23,7 +23,7 @@ import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.service.BookBorrowService;
 import com.wsb.book.service.BookInnerService;
 import com.wsb.book.service.BookService;
-import com.wsb.book.util.BookKeywordUtils;
+import com.wsb.book.util.BookClcUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -183,8 +183,8 @@ public class BookInnerServiceImpl implements BookInnerService {
                         .eq(Book::getIsBorrowed, false)));
 
         return books.stream()
-                .flatMap(book -> BookKeywordUtils.splitKeywords(book.getKeyword()).stream())
-                .collect(Collectors.groupingBy(keyword -> keyword, Collectors.counting()))
+                .map(book -> BookClcUtils.resolveCategory(book.getClc()))
+                .collect(Collectors.groupingBy(category -> category, Collectors.counting()))
                 .entrySet()
                 .stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
@@ -293,33 +293,31 @@ public class BookInnerServiceImpl implements BookInnerService {
             return List.of();
         }
 
-        Map<Long, List<String>> keywordMap = bookService.listByIds(borrows.stream()
+        Map<Long, String> categoryMap = bookService.listByIds(borrows.stream()
                         .map(BookBorrow::getBookId)
                         .distinct()
                         .toList())
                 .stream()
                 .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
-                .collect(Collectors.toMap(Book::getId, book -> BookKeywordUtils.splitKeywords(book.getKeyword()), (a, b) -> a));
+                .collect(Collectors.toMap(Book::getId, book -> BookClcUtils.resolveCategory(book.getClc()), (a, b) -> a));
 
         Map<String, BorrowCategoryStatsDTO> grouped = new java.util.HashMap<>();
         for (BookBorrow borrow : borrows) {
-            List<String> keywords = keywordMap.getOrDefault(borrow.getBookId(), List.of());
-            for (String keyword : keywords) {
-                BorrowCategoryStatsDTO dto = grouped.computeIfAbsent(keyword, key -> {
-                    BorrowCategoryStatsDTO item = new BorrowCategoryStatsDTO();
-                    item.setCategory(key);
-                    item.setTotal(0);
-                    item.setReading(0);
-                    item.setRead(0);
-                    return item;
-                });
+            String category = categoryMap.getOrDefault(borrow.getBookId(), "未分类");
+            BorrowCategoryStatsDTO dto = grouped.computeIfAbsent(category, key -> {
+                BorrowCategoryStatsDTO item = new BorrowCategoryStatsDTO();
+                item.setCategory(key);
+                item.setTotal(0);
+                item.setReading(0);
+                item.setRead(0);
+                return item;
+            });
 
-                dto.setTotal(dto.getTotal() + 1);
-                if (borrow.getStatus() != null && borrow.getStatus() == BookBorrowStatus.RETURNED) {
-                    dto.setRead(dto.getRead() + 1);
-                } else if (borrow.getStatus() != null) {
-                    dto.setReading(dto.getReading() + 1);
-                }
+            dto.setTotal(dto.getTotal() + 1);
+            if (borrow.getStatus() != null && borrow.getStatus() == BookBorrowStatus.RETURNED) {
+                dto.setRead(dto.getRead() + 1);
+            } else if (borrow.getStatus() != null) {
+                dto.setReading(dto.getReading() + 1);
             }
         }
 

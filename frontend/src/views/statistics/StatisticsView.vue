@@ -92,7 +92,7 @@ onMounted(loadStatistics)
     <section class="page-grid statistics-layout">
       <SectionPanel
         title="我的图书分布"
-        hint="根据自动填充的关键词统计，展示覆盖图书最多的主题词；一本书可能会同时计入多个主题。"
+        hint="按中图分类号首字母聚合，展示个人书库覆盖最多的图书大类。"
       >
         <LoadingState v-if="loading && !personalStats" />
         <div v-else-if="personalStats?.owned.booksByCategory?.length" class="bar-list">
@@ -111,7 +111,7 @@ onMounted(loadStatistics)
 
       <SectionPanel
         title="借阅与收藏分布"
-        hint="同样按图书关键词聚合，观察哪些主题更常被借阅，哪些主题更容易被收藏。"
+        hint="同样按中图分类号首字母聚合，观察哪些大类更常被借阅，哪些大类更容易被收藏。"
       >
         <div class="mini-panels">
           <article class="surface-card mini-panel">
