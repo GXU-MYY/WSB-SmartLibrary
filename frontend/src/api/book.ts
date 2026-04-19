@@ -5,7 +5,6 @@ import type {
   BookUpdatePayload,
   CollectBook,
   CollectPayload,
-  CollectShelf,
   BorrowPayload,
   BorrowRecord,
   BorrowSummary,
@@ -38,9 +37,6 @@ export const getBookDetail = (bookId: number) =>
 
 export const getMyBookCollects = () =>
   request.get<CollectBook[]>('/v1/collect', { params: { type: 'book' } })
-
-export const getMyShelfCollects = () =>
-  request.get<CollectShelf[]>('/v1/collect', { params: { type: 'bookshelf' } })
 
 export const addCollect = (payload: CollectPayload) =>
   request.post<void>('/v1/collect', payload)

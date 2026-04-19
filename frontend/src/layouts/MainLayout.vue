@@ -17,6 +17,7 @@ const navItems = [
   { path: '/home', title: '首页' },
   { path: '/books', title: '图书' },
   { path: '/borrow', title: '借阅' },
+  { path: '/collections', title: '收藏' },
   { path: '/community', title: '社区' },
   { path: '/statistics', title: '统计' },
   { path: '/profile', title: '个人' },

@@ -267,6 +267,86 @@ a:focus-visible {
   transform: none;
 }
 
+.favorite-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  border: 1px solid rgba(31, 95, 107, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--sl-brand-strong);
+  font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.favorite-icon-button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.03);
+  border-color: rgba(201, 119, 46, 0.42);
+  background: rgba(201, 119, 46, 0.14);
+  color: #9b5317;
+}
+
+.favorite-icon-button.is-collected {
+  border-color: rgba(201, 119, 46, 0.58);
+  background: linear-gradient(135deg, rgba(201, 119, 46, 0.2), rgba(201, 119, 46, 0.34));
+  color: #9b5317;
+  box-shadow: 0 10px 22px rgba(201, 119, 46, 0.14);
+}
+
+.favorite-icon-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.favorite-icon-button--large {
+  width: 46px;
+  height: 46px;
+  flex-basis: 46px;
+  font-size: 1.38rem;
+}
+
+.favorite-icon-button__icon {
+  display: grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  transform: translateY(-0.02em);
+}
+
+[data-theme='dark'] .favorite-icon-button {
+  border-color: rgba(113, 183, 190, 0.28);
+  background: rgba(14, 32, 38, 0.84);
+  color: #9dd8dc;
+}
+
+[data-theme='dark'] .favorite-icon-button:hover:not(:disabled),
+[data-theme='dark'] .favorite-icon-button.is-collected {
+  border-color: rgba(232, 164, 88, 0.54);
+  background: rgba(232, 164, 88, 0.18);
+  color: #ffd09a;
+}
+
+[data-theme='dark'] .favorite-icon-button.is-collected {
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(232, 164, 88, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

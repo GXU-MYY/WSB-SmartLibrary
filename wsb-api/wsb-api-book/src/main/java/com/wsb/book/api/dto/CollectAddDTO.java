@@ -19,10 +19,4 @@ public class CollectAddDTO implements Serializable {
      */
     @JsonAlias({"bookId", "book_id"})
     private Long bookId;
-
-    /**
-     * 书架 ID，收藏书架时填写
-     */
-    @JsonAlias({"bookshelfId", "bookshelf_id"})
-    private Long bookshelfId;
 }

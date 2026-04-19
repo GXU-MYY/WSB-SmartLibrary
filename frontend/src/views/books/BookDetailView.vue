@@ -79,6 +79,11 @@ const shelfActionText = computed(() => {
 })
 const collectButtonLabel = computed(() => (collectRecord.value ? '取消收藏' : '加入收藏'))
 
+const isSameId = (left: number | string | null | undefined, right: number | string | null | undefined) =>
+  Number(left || 0) === Number(right || 0)
+const findBookCollectRecord = (collects: CollectBook[]) =>
+  collects.find((item) => isSameId(item.bookId, bookId.value)) || null
+
 const syncAttachShelfSelection = () => {
   if (bookShelf.value?.id) {
     attachShelfId.value = bookShelf.value.id
@@ -117,7 +122,7 @@ const loadPage = async () => {
     }
 
     if (collectResult.status === 'fulfilled') {
-      collectRecord.value = collectResult.value.find((item) => item.bookId === bookId.value) || null
+      collectRecord.value = findBookCollectRecord(collectResult.value)
     }
 
     if (shelfResult.status === 'fulfilled') {
@@ -176,7 +181,7 @@ const toggleCollect = async () => {
     } else {
       await addCollect({ bookId: bookId.value })
       const collects = await getMyBookCollects()
-      collectRecord.value = collects.find((item) => item.bookId === bookId.value) || null
+      collectRecord.value = findBookCollectRecord(collects)
       notifySuccess('已加入收藏')
     }
   } finally {
@@ -261,15 +266,17 @@ onMounted(loadPage)
     >
       <template #actions>
         <button
-          class="button button--secondary detail-page-action detail-page-action--favorite"
+          class="favorite-icon-button favorite-icon-button--large"
           type="button"
-          :class="{ 'detail-page-action--active': collectRecord }"
+          :class="{ 'is-collected': collectRecord }"
           :disabled="collectLoading"
           :aria-label="collectButtonLabel"
           :title="collectButtonLabel"
           @click="toggleCollect"
         >
-          {{ collectButtonLabel }}
+          <span class="favorite-icon-button__icon" aria-hidden="true">
+            {{ collectRecord ? '★' : '☆' }}
+          </span>
         </button>
         <button
           class="button button--ghost detail-page-action"
@@ -431,36 +438,41 @@ onMounted(loadPage)
 
 <style scoped>
 .detail-page-action {
+  width: 46px;
+  height: 46px;
   min-width: 46px;
-  min-height: 46px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--sl-line);
+  background: var(--sl-ghost-bg);
+  color: var(--sl-ink);
   font-size: 1.18rem;
   line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.detail-page-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.detail-page-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .detail-page-action__icon {
   font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', sans-serif;
   font-size: 1.26rem;
   line-height: 1;
-}
-
-.detail-page-action--favorite {
-  position: relative;
-  font-size: 0;
-}
-
-.detail-page-action--favorite::before {
-  content: '☆';
-  font-size: 1.32rem;
-  line-height: 1;
-  color: currentColor;
-}
-
-.detail-page-action--favorite.detail-page-action--active::before {
-  content: '★';
 }
 
 .detail-hero {

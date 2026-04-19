@@ -377,20 +377,13 @@ export interface CollectBook {
   id: number
   bookId: number
   title: string
+  author?: string
   pic?: string
-  collectTime?: string
-}
-
-export interface CollectShelf {
-  id: number
-  shelfId: number
-  shelfName: string
   collectTime?: string
 }
 
 export interface CollectPayload {
   bookId?: number
-  bookshelfId?: number
 }
 
 export interface PersonalStats {

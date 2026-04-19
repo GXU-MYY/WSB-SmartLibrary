@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
+import { addCollect, deleteCollect, getMyBookCollects } from '@/api/book'
 import {
   approveGroupBorrowRequest,
   createGroup,
@@ -30,6 +31,7 @@ import type {
   GroupPublicBook,
   GroupPublicShelf,
   GroupUser,
+  CollectBook,
   UserInfo,
 } from '@/types/models'
 import { formatDateTime, normalizePage } from '@/utils/format'
@@ -48,6 +50,7 @@ const savingMembers = ref(false)
 const searchingCreateMember = ref(false)
 const searchingInviteMember = ref(false)
 const requestingBookId = ref<number | null>(null)
+const collectingBookId = ref<number | null>(null)
 const handlingRequestId = ref<number | null>(null)
 const incomingRequestPage = ref(1)
 const outgoingRequestPage = ref(1)
@@ -57,6 +60,7 @@ const members = ref<GroupUser[]>([])
 const publicShelves = ref<GroupPublicShelf[]>([])
 const publicBooks = ref<GroupPublicBook[]>([])
 const borrowRequests = ref<GroupBorrowRequest[]>([])
+const bookCollects = ref<CollectBook[]>([])
 
 const selectedGroupId = ref(0)
 const showCreateDialog = ref(false)
@@ -132,6 +136,10 @@ const selectedShelfBooks = computed(() => {
       isSameId(item.shelfId, selectedShelfId.value),
   )
 })
+const getBookCollectRecord = (bookId: number) =>
+  bookCollects.value.find((item) => isSameId(item.bookId, bookId)) || null
+const isBookCollected = (bookId: number) => Boolean(getBookCollectRecord(bookId))
+const getBookCollectButtonLabel = (bookId: number) => (isBookCollected(bookId) ? '取消收藏' : '收藏图书')
 const incomingRequests = computed(() =>
   borrowRequests.value.filter((item) => isSameId(item.ownerUserId, currentUserId.value)),
 )
@@ -158,17 +166,19 @@ const outgoingRequestPlaceholderRows = computed(() =>
 )
 
 const loadWorkspace = async (groupId: number) => {
-  const [membersResult, shelvesResult, booksResult, requestsResult] = await Promise.allSettled([
+  const [membersResult, shelvesResult, booksResult, requestsResult, bookCollectsResult] = await Promise.allSettled([
     getGroupUsers(groupId, 'in'),
     getGroupPublicShelves(groupId),
     getGroupPublicBooks(groupId),
     getGroupBorrowRequests(groupId),
+    getMyBookCollects(),
   ])
 
   members.value = membersResult.status === 'fulfilled' ? membersResult.value : []
   publicShelves.value = shelvesResult.status === 'fulfilled' ? shelvesResult.value : []
   publicBooks.value = booksResult.status === 'fulfilled' ? booksResult.value : []
   borrowRequests.value = requestsResult.status === 'fulfilled' ? requestsResult.value : []
+  bookCollects.value = bookCollectsResult.status === 'fulfilled' ? bookCollectsResult.value : []
 }
 
 const loadGroups = async () => {
@@ -296,6 +306,30 @@ const closeBorrowRequestDialog = () => {
 
 const selectShelf = (shelfId: number) => {
   selectedShelfId.value = shelfId
+}
+
+const refreshBookCollects = async () => {
+  bookCollects.value = await getMyBookCollects()
+}
+
+const handleToggleBookCollect = async (book: GroupPublicBook) => {
+  const collectRecord = getBookCollectRecord(book.bookId)
+  collectingBookId.value = book.bookId
+
+  try {
+    if (collectRecord) {
+      await deleteCollect(collectRecord.id)
+      bookCollects.value = bookCollects.value.filter((item) => !isSameId(item.id, collectRecord.id))
+      notifySuccess(`已取消收藏《${book.title}》`)
+      return
+    }
+
+    await addCollect({ bookId: book.bookId })
+    await refreshBookCollects()
+    notifySuccess(`已收藏《${book.title}》`)
+  } finally {
+    collectingBookId.value = null
+  }
 }
 
 const isCurrentMember = (member: GroupUser) => isSameId(member.userId, currentUserId.value)
@@ -592,6 +626,7 @@ watch(selectedGroupId, async (groupId) => {
     publicShelves.value = []
     publicBooks.value = []
     borrowRequests.value = []
+    bookCollects.value = []
   }
 })
 
@@ -1265,15 +1300,30 @@ onMounted(loadPage)
                     <span>{{ selectedShelf.shelfName }}</span>
                   </div>
 
-                  <button
-                    class="button public-book-card__action"
-                    :class="canRequestBorrow(book) ? 'button--primary' : 'button--ghost'"
-                    type="button"
-                    :disabled="!canRequestBorrow(book) || requestingBookId === book.bookId"
-                    @click="handleBorrowRequest(book)"
-                  >
-                    {{ requestingBookId === book.bookId ? '申请中...' : getBorrowButtonLabel(book) }}
-                  </button>
+                  <div class="public-book-card__actions">
+                    <button
+                      class="favorite-icon-button"
+                      :class="{ 'is-collected': isBookCollected(book.bookId) }"
+                      type="button"
+                      :disabled="collectingBookId === book.bookId"
+                      :aria-label="getBookCollectButtonLabel(book.bookId)"
+                      :title="getBookCollectButtonLabel(book.bookId)"
+                      @click="handleToggleBookCollect(book)"
+                    >
+                      <span class="favorite-icon-button__icon" aria-hidden="true">
+                        {{ isBookCollected(book.bookId) ? '★' : '☆' }}
+                      </span>
+                    </button>
+                    <button
+                      class="button public-book-card__action"
+                      :class="canRequestBorrow(book) ? 'button--primary' : 'button--ghost'"
+                      type="button"
+                      :disabled="!canRequestBorrow(book) || requestingBookId === book.bookId"
+                      @click="handleBorrowRequest(book)"
+                    >
+                      {{ requestingBookId === book.bookId ? '申请中...' : getBorrowButtonLabel(book) }}
+                    </button>
+                  </div>
                 </article>
               </div>
               <EmptyState v-else title="这个书架下还没有公开图书" />
@@ -1906,6 +1956,12 @@ onMounted(loadPage)
   color: var(--sl-ink-soft);
 }
 
+.public-book-card__actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
 .public-book-card__action {
   justify-self: end;
 }
@@ -1974,6 +2030,14 @@ onMounted(loadPage)
 
   .public-book-card__action {
     justify-self: stretch;
+  }
+
+  .public-book-card__actions {
+    justify-items: stretch;
+  }
+
+  .public-book-card__actions .favorite-icon-button {
+    justify-self: end;
   }
 }
 

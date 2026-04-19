@@ -26,7 +26,7 @@ public class CollectVO implements Serializable {
     private Long targetId;
 
     /**
-     * 收藏类型：1-图书，2-书架
+     * 收藏类型：1-图书
      */
     private Integer collectType;
 

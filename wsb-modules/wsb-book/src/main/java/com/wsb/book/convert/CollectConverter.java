@@ -1,11 +1,9 @@
 package com.wsb.book.convert;
 
 import com.wsb.book.api.vo.CollectBookVO;
-import com.wsb.book.api.vo.CollectShelfVO;
 import com.wsb.book.api.vo.CollectVO;
 import com.wsb.book.domain.Book;
 import com.wsb.book.domain.Collect;
-import com.wsb.book.domain.Shelf;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
@@ -24,13 +22,8 @@ public interface CollectConverter {
     @Mapping(target = "id", source = "collectId")
     @Mapping(target = "bookId", source = "book.id")
     @Mapping(target = "title", source = "book.title")
+    @Mapping(target = "author", source = "book.author")
     @Mapping(target = "pic", source = "book.coverUrl")
     @Mapping(target = "collectTime", source = "collectTime")
     CollectBookVO toCollectBookVO(Book book, Long collectId, LocalDateTime collectTime);
-
-    @Mapping(target = "id", source = "collectId")
-    @Mapping(target = "shelfId", source = "shelf.id")
-    @Mapping(target = "shelfName", source = "shelf.shelfName")
-    @Mapping(target = "collectTime", source = "collectTime")
-    CollectShelfVO toCollectShelfVO(Shelf shelf, Long collectId, LocalDateTime collectTime);
 }

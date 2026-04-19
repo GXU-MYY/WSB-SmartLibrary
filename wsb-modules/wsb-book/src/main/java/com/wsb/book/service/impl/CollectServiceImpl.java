@@ -6,16 +6,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.wsb.book.api.dto.CollectAddDTO;
 import com.wsb.book.api.dto.CollectDeleteDTO;
 import com.wsb.book.api.vo.CollectBookVO;
-import com.wsb.book.api.vo.CollectShelfVO;
 import com.wsb.book.api.vo.CollectVO;
 import com.wsb.book.convert.CollectConverter;
 import com.wsb.book.domain.Book;
 import com.wsb.book.domain.Collect;
-import com.wsb.book.domain.Shelf;
 import com.wsb.book.mapper.CollectMapper;
 import com.wsb.book.service.BookService;
 import com.wsb.book.service.CollectService;
-import com.wsb.book.service.ShelfService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,56 +31,42 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
 
     private final CollectConverter collectConverter;
     private final BookService bookService;
-    private final ShelfService shelfService;
 
     @Override
     public CollectVO addCollect(CollectAddDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
 
-        if ((dto.getBookId() == null) == (dto.getBookshelfId() == null)) {
-            throw new ServiceException("请选择要收藏的图书或书架");
+        if (dto.getBookId() == null) {
+            throw new ServiceException("请选择要收藏的图书");
         }
 
-        Collect collect = new Collect();
+        Book book = bookService.getById(dto.getBookId());
+        if (book == null || Boolean.TRUE.equals(book.getIsDeleted())) {
+            throw new ServiceException("图书不存在");
+        }
+
+        Long targetId = dto.getBookId();
+
+        Collect collect = this.getOne(Wrappers.<Collect>lambdaQuery()
+                .eq(Collect::getUserId, currentUserId)
+                .eq(Collect::getTargetId, targetId)
+                .eq(Collect::getCollectType, 1)
+                .last("limit 1"));
+        if (collect != null && !Boolean.TRUE.equals(collect.getIsDeleted())) {
+            throw new ServiceException("已收藏该图书");
+        }
+
+        if (collect != null) {
+            collect.setIsDeleted(false);
+            this.updateById(collect);
+            return collectConverter.toCollectVO(collect);
+        }
+
+        collect = new Collect();
         collect.setUserId(currentUserId);
+        collect.setTargetId(targetId);
+        collect.setCollectType(1);
         collect.setIsDeleted(false);
-
-        if (dto.getBookId() != null) {
-            Book book = bookService.getById(dto.getBookId());
-            if (book == null || Boolean.TRUE.equals(book.getIsDeleted())) {
-                throw new ServiceException("图书不存在");
-            }
-
-            boolean exists = this.exists(Wrappers.<Collect>lambdaQuery()
-                    .eq(Collect::getUserId, currentUserId)
-                    .eq(Collect::getTargetId, dto.getBookId())
-                    .eq(Collect::getCollectType, 1)
-                    .eq(Collect::getIsDeleted, false));
-            if (exists) {
-                throw new ServiceException("已收藏该图书");
-            }
-
-            collect.setTargetId(dto.getBookId());
-            collect.setCollectType(1);
-        } else {
-            Shelf shelf = shelfService.getById(dto.getBookshelfId());
-            if (shelf == null || Boolean.TRUE.equals(shelf.getIsDeleted())) {
-                throw new ServiceException("书架不存在");
-            }
-
-            boolean exists = this.exists(Wrappers.<Collect>lambdaQuery()
-                    .eq(Collect::getUserId, currentUserId)
-                    .eq(Collect::getTargetId, dto.getBookshelfId())
-                    .eq(Collect::getCollectType, 2)
-                    .eq(Collect::getIsDeleted, false));
-            if (exists) {
-                throw new ServiceException("已收藏该书架");
-            }
-
-            collect.setTargetId(dto.getBookshelfId());
-            collect.setCollectType(2);
-        }
-
         this.save(collect);
         return collectConverter.toCollectVO(collect);
     }
@@ -136,34 +119,4 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
                 .toList();
     }
 
-    @Override
-    public List<CollectShelfVO> getMyShelfCollects() {
-        Long currentUserId = StpUtil.getLoginIdAsLong();
-        List<Collect> collects = this.list(Wrappers.<Collect>lambdaQuery()
-                .eq(Collect::getUserId, currentUserId)
-                .eq(Collect::getCollectType, 2)
-                .eq(Collect::getIsDeleted, false)
-                .orderByDesc(Collect::getCreateTime));
-
-        if (collects.isEmpty()) {
-            return List.of();
-        }
-
-        List<Long> shelfIds = collects.stream()
-                .map(Collect::getTargetId)
-                .toList();
-        List<Shelf> shelves = shelfService.listByIds(shelfIds);
-        var shelfMap = shelves.stream().collect(Collectors.toMap(Shelf::getId, Function.identity(), (a, b) -> a));
-
-        return collects.stream()
-                .map(collect -> {
-                    Shelf shelf = shelfMap.get(collect.getTargetId());
-                    if (shelf == null || Boolean.TRUE.equals(shelf.getIsDeleted())) {
-                        return null;
-                    }
-                    return collectConverter.toCollectShelfVO(shelf, collect.getId(), collect.getCreateTime());
-                })
-                .filter(Objects::nonNull)
-                .toList();
-    }
 }

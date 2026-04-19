@@ -65,6 +65,12 @@ const router = createRouter({
           meta: { title: '借阅管理' },
         },
         {
+          path: 'collections',
+          name: 'collections',
+          component: () => import('@/views/collections/CollectionView.vue'),
+          meta: { title: '我的收藏' },
+        },
+        {
           path: 'community',
           name: 'community',
           component: () => import('@/views/community/CommunityView.vue'),

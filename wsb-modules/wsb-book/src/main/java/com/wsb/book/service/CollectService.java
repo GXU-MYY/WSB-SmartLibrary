@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.wsb.book.api.dto.CollectAddDTO;
 import com.wsb.book.api.dto.CollectDeleteDTO;
 import com.wsb.book.api.vo.CollectBookVO;
-import com.wsb.book.api.vo.CollectShelfVO;
 import com.wsb.book.api.vo.CollectVO;
 import com.wsb.book.domain.Collect;
 
@@ -29,9 +28,4 @@ public interface CollectService extends IService<Collect> {
      * 获取我的图书收藏
      */
     List<CollectBookVO> getMyBookCollects();
-
-    /**
-     * 获取我的书架收藏
-     */
-    List<CollectShelfVO> getMyShelfCollects();
 }

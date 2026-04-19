@@ -2,8 +2,6 @@ package com.wsb.book.controller;
 
 import com.wsb.book.api.dto.CollectAddDTO;
 import com.wsb.book.api.dto.CollectDeleteDTO;
-import com.wsb.book.api.vo.CollectBookVO;
-import com.wsb.book.api.vo.CollectShelfVO;
 import com.wsb.book.api.vo.CollectVO;
 import com.wsb.book.service.CollectService;
 import com.wsb.common.core.domain.Result;
@@ -31,7 +29,7 @@ public class CollectController {
 
     private final CollectService collectService;
 
-    @Operation(summary = "添加收藏", description = "收藏图书或书架，bookId 和 bookshelfId 二选一")
+    @Operation(summary = "添加收藏", description = "收藏图书")
     @PostMapping
     public Result<CollectVO> addCollect(@Valid @RequestBody CollectAddDTO dto) {
         return Result.success(collectService.addCollect(dto));
@@ -44,17 +42,14 @@ public class CollectController {
         return Result.success();
     }
 
-    @Operation(summary = "我的收藏", description = "type=book 返回图书收藏，type=bookshelf 返回书架收藏")
+    @Operation(summary = "我的收藏", description = "返回图书收藏")
     @GetMapping
     public Result<?> getMyCollects(
-            @Parameter(description = "收藏类型：book-图书收藏，bookshelf-书架收藏")
-            @RequestParam("type") String type) {
+            @Parameter(description = "收藏类型：book-图书收藏")
+            @RequestParam(value = "type", required = false, defaultValue = "book") String type) {
         if ("book".equals(type)) {
             return Result.success(collectService.getMyBookCollects());
         }
-        if ("bookshelf".equals(type)) {
-            return Result.success(collectService.getMyShelfCollects());
-        }
-        return Result.error("type 参数错误，可选值：book、bookshelf");
+        return Result.error("type 参数错误，可选值：book");
     }
 }

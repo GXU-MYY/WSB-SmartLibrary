@@ -31,6 +31,11 @@ public class CollectBookVO implements Serializable {
     private String title;
 
     /**
+     * 图书作者
+     */
+    private String author;
+
+    /**
      * 图书封面
      */
     private String pic;
