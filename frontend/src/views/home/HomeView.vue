@@ -43,25 +43,25 @@ const metricCards = computed(() => {
     {
       label: '藏书总数',
       value: stats?.owned.totalBooks ?? 0,
-      hint: '已经整理进个人书库的图书数量。',
+      hint: '仅统计个人拥有的图书，借出的仍算在内，借入的不计入。',
       tone: 'brand' as const,
     },
     {
-      label: '未归还借阅',
-      value: stats?.borrowed.unreturned ?? 0,
-      hint: '还在流转中的借阅记录。',
+      label: '借入 / 借出',
+      value: `${stats?.borrowed.borrowedIn ?? 0} / ${stats?.borrowed.borrowedOut ?? 0}`,
+      hint: '只统计当前仍在借入和借出的图书，已归还的不计入。',
       tone: 'accent' as const,
     },
     {
       label: '我的收藏',
       value: stats?.collected.totalCollected ?? 0,
-      hint: '主动保存下来的图书与书架内容。',
+      hint: '只统计你收藏的图书数量。',
       tone: 'plain' as const,
     },
     {
-      label: '被收藏次数',
+      label: '被收藏数',
       value: stats?.owned.booksBeingCollected ?? 0,
-      hint: '社区对你公开内容的关注热度。',
+      hint: '显示别人收藏你的图书的数量。',
       tone: 'plain' as const,
     },
   ]

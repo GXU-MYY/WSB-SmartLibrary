@@ -23,6 +23,7 @@ import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.service.BookBorrowService;
 import com.wsb.book.service.BookInnerService;
 import com.wsb.book.service.BookService;
+import com.wsb.book.util.BookKeywordUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -144,10 +145,18 @@ public class BookInnerServiceImpl implements BookInnerService {
         if (userIds != null && !userIds.isEmpty()) {
             books = bookService.list(Wrappers.<Book>lambdaQuery()
                     .in(Book::getUserId, userIds)
-                    .eq(Book::getIsDeleted, false));
+                    .eq(Book::getIsDeleted, false)
+                    .and(wrapper -> wrapper
+                            .isNull(Book::getIsBorrowed)
+                            .or()
+                            .eq(Book::getIsBorrowed, false)));
         } else {
             books = bookService.list(Wrappers.<Book>lambdaQuery()
-                    .eq(Book::getIsDeleted, false));
+                    .eq(Book::getIsDeleted, false)
+                    .and(wrapper -> wrapper
+                            .isNull(Book::getIsBorrowed)
+                            .or()
+                            .eq(Book::getIsBorrowed, false)));
         }
 
         return books.stream()
@@ -167,13 +176,20 @@ public class BookInnerServiceImpl implements BookInnerService {
     public List<CategoryCountDTO> countBooksByCategory(Long userId) {
         List<Book> books = bookService.list(Wrappers.<Book>lambdaQuery()
                 .eq(Book::getUserId, userId)
-                .eq(Book::getIsDeleted, false));
+                .eq(Book::getIsDeleted, false)
+                .and(wrapper -> wrapper
+                        .isNull(Book::getIsBorrowed)
+                        .or()
+                        .eq(Book::getIsBorrowed, false)));
 
         return books.stream()
-                .filter(book -> book.getClassify() != null && !book.getClassify().isEmpty())
-                .collect(Collectors.groupingBy(Book::getClassify, Collectors.counting()))
+                .flatMap(book -> BookKeywordUtils.splitKeywords(book.getKeyword()).stream())
+                .collect(Collectors.groupingBy(keyword -> keyword, Collectors.counting()))
                 .entrySet()
                 .stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(Map.Entry::getKey))
+                .limit(10)
                 .map(entry -> {
                     CategoryCountDTO dto = new CategoryCountDTO();
                     dto.setCategory(entry.getKey());
@@ -188,6 +204,10 @@ public class BookInnerServiceImpl implements BookInnerService {
         return bookService.list(Wrappers.<Book>lambdaQuery()
                         .eq(Book::getUserId, userId)
                         .eq(Book::getIsDeleted, false)
+                        .and(wrapper -> wrapper
+                                .isNull(Book::getIsBorrowed)
+                                .or()
+                                .eq(Book::getIsBorrowed, false))
                         .select(Book::getId))
                 .stream()
                 .map(Book::getId)
@@ -231,6 +251,14 @@ public class BookInnerServiceImpl implements BookInnerService {
 
         UserBorrowStatsDTO dto = new UserBorrowStatsDTO();
         dto.setTotalBorrowed(borrows.size());
+        dto.setBorrowedIn((int) borrows.stream()
+                .filter(borrow -> borrow.getBorrowType() != null && borrow.getBorrowType() == 1)
+                .filter(borrow -> borrow.getStatus() != null && borrow.getStatus() != BookBorrowStatus.RETURNED)
+                .count());
+        dto.setBorrowedOut((int) borrows.stream()
+                .filter(borrow -> borrow.getBorrowType() != null && borrow.getBorrowType() == 2)
+                .filter(borrow -> borrow.getStatus() != null && borrow.getStatus() != BookBorrowStatus.RETURNED)
+                .count());
         dto.setUnreturned((int) borrows.stream()
                 .filter(borrow -> borrow.getStatus() != null && borrow.getStatus() != BookBorrowStatus.RETURNED)
                 .count());
@@ -250,7 +278,56 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public List<BorrowCategoryStatsDTO> getBorrowStatsByCategory(List<Long> bookIds) {
-        return List.of();
+        syncOverdueBorrows();
+        List<BookBorrow> borrows;
+        if (bookIds != null && !bookIds.isEmpty()) {
+            borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
+                    .in(BookBorrow::getBookId, bookIds)
+                    .eq(BookBorrow::getIsDeleted, false));
+        } else {
+            borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
+                    .eq(BookBorrow::getIsDeleted, false));
+        }
+
+        if (borrows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, List<String>> keywordMap = bookService.listByIds(borrows.stream()
+                        .map(BookBorrow::getBookId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
+                .collect(Collectors.toMap(Book::getId, book -> BookKeywordUtils.splitKeywords(book.getKeyword()), (a, b) -> a));
+
+        Map<String, BorrowCategoryStatsDTO> grouped = new java.util.HashMap<>();
+        for (BookBorrow borrow : borrows) {
+            List<String> keywords = keywordMap.getOrDefault(borrow.getBookId(), List.of());
+            for (String keyword : keywords) {
+                BorrowCategoryStatsDTO dto = grouped.computeIfAbsent(keyword, key -> {
+                    BorrowCategoryStatsDTO item = new BorrowCategoryStatsDTO();
+                    item.setCategory(key);
+                    item.setTotal(0);
+                    item.setReading(0);
+                    item.setRead(0);
+                    return item;
+                });
+
+                dto.setTotal(dto.getTotal() + 1);
+                if (borrow.getStatus() != null && borrow.getStatus() == BookBorrowStatus.RETURNED) {
+                    dto.setRead(dto.getRead() + 1);
+                } else if (borrow.getStatus() != null) {
+                    dto.setReading(dto.getReading() + 1);
+                }
+            }
+        }
+
+        return grouped.values().stream()
+                .sorted(Comparator.comparing(BorrowCategoryStatsDTO::getTotal, Comparator.reverseOrder())
+                        .thenComparing(BorrowCategoryStatsDTO::getCategory))
+                .limit(10)
+                .toList();
     }
 
     @Override
@@ -351,4 +428,5 @@ public class BookInnerServiceImpl implements BookInnerService {
         dto.setRemark(shelf.getRemark());
         return dto;
     }
+
 }

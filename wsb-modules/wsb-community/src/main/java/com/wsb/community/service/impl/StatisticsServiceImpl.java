@@ -243,9 +243,13 @@ public class StatisticsServiceImpl implements StatisticsService {
         if (borrowResult != null && borrowResult.getData() != null) {
             UserBorrowStatsDTO stats = borrowResult.getData();
             borrowed.setTotalBorrowed(stats.getTotalBorrowed() != null ? stats.getTotalBorrowed() : 0);
+            borrowed.setBorrowedIn(stats.getBorrowedIn() != null ? stats.getBorrowedIn() : 0);
+            borrowed.setBorrowedOut(stats.getBorrowedOut() != null ? stats.getBorrowedOut() : 0);
             borrowed.setUnreturned(stats.getUnreturned() != null ? stats.getUnreturned() : 0);
         } else {
             borrowed.setTotalBorrowed(0);
+            borrowed.setBorrowedIn(0);
+            borrowed.setBorrowedOut(0);
             borrowed.setUnreturned(0);
         }
         vo.setBorrowed(borrowed);

@@ -7,6 +7,7 @@ import com.wsb.book.domain.Book;
 import com.wsb.book.domain.Collect;
 import com.wsb.book.service.BookService;
 import com.wsb.book.service.CollectService;
+import com.wsb.book.util.BookKeywordUtils;
 import com.wsb.common.core.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -87,16 +87,18 @@ public class CollectInnerController {
         }
 
         List<Long> targetBookIds = collects.stream().map(Collect::getTargetId).distinct().toList();
-        Map<Long, String> categoryMap = bookService.listByIds(targetBookIds).stream()
+        Map<Long, List<String>> keywordMap = bookService.listByIds(targetBookIds).stream()
                 .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
-                .collect(Collectors.toMap(Book::getId, book -> book.getClassify() == null ? "未分类" : book.getClassify(), (a, b) -> a));
+                .collect(Collectors.toMap(Book::getId, book -> BookKeywordUtils.splitKeywords(book.getKeyword()), (a, b) -> a));
 
-        Map<String, Long> grouped = collects.stream()
-                .map(collect -> categoryMap.get(collect.getTargetId()))
-                .filter(Objects::nonNull)
-                .collect(Collectors.groupingBy(category -> category, Collectors.counting()));
-
-        List<CollectCategoryStatsDTO> result = grouped.entrySet().stream()
+        List<CollectCategoryStatsDTO> result = collects.stream()
+                .flatMap(collect -> keywordMap.getOrDefault(collect.getTargetId(), List.of()).stream())
+                .collect(Collectors.groupingBy(keyword -> keyword, Collectors.counting()))
+                .entrySet()
+                .stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue(java.util.Comparator.reverseOrder())
+                        .thenComparing(Map.Entry::getKey))
+                .limit(10)
                 .map(entry -> {
                     CollectCategoryStatsDTO dto = new CollectCategoryStatsDTO();
                     dto.setCategory(entry.getKey());

@@ -402,6 +402,8 @@ export interface PersonalStats {
   }
   borrowed: {
     totalBorrowed: number
+    borrowedIn: number
+    borrowedOut: number
     unreturned: number
   }
   collected: {

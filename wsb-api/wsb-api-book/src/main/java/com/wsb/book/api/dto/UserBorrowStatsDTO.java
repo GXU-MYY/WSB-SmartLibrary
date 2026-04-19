@@ -19,6 +19,16 @@ public class UserBorrowStatsDTO implements Serializable {
     private Integer totalBorrowed;
 
     /**
+     * 借入数
+     */
+    private Integer borrowedIn;
+
+    /**
+     * 借出数
+     */
+    private Integer borrowedOut;
+
+    /**
      * 未归还数
      */
     private Integer unreturned;

@@ -28,6 +28,21 @@ const overviewCards = computed(() => {
   ]
 })
 
+const ownedDistributionMax = computed(() => {
+  const counts = personalStats.value?.owned.booksByCategory?.map((item) => item.count ?? 0) ?? []
+  return counts.length ? Math.max(...counts, 1) : 1
+})
+
+const borrowDistributionMax = computed(() => {
+  const counts = borrowStats.value?.classifyList?.map((item) => item.total ?? 0) ?? []
+  return counts.length ? Math.max(...counts, 1) : 1
+})
+
+const collectDistributionMax = computed(() => {
+  const counts = collectStats.value?.classifyList?.map((item) => item.collect ?? 0) ?? []
+  return counts.length ? Math.max(...counts, 1) : 1
+})
+
 const loadStatistics = async () => {
   loading.value = true
 
@@ -76,8 +91,8 @@ onMounted(loadStatistics)
 
     <section class="page-grid statistics-layout">
       <SectionPanel
-        title="我的分类分布"
-        hint="从个人书库视角观察，哪些类型已经累积得比较厚。"
+        title="我的图书分布"
+        hint="根据自动填充的关键词统计，展示覆盖图书最多的主题词；一本书可能会同时计入多个主题。"
       >
         <LoadingState v-if="loading && !personalStats" />
         <div v-else-if="personalStats?.owned.booksByCategory?.length" class="bar-list">
@@ -87,20 +102,20 @@ onMounted(loadStatistics)
               <span>{{ item.count }}</span>
             </div>
             <div class="bar-track">
-              <div class="bar-track__fill" :style="{ width: `${Math.min(item.count * 14, 100)}%` }" />
+              <div class="bar-track__fill" :style="{ width: `${(item.count / ownedDistributionMax) * 100}%` }" />
             </div>
           </article>
         </div>
-        <EmptyState v-else title="还没有形成分类分布" />
+        <EmptyState v-else title="还没有形成图书分布" />
       </SectionPanel>
 
       <SectionPanel
-        title="借阅与收藏结构"
-        hint="两个视角一起看，更容易判断哪些书在流动，哪些书在沉淀。"
+        title="借阅与收藏分布"
+        hint="同样按图书关键词聚合，观察哪些主题更常被借阅，哪些主题更容易被收藏。"
       >
         <div class="mini-panels">
           <article class="surface-card mini-panel">
-            <h3>借阅分类</h3>
+            <h3>借阅分布</h3>
             <div v-if="borrowStats?.classifyList?.length" class="bar-list">
               <article v-for="item in borrowStats.classifyList" :key="item.category" class="bar-list__item">
                 <div class="split-actions">
@@ -108,14 +123,15 @@ onMounted(loadStatistics)
                   <span>{{ item.total }}</span>
                 </div>
                 <div class="bar-track">
-                  <div class="bar-track__fill bar-track__fill--warm" :style="{ width: `${Math.min(item.total * 18, 100)}%` }" />
+                  <div class="bar-track__fill bar-track__fill--warm" :style="{ width: `${(item.total / borrowDistributionMax) * 100}%` }" />
                 </div>
               </article>
             </div>
+            <EmptyState v-else title="还没有形成借阅分布" />
           </article>
 
           <article class="surface-card mini-panel">
-            <h3>收藏分类</h3>
+            <h3>收藏分布</h3>
             <div v-if="collectStats?.classifyList?.length" class="bar-list">
               <article v-for="item in collectStats.classifyList" :key="item.category" class="bar-list__item">
                 <div class="split-actions">
@@ -123,10 +139,11 @@ onMounted(loadStatistics)
                   <span>{{ item.collect }}</span>
                 </div>
                 <div class="bar-track">
-                  <div class="bar-track__fill" :style="{ width: `${Math.min(item.collect * 22, 100)}%` }" />
+                  <div class="bar-track__fill" :style="{ width: `${(item.collect / collectDistributionMax) * 100}%` }" />
                 </div>
               </article>
             </div>
+            <EmptyState v-else title="还没有形成收藏分布" />
           </article>
         </div>
       </SectionPanel>
