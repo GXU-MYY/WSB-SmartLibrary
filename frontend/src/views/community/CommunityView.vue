@@ -660,7 +660,7 @@ onMounted(loadPage)
 
     <section class="community-layout">
       <div class="community-sidebar">
-        <SectionPanel title="选择群组" hint="切换群组后，中间工作区会同步刷新。">
+        <SectionPanel class="group-selector-panel" title="选择群组" hint="切换群组后，中间工作区会同步刷新。">
           <template #actions>
             <button class="button button--primary" type="button" @click="openCreateDialog">
               创建群组
@@ -726,55 +726,20 @@ onMounted(loadPage)
 
         <template v-else-if="selectedGroup">
           <div class="section-stack">
-            <article class="panel-card workspace-head">
-              <div>
-                <span class="eyebrow">Current Group</span>
-                <h3>{{ selectedGroup.groupName }}</h3>
-                <p>{{ selectedGroup.remark || '这个群组还没有补充说明。' }}</p>
-              </div>
-
-              <div class="workspace-head__actions">
-                <button
-                  v-if="isOwner"
-                  class="button button--secondary workspace-head__action"
-                  type="button"
-                  @click="openInviteDialog"
-                >
-                  邀请成员
-                </button>
-                <button
-                  v-if="isOwner"
-                  class="button button--danger workspace-head__action"
-                  type="button"
-                  @click="handleDeleteGroup"
-                >
-                  解散群组
-                </button>
-                <button
-                  v-else
-                  class="button button--ghost workspace-head__action"
-                  type="button"
-                  @click="handleExitGroup"
-                >
-                  退出群组
-                </button>
-              </div>
-            </article>
-
-            <div class="workspace-overview">
-              <article class="panel-card overview-card">
+            <div class="workspace-overview summary-metric-grid">
+              <article class="surface-card summary-metric-card">
                 <span>群成员</span>
                 <strong>{{ members.length }}</strong>
               </article>
-              <article class="panel-card overview-card">
+              <article class="surface-card summary-metric-card">
                 <span>公开书架</span>
                 <strong>{{ publicShelves.length }}</strong>
               </article>
-              <article class="panel-card overview-card">
+              <article class="surface-card summary-metric-card">
                 <span>可借图书</span>
                 <strong>{{ publicBooks.filter((item) => item.borrowable).length }}</strong>
               </article>
-              <article class="panel-card overview-card">
+              <article class="surface-card summary-metric-card">
                 <span>待处理申请</span>
                 <strong>{{ incomingRequests.filter((item) => item.status === PENDING_STATUS).length }}</strong>
               </article>
@@ -1349,6 +1314,11 @@ onMounted(loadPage)
   align-self: start;
 }
 
+.group-selector-panel :deep(.section-panel__head),
+.community-workspace :deep(.section-panel__head) {
+  align-items: center;
+}
+
 .community-workspace {
   min-height: 100%;
 }
@@ -1455,31 +1425,11 @@ onMounted(loadPage)
 }
 
 .workspace-head__action {
-  min-height: 36px;
-  padding-inline: 12px;
-  font-size: 0.88rem;
+  min-height: 44px;
+  padding-inline: 18px;
+  font-size: inherit;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.workspace-overview {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.overview-card {
-  display: grid;
-  gap: 6px;
-  padding: 16px 18px;
-}
-
-.overview-card span {
-  color: var(--sl-ink-soft);
-}
-
-.overview-card strong {
-  font-size: 1.8rem;
 }
 
 .section-block {
@@ -1995,9 +1945,6 @@ onMounted(loadPage)
     grid-template-columns: 1fr;
   }
 
-  .workspace-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 860px) {
@@ -2046,6 +1993,60 @@ onMounted(loadPage)
     padding: 12px;
   }
 
+  .group-selector-panel :deep(.section-panel__head),
+  .community-workspace :deep(.section-panel__head) {
+    flex-direction: row !important;
+    align-items: center;
+  }
+
+  .group-selector-panel :deep(.section-panel__title),
+  .community-workspace :deep(.section-panel__title) {
+    align-items: center;
+  }
+
+  .group-selector-panel :deep(.section-panel__head h2),
+  .community-workspace :deep(.section-panel__head h2) {
+    font-size: 1.18rem;
+    white-space: nowrap;
+  }
+
+  .group-selector-panel :deep(.section-panel__actions),
+  .community-workspace :deep(.section-panel__actions) {
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+
+  .group-selector-panel :deep(.section-panel__actions .button),
+  .community-workspace :deep(.section-panel__actions .button) {
+    min-height: 36px;
+    padding-inline: 12px;
+    font-size: 0.86rem;
+  }
+
+  .group-switcher {
+    gap: 8px;
+  }
+
+  .group-switcher__item {
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .group-switcher__head {
+    align-items: center;
+  }
+
+  .group-switcher__item p {
+    display: none;
+  }
+
+  .group-switcher__badge {
+    min-height: 24px;
+    padding-inline: 8px;
+    font-size: 0.74rem;
+  }
+
   .desk-dialog {
     width: 100%;
     border-radius: 22px;
@@ -2057,10 +2058,84 @@ onMounted(loadPage)
     padding: 18px;
   }
 
-  .workspace-overview,
   .member-grid,
   .public-shelf-grid {
     grid-template-columns: 1fr;
+  }
+
+  .member-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .member-profile-card {
+    gap: 5px;
+    padding: 8px 4px;
+    border-radius: 14px;
+  }
+
+  .member-profile-card :deep(.avatar) {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 14px;
+  }
+
+  .member-profile-card__tags,
+  .member-profile-card__meta {
+    display: none;
+  }
+
+  .member-profile-card strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .public-book-card {
+    position: relative;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 12px 48px 12px 12px;
+  }
+
+  .public-book-card__cover {
+    width: 64px;
+    height: 86px;
+    border-radius: 14px;
+  }
+
+  .public-book-card__body {
+    align-self: center;
+    min-width: 0;
+  }
+
+  .public-book-card__body strong {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .public-book-card__actions {
+    display: contents;
+  }
+
+  .public-book-card__actions .favorite-icon-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+  }
+
+  .public-book-card__action {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 34px;
+    padding-inline: 12px;
+    font-size: 0.84rem;
   }
 
   .selected-user-card,

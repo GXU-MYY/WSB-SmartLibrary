@@ -44,25 +44,21 @@ const metricCards = computed(() => {
       label: '藏书总数',
       value: stats?.owned.totalBooks ?? 0,
       hint: '仅统计个人拥有的图书，借出的仍算在内，借入的不计入。',
-      tone: 'brand' as const,
     },
     {
       label: '借入 / 借出',
       value: `${stats?.borrowed.borrowedIn ?? 0} / ${stats?.borrowed.borrowedOut ?? 0}`,
       hint: '只统计当前仍在借入和借出的图书，已归还的不计入。',
-      tone: 'accent' as const,
     },
     {
       label: '我的收藏',
       value: stats?.collected.totalCollected ?? 0,
       hint: '只统计你收藏的图书数量。',
-      tone: 'plain' as const,
     },
     {
       label: '被收藏数',
       value: stats?.owned.booksBeingCollected ?? 0,
       hint: '显示别人收藏你的图书的数量。',
-      tone: 'plain' as const,
     },
   ]
 })
@@ -155,14 +151,13 @@ onMounted(loadDashboard)
 
 <template>
   <div class="page-shell page-stack">
-    <section class="page-grid metrics-grid">
+    <section class="summary-metric-grid">
       <MetricCard
         v-for="item in metricCards"
         :key="item.label"
         :label="item.label"
         :value="item.value"
         :hint="item.hint"
-        :tone="item.tone"
       />
     </section>
 
@@ -360,10 +355,6 @@ onMounted(loadDashboard)
 </template>
 
 <style scoped>
-.metrics-grid > * {
-  grid-column: span 3;
-}
-
 .home-grid > *:nth-child(1),
 .home-grid > *:nth-child(2) {
   grid-column: span 6;
@@ -681,7 +672,6 @@ onMounted(loadDashboard)
 }
 
 @media (max-width: 1080px) {
-  .metrics-grid > *,
   .home-grid > * {
     grid-column: span 12 !important;
   }
@@ -692,38 +682,6 @@ onMounted(loadDashboard)
 }
 
 @media (max-width: 720px) {
-  .metrics-grid {
-    gap: 10px;
-  }
-
-  .metrics-grid > * {
-    grid-column: span 6 !important;
-  }
-
-  .metrics-grid :deep(.metric-card) {
-    min-height: 0;
-    gap: 6px;
-    padding: 13px 12px;
-  }
-
-  .metrics-grid :deep(.metric-card__head) {
-    min-width: 0;
-    gap: 4px;
-  }
-
-  .metrics-grid :deep(.metric-card span) {
-    overflow: hidden;
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .metrics-grid :deep(.metric-card strong) {
-    font-size: 1.48rem;
-    line-height: 1;
-  }
-
   .compact-book-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

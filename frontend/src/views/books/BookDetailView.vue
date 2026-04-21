@@ -410,6 +410,7 @@ onMounted(loadPage)
             <BookCard
               v-for="item in similarBooks"
               :key="item.id"
+              mobile-minimal
               :book="
                 buildBookCard({
                   id: item.id,
@@ -575,6 +576,10 @@ onMounted(loadPage)
   line-height: 1.6;
 }
 
+.detail-grid {
+  align-items: start;
+}
+
 .detail-grid > * {
   grid-column: span 6;
 }
@@ -636,8 +641,7 @@ onMounted(loadPage)
   }
 
   .detail-hero__meta,
-  .detail-hero__tools,
-  .similar-grid {
+  .detail-hero__tools {
     grid-template-columns: 1fr;
   }
 

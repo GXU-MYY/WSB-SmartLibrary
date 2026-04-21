@@ -21,6 +21,7 @@ const chartRef = ref<HTMLDivElement | null>(null)
 const themeTick = ref(0)
 let chart: ECharts | null = null
 let themeObserver: MutationObserver | null = null
+let resizeObserver: ResizeObserver | null = null
 
 const chartItems = computed(() => props.items.filter((item) => item.value > 0))
 const total = computed(() => chartItems.value.reduce((sum, item) => sum + item.value, 0))
@@ -115,6 +116,7 @@ const renderChart = async () => {
   }
 
   chart.setOption(option)
+  chart.resize()
 }
 
 const handleResize = () => {
@@ -132,6 +134,10 @@ watch(
 onMounted(() => {
   renderChart()
   window.addEventListener('resize', handleResize)
+  if (chartRef.value) {
+    resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(chartRef.value)
+  }
   themeObserver = new MutationObserver(() => {
     themeTick.value += 1
   })
@@ -143,6 +149,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
   themeObserver?.disconnect()
   chart?.dispose()
 })
@@ -169,7 +176,10 @@ onBeforeUnmount(() => {
 .category-pie-card {
   display: grid;
   gap: 14px;
+  width: 100%;
+  min-width: 0;
   min-height: 420px;
+  overflow: hidden;
   padding: 16px;
   border: 1px solid var(--sl-line);
   border-radius: 22px;
@@ -198,7 +208,10 @@ onBeforeUnmount(() => {
 }
 
 .category-pie-card__chart {
+  width: 100%;
+  min-width: 0;
   min-height: 330px;
+  overflow: hidden;
 }
 
 .category-pie-card__empty {
@@ -215,5 +228,19 @@ onBeforeUnmount(() => {
 
 .category-pie-card__empty strong {
   color: var(--sl-ink);
+}
+
+@media (max-width: 720px) {
+  .category-pie-card {
+    gap: 10px;
+    min-height: 340px;
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .category-pie-card__chart,
+  .category-pie-card__empty {
+    min-height: 260px;
+  }
 }
 </style>

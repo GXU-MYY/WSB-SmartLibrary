@@ -371,6 +371,7 @@ watch(
     top: 8px;
     width: min(calc(100vw - 16px), var(--sl-max-width));
     padding: 10px 12px;
+    min-width: 0;
   }
 
   .main-layout__mobile-sheet {
@@ -386,6 +387,7 @@ watch(
 
   .main-layout__brand :deep(.logo) {
     gap: 10px;
+    min-width: 0;
   }
 
   .main-layout__brand :deep(.logo__mark) {
@@ -405,6 +407,43 @@ watch(
 
   .main-layout__tools {
     gap: 8px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .main-layout {
+    padding-inline: 8px;
+  }
+
+  .main-layout__topbar {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .main-layout__brand :deep(.logo__copy) {
+    display: none;
+  }
+
+  .main-layout__tools {
+    gap: 6px;
+  }
+
+  .main-layout__mobile-toggle {
+    min-width: 40px;
+    padding-inline: 0;
+    font-size: 0;
+  }
+
+  .main-layout__mobile-toggle::before {
+    content: '☰';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .main-layout__mobile-toggle[aria-expanded='true']::before {
+    content: '×';
+    font-size: 1.2rem;
   }
 }
 </style>

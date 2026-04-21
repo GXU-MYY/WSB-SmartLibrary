@@ -36,10 +36,10 @@ const userRankPagination = reactive({
 const overviewCards = computed(() => {
   const stats = personalStats.value
   return [
-    { label: '总藏书', value: stats?.owned.totalBooks ?? 0, hint: '当前账号持有的图书总量。', tone: 'brand' as const },
-    { label: '借阅总数', value: stats?.borrowed.totalBorrowed ?? 0, hint: '参与过的借阅总次数。', tone: 'plain' as const },
-    { label: '未归还', value: stats?.borrowed.unreturned ?? 0, hint: '仍在流转中的借阅条目。', tone: 'accent' as const },
-    { label: '收藏总数', value: stats?.collected.totalCollected ?? 0, hint: '主动收藏下来的内容数量。', tone: 'plain' as const },
+    { label: '总藏书', value: stats?.owned.totalBooks ?? 0, hint: '当前账号持有的图书总量。' },
+    { label: '借阅总数', value: stats?.borrowed.totalBorrowed ?? 0, hint: '参与过的借阅总次数。' },
+    { label: '未归还', value: stats?.borrowed.unreturned ?? 0, hint: '仍在流转中的借阅条目。' },
+    { label: '收藏总数', value: stats?.collected.totalCollected ?? 0, hint: '主动收藏下来的内容数量。' },
   ]
 })
 
@@ -148,14 +148,13 @@ onMounted(loadStatistics)
       description="统计页不是为了装点后台，而是帮你判断哪些分类增长快、哪些内容更有公共吸引力。"
     />
 
-    <section class="page-grid metrics-grid">
+    <section class="summary-metric-grid">
       <MetricCard
         v-for="item in overviewCards"
         :key="item.label"
         :label="item.label"
         :value="item.value"
         :hint="item.hint"
-        :tone="item.tone"
       />
     </section>
 
@@ -288,10 +287,6 @@ onMounted(loadStatistics)
 </template>
 
 <style scoped>
-.metrics-grid > * {
-  grid-column: span 3;
-}
-
 .statistics-layout {
   align-items: start;
 }
@@ -311,6 +306,11 @@ onMounted(loadStatistics)
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+  min-width: 0;
+}
+
+.distribution-pie-grid > * {
+  min-width: 0;
 }
 
 .rank-table-stack {
@@ -354,7 +354,6 @@ onMounted(loadStatistics)
 }
 
 @media (max-width: 1200px) {
-  .metrics-grid > *,
   .statistics-layout > * {
     grid-column: span 12 !important;
   }

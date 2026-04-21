@@ -110,8 +110,9 @@ html {
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--sl-ink);
   font-family: 'Public Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background:
@@ -152,7 +153,10 @@ img {
 }
 
 #app {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 h1,
@@ -190,6 +194,50 @@ h4,
 
 .page-grid > * {
   grid-column: span 12;
+}
+
+.summary-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  min-width: 0;
+}
+
+.summary-metric-grid > * {
+  min-width: 0;
+}
+
+.summary-metric-grid .metric-card,
+.summary-metric-card {
+  min-height: 0;
+  gap: 10px;
+  padding: 22px;
+  background: linear-gradient(180deg, var(--sl-surface-start), var(--sl-surface-end));
+}
+
+.summary-metric-grid .metric-card.metric-card--brand,
+.summary-metric-grid .metric-card.metric-card--accent {
+  background: linear-gradient(180deg, var(--sl-surface-start), var(--sl-surface-end));
+}
+
+.summary-metric-card {
+  display: grid;
+}
+
+.summary-metric-card span {
+  overflow: hidden;
+  color: var(--sl-ink-soft);
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.summary-metric-card strong {
+  font-family: 'Newsreader', serif;
+  font-size: 2.2rem;
+  line-height: 0.95;
 }
 
 .eyebrow {
@@ -526,5 +574,53 @@ a:focus-visible {
 @media (max-width: 1024px) {
   .page-shell {
     width: min(var(--sl-max-width), calc(100vw - 20px));
+  }
+}
+
+@media (max-width: 720px) {
+  .page-shell,
+  .page-stack,
+  .page-grid,
+  .surface-card {
+    min-width: 0;
+  }
+
+  .page-shell {
+    width: min(var(--sl-max-width), calc(100vw - 16px));
+  }
+
+  .button {
+    max-width: 100%;
+  }
+
+  .summary-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .summary-metric-grid .metric-card,
+  .summary-metric-card {
+    gap: 6px !important;
+    padding: 13px 12px !important;
+  }
+
+  .summary-metric-grid .metric-card__head {
+    min-width: 0;
+    gap: 4px !important;
+  }
+
+  .summary-metric-grid .metric-card span,
+  .summary-metric-card span {
+    overflow: hidden;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.04em !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .summary-metric-grid .metric-card strong,
+  .summary-metric-card strong {
+    font-size: 1.48rem !important;
+    line-height: 1 !important;
   }
 }

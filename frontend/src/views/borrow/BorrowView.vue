@@ -108,14 +108,13 @@ const summaryCards = computed(() => {
   }
 
   return [
-    { label: '记录总数', value: summary.total, hint: '当前账号下的全部借阅记录。', tone: 'brand' as const },
-    { label: '借入记录数', value: summary.borrowedIn, hint: '你从外部借来的图书。', tone: 'plain' as const },
-    { label: '借出记录数', value: summary.borrowedOut, hint: '你借给别人的图书。', tone: 'plain' as const },
+    { label: '记录总数', value: summary.total, hint: '当前账号下的全部借阅记录。' },
+    { label: '借入记录数', value: summary.borrowedIn, hint: '你从外部借来的图书。' },
+    { label: '借出记录数', value: summary.borrowedOut, hint: '你借给别人的图书。' },
     {
       label: '进行中 / 已逾期',
       value: `${summary.active} / ${summary.overdue}`,
       hint: '仍在流转中的记录，以及其中已经逾期的数量。',
-      tone: 'accent' as const,
     },
   ]
 })
@@ -358,20 +357,19 @@ onMounted(loadPage)
       description="左侧快速登记，右侧集中浏览和处理记录，让每一本书的借阅状态都能一眼看清。"
     />
 
-    <section class="page-grid metrics-grid">
+    <section class="summary-metric-grid">
       <MetricCard
         v-for="item in summaryCards"
         :key="item.label"
         :label="item.label"
         :value="item.value"
         :hint="item.hint"
-        :tone="item.tone"
       />
     </section>
 
     <section class="page-grid borrow-layout">
       <SectionPanel title="登记借阅" class="borrow-layout__form">
-        <div class="field-grid">
+        <div class="field-grid borrow-core-field-grid">
           <div class="field">
             <label>借阅对象</label>
             <input v-model="borrowForm.borrow_name" type="text" placeholder="填写对方姓名" />
@@ -701,10 +699,6 @@ onMounted(loadPage)
 </template>
 
 <style scoped>
-.metrics-grid > * {
-  grid-column: span 3;
-}
-
 .borrow-layout {
   grid-template-columns: minmax(360px, 380px) minmax(0, 1fr);
   align-items: start;
@@ -1105,19 +1099,14 @@ onMounted(loadPage)
   }
 }
 
-@media (max-width: 960px) {
-  .metrics-grid > * {
-    grid-column: span 6;
-  }
-}
-
 @media (max-width: 720px) {
-  .metrics-grid > * {
-    grid-column: span 12;
-  }
-
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .borrow-core-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .inline-field {

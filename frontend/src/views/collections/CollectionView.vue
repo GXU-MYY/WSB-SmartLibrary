@@ -182,7 +182,24 @@ onMounted(loadCollections)
 
 @media (max-width: 640px) {
   .collection-book-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .collection-book-grid :deep(.book-card__actions) {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .collection-book-grid :deep(.book-card__actions .button) {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 8px;
+    overflow: hidden;
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>
