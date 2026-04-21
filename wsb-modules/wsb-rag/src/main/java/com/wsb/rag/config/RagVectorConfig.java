@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import javax.sql.DataSource;
 
 @Configuration
-@EnableConfigurationProperties(RagPgVectorProperties.class)
+@EnableConfigurationProperties({RagPgVectorProperties.class, RagRecommendProperties.class})
 public class RagVectorConfig {
 
     @Bean

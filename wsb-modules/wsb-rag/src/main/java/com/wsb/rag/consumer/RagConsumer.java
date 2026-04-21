@@ -58,8 +58,7 @@ public class RagConsumer {
                 return;
             }
 
-            String text = buildEmbeddingText(book);
-            vectorService.storeEmbedding(bookId, text, book);
+            vectorService.storeEmbedding(bookId, book);
             remoteBookService.updateEmbeddingStatus(bookId, 2);
 
             log.info("向量生成完成: bookId={}", bookId);
@@ -69,23 +68,4 @@ public class RagConsumer {
         }
     }
 
-    private String buildEmbeddingText(BookRemoteDTO book) {
-        StringBuilder sb = new StringBuilder();
-        if (StringUtils.isNotBlank(book.getTitle())) {
-            sb.append(book.getTitle()).append(" ");
-        }
-        if (StringUtils.isNotBlank(book.getSubtitle())) {
-            sb.append(book.getSubtitle()).append(" ");
-        }
-        if (StringUtils.isNotBlank(book.getAuthor())) {
-            sb.append(book.getAuthor()).append(" ");
-        }
-        if (StringUtils.isNotBlank(book.getKeyword())) {
-            sb.append(book.getKeyword()).append(" ");
-        }
-        if (StringUtils.isNotBlank(book.getSummary())) {
-            sb.append(book.getSummary());
-        }
-        return sb.toString().trim();
-    }
 }

@@ -8,39 +8,69 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class RagPgVectorProperties {
 
     /**
-     * PgVector schema name.
+     * PgVector schema 名称。
      */
     private String schemaName = "public";
 
     /**
-     * PgVector table name.
+     * PgVector 表名。
      */
     private String tableName = "book_embeddings";
 
     /**
-     * Vector dimensions. Keep aligned with the embedding model output.
+     * 向量维度，需要与 embedding 模型输出保持一致。
      */
     private int dimensions = 1024;
 
     /**
-     * Whether Spring AI should create the vector schema/table.
+     * 是否由 Spring AI 初始化向量 schema/table。
      */
     private boolean initializeSchema = true;
 
     /**
-     * Similarity distance type. Supported values depend on Spring AI.
+     * 相似度距离类型，支持值取决于 Spring AI。
      */
     private String distanceType = "COSINE_DISTANCE";
 
     /**
-     * Index type. Supported values depend on Spring AI.
+     * 索引类型，支持值取决于 Spring AI。
      */
     private String indexType = "HNSW";
 
     /**
-     * Batch size when storing documents.
+     * 存储文档时的批量大小。
      */
     private int maxDocumentBatchSize = 1000;
+
+    /**
+     * 向量召回的最低相似度分数，越低越容易引入噪声。
+     */
+    private double similarityThreshold = 0.62;
+
+    /**
+     * RRF 融合前的最小内部候选数量。
+     */
+    private int hybridMinCandidates = 60;
+
+    /**
+     * 向量召回和关键词召回的候选数量倍数。
+     */
+    private int hybridCandidateMultiplier = 4;
+
+    /**
+     * RRF 排名常量。
+     */
+    private int rrfRankConstant = 60;
+
+    /**
+     * 向量召回在 RRF 中的权重。
+     */
+    private double vectorScoreWeight = 1.0;
+
+    /**
+     * 关键词召回在 RRF 中的权重。
+     */
+    private double keywordScoreWeight = 0.8;
 
     private final Datasource datasource = new Datasource();
 

@@ -13,10 +13,9 @@ public interface VectorService {
      * 存储书籍向量文档。
      *
      * @param bookId   书籍ID
-     * @param content  用于向量化的文本内容
      * @param metadata 书籍元数据
      */
-    void storeEmbedding(Long bookId, String content, BookRemoteDTO metadata);
+    void storeEmbedding(Long bookId, BookRemoteDTO metadata);
 
     /**
      * 相似度搜索

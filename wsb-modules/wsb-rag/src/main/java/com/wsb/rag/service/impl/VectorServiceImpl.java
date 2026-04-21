@@ -10,62 +10,78 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * 向量数据库服务实现（pgvector）。
+ * 基于 pgvector 的向量数据库服务。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class VectorServiceImpl implements VectorService {
 
+    private static final String CHUNK_IDENTITY = "identity";
+    private static final String CHUNK_SUBJECT = "subject";
+    private static final String CHUNK_SUMMARY = "summary";
+
     private final PgVectorStore pgVectorStore;
     private final JdbcTemplate jdbcTemplate;
     private final RagPgVectorProperties properties;
 
     @Override
-    public void storeEmbedding(Long bookId, String content, BookRemoteDTO metadata) {
+    public void storeEmbedding(Long bookId, BookRemoteDTO metadata) {
         if (bookId == null) {
-            throw new ServiceException("书籍ID不能为空");
+            throw new ServiceException("图书ID不能为空");
         }
-        if (StringUtils.isBlank(content)) {
+
+        List<Document> documents = buildDocuments(bookId, metadata);
+        if (documents.isEmpty()) {
             throw new ServiceException("向量内容不能为空");
         }
 
         deleteEmbedding(bookId);
-
-        Document document = new Document(content, buildMetadata(bookId, metadata));
-        pgVectorStore.add(List.of(document));
-        log.info("已写入 pgvector: bookId={}", bookId);
+        pgVectorStore.add(documents);
+        log.info("已写入 pgvector 向量: bookId={}, chunks={}", bookId, documents.size());
     }
 
     @Override
     public List<Long> searchSimilar(String query, int limit) {
-        if (StringUtils.isBlank(query)) {
+        if (StringUtils.isBlank(query) || limit <= 0) {
             return List.of();
         }
 
-        return pgVectorStore.similaritySearch(SearchRequest.builder()
-                        .query(query)
-                        .topK(limit)
-                        .build())
+        int candidateLimit = resolveCandidateLimit(limit);
+        Map<Long, Double> scores = new HashMap<>();
+        Map<Long, Integer> bestRanks = new HashMap<>();
+
+        mergeRrfScores(scores, bestRanks, searchVectorBookRanks(query, candidateLimit),
+                properties.getVectorScoreWeight());
+        mergeRrfScores(scores, bestRanks, searchKeywordBookRanks(query, candidateLimit),
+                properties.getKeywordScoreWeight());
+
+        return scores.entrySet()
                 .stream()
-                .map(this::extractBookId)
-                .filter(Objects::nonNull)
-                .distinct()
+                .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(entry -> bestRanks.getOrDefault(entry.getKey(), Integer.MAX_VALUE))
+                        .thenComparing(Map.Entry::getKey))
+                .limit(limit)
+                .map(Map.Entry::getKey)
                 .toList();
     }
 
     @Override
     public List<Long> getSimilarBooks(Long bookId, int limit) {
-        if (bookId == null) {
+        if (bookId == null || limit <= 0) {
             return List.of();
         }
 
@@ -75,12 +91,9 @@ public class VectorServiceImpl implements VectorService {
             return List.of();
         }
 
-        return pgVectorStore.similaritySearch(SearchRequest.builder()
-                        .query(content)
-                        .topK(limit + 1)
-                        .build())
+        return searchVectorBookRanks(content, resolveCandidateLimit(limit + 1))
                 .stream()
-                .map(this::extractBookId)
+                .map(BookRank::bookId)
                 .filter(Objects::nonNull)
                 .filter(id -> !id.equals(bookId))
                 .distinct()
@@ -103,22 +116,161 @@ public class VectorServiceImpl implements VectorService {
         }
     }
 
-    private Map<String, Object> buildMetadata(Long bookId, BookRemoteDTO metadata) {
+    private List<Document> buildDocuments(Long bookId, BookRemoteDTO book) {
+        List<Document> documents = new ArrayList<>();
+        if (book == null) {
+            return documents;
+        }
+
+        addDocument(documents, bookId, book, CHUNK_IDENTITY, 4, buildIdentityText(book));
+        addDocument(documents, bookId, book, CHUNK_SUBJECT, 3, buildSubjectText(book));
+        addDocument(documents, bookId, book, CHUNK_SUMMARY, 1, buildSummaryText(book));
+        return documents;
+    }
+
+    private void addDocument(List<Document> documents, Long bookId, BookRemoteDTO book,
+                             String chunkType, int chunkWeight, String text) {
+        if (StringUtils.isBlank(text)) {
+            return;
+        }
+        documents.add(new Document(text, buildMetadata(bookId, book, chunkType, chunkWeight)));
+    }
+
+    private String buildIdentityText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "作者", book.getAuthor());
+        return sb.toString();
+    }
+
+    private String buildSubjectText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "关键词", book.getKeyword());
+        return sb.toString();
+    }
+
+    private String buildSummaryText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "摘要", book.getSummary());
+        return sb.toString();
+    }
+
+    private void appendField(StringBuilder sb, String fieldName, String value) {
+        if (StringUtils.isBlank(value)) {
+            return;
+        }
+        if (!sb.isEmpty()) {
+            sb.append(" | ");
+        }
+        sb.append(fieldName).append(": ").append(value.trim());
+    }
+
+    private Map<String, Object> buildMetadata(Long bookId, BookRemoteDTO metadata, String chunkType, int chunkWeight) {
         Map<String, Object> metadataMap = new LinkedHashMap<>();
         metadataMap.put("bookId", bookId);
+        metadataMap.put("chunkType", chunkType);
+        metadataMap.put("chunkWeight", chunkWeight);
         if (metadata == null) {
             return metadataMap;
         }
-        if (StringUtils.isNotBlank(metadata.getTitle())) {
-            metadataMap.put("title", metadata.getTitle());
-        }
-        if (StringUtils.isNotBlank(metadata.getAuthor())) {
-            metadataMap.put("author", metadata.getAuthor());
-        }
-        if (StringUtils.isNotBlank(metadata.getCoverUrl())) {
-            metadataMap.put("coverUrl", metadata.getCoverUrl());
-        }
+        putIfNotBlank(metadataMap, "title", metadata.getTitle());
+        putIfNotBlank(metadataMap, "author", metadata.getAuthor());
+        putIfNotBlank(metadataMap, "keyword", metadata.getKeyword());
+        putIfNotBlank(metadataMap, "coverUrl", metadata.getCoverUrl());
         return metadataMap;
+    }
+
+    private void putIfNotBlank(Map<String, Object> metadataMap, String key, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            metadataMap.put(key, value);
+        }
+    }
+
+    private List<BookRank> searchVectorBookRanks(String query, int candidateLimit) {
+        List<Document> documents = pgVectorStore.similaritySearch(SearchRequest.builder()
+                .query(query)
+                .topK(candidateLimit)
+                .similarityThreshold(properties.getSimilarityThreshold())
+                .build());
+
+        LinkedHashMap<Long, Double> rankedBooks = new LinkedHashMap<>();
+        for (Document document : documents) {
+            Long bookId = extractBookId(document);
+            if (bookId == null) {
+                continue;
+            }
+            rankedBooks.merge(bookId, extractChunkWeight(document), Math::max);
+        }
+
+        return rankedBooks.entrySet()
+                .stream()
+                .map(entry -> new BookRank(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit) {
+        String sql = """
+                WITH q AS (
+                    SELECT websearch_to_tsquery('simple', ?) AS ts_query,
+                           ? AS pattern
+                )
+                SELECT metadata->>'bookId' AS book_id,
+                       MAX(
+                           ts_rank_cd(to_tsvector('simple', coalesce(content, '')), q.ts_query)
+                           + CASE WHEN coalesce(content, '') ILIKE q.pattern THEN 0.50 ELSE 0 END
+                           + CASE WHEN coalesce(metadata->>'title', '') ILIKE q.pattern THEN 1.20 ELSE 0 END
+                           + CASE WHEN coalesce(metadata->>'author', '') ILIKE q.pattern THEN 1.00 ELSE 0 END
+                           + CASE WHEN coalesce(metadata->>'keyword', '') ILIKE q.pattern THEN 0.90 ELSE 0 END
+                           + (coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision * 0.05)
+                       ) AS rank_score
+                FROM %s, q
+                WHERE metadata->>'bookId' IS NOT NULL
+                  AND (
+                      q.ts_query @@ to_tsvector('simple', coalesce(content, ''))
+                      OR coalesce(content, '') ILIKE q.pattern
+                      OR coalesce(metadata->>'title', '') ILIKE q.pattern
+                      OR coalesce(metadata->>'author', '') ILIKE q.pattern
+                      OR coalesce(metadata->>'keyword', '') ILIKE q.pattern
+                  )
+                GROUP BY metadata->>'bookId'
+                ORDER BY rank_score DESC
+                LIMIT ?
+                """.formatted(qualifiedTableName());
+
+        try {
+            return jdbcTemplate.query(sql,
+                    (rs, rowNum) -> new BookRank(parseBookId(rs.getString("book_id")), rs.getDouble("rank_score")),
+                    query,
+                    "%" + query.trim() + "%",
+                    candidateLimit
+            ).stream().filter(rank -> rank.bookId() != null).toList();
+        } catch (DataAccessException e) {
+            log.warn("关键词召回失败，回退为纯向量检索: query={}", query, e);
+            return List.of();
+        }
+    }
+
+    private void mergeRrfScores(Map<Long, Double> scores, Map<Long, Integer> bestRanks,
+                                List<BookRank> ranks, double sourceWeight) {
+        int rank = 1;
+        for (BookRank item : ranks) {
+            if (item.bookId() == null) {
+                continue;
+            }
+            double boost = Math.max(1.0, Math.min(item.boost(), 4.0));
+            double score = sourceWeight * boost / (properties.getRrfRankConstant() + rank);
+            scores.merge(item.bookId(), score, Double::sum);
+            bestRanks.merge(item.bookId(), rank, Math::min);
+            rank++;
+        }
+    }
+
+    private int resolveCandidateLimit(int limit) {
+        int safeLimit = Math.max(limit, 1);
+        int multiplier = Math.max(properties.getHybridCandidateMultiplier(), 1);
+        return Math.max(properties.getHybridMinCandidates(), safeLimit * multiplier);
     }
 
     private Long extractBookId(Document document) {
@@ -130,22 +282,57 @@ public class VectorServiceImpl implements VectorService {
             return number.longValue();
         }
         if (value instanceof String text && StringUtils.isNotBlank(text)) {
-            try {
-                return Long.valueOf(text);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
+            return parseBookId(text);
         }
         return null;
     }
 
+    private double extractChunkWeight(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return 1.0;
+        }
+        Object value = document.getMetadata().get("chunkWeight");
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && StringUtils.isNotBlank(text)) {
+            try {
+                return Double.parseDouble(text);
+            } catch (NumberFormatException ignored) {
+                return 1.0;
+            }
+        }
+        return 1.0;
+    }
+
+    private Long parseBookId(String text) {
+        if (StringUtils.isBlank(text)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     private String findContentByBookId(Long bookId) {
         List<String> contents = jdbcTemplate.query(
-                "SELECT content FROM " + qualifiedTableName() + " WHERE metadata->>'bookId' = ? ORDER BY id DESC LIMIT 1",
+                """
+                        SELECT content
+                        FROM %s
+                        WHERE metadata->>'bookId' = ?
+                        ORDER BY CASE metadata->>'chunkType'
+                            WHEN '%s' THEN 0
+                            WHEN '%s' THEN 1
+                            WHEN '%s' THEN 2
+                            ELSE 9
+                        END
+                        """.formatted(qualifiedTableName(), CHUNK_IDENTITY, CHUNK_SUBJECT, CHUNK_SUMMARY),
                 (rs, rowNum) -> rs.getString("content"),
                 bookId.toString()
         );
-        return contents.isEmpty() ? null : contents.get(0);
+        return contents.isEmpty() ? null : String.join(" ", contents);
     }
 
     private String qualifiedTableName() {
@@ -157,5 +344,8 @@ public class VectorServiceImpl implements VectorService {
             throw new ServiceException("非法的 pgvector 标识符配置: " + identifier);
         }
         return identifier;
+    }
+
+    private record BookRank(Long bookId, double boost) {
     }
 }
