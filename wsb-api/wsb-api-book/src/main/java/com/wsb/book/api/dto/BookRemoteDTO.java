@@ -20,6 +20,7 @@ public class BookRemoteDTO implements Serializable {
     private String summary;
     private String keyword;
     private String label;
+    private String clc;
     private String coverUrl;
     private Integer embeddingStatus;
     private Long userId;

@@ -3,15 +3,16 @@ package com.wsb.rag.service.impl;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.exception.ServiceException;
 import com.wsb.rag.config.RagPgVectorProperties;
+import com.wsb.rag.mapper.BookEmbeddingMapper;
+import com.wsb.rag.mapper.BookRankRow;
 import com.wsb.rag.service.VectorService;
+import com.wsb.rag.util.ClcCategoryUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ public class VectorServiceImpl implements VectorService {
     private static final String CHUNK_SUMMARY = "summary";
 
     private final PgVectorStore pgVectorStore;
-    private final JdbcTemplate jdbcTemplate;
+    private final BookEmbeddingMapper bookEmbeddingMapper;
     private final RagPgVectorProperties properties;
 
     @Override
@@ -107,10 +108,7 @@ public class VectorServiceImpl implements VectorService {
             return;
         }
 
-        int deleted = jdbcTemplate.update(
-                "DELETE FROM " + qualifiedTableName() + " WHERE metadata->>'bookId' = ?",
-                bookId.toString()
-        );
+        int deleted = bookEmbeddingMapper.deleteByBookId(qualifiedTableName(), bookId.toString());
         if (deleted > 0) {
             log.info("已删除 pgvector 向量: bookId={}, rows={}", bookId, deleted);
         }
@@ -147,6 +145,8 @@ public class VectorServiceImpl implements VectorService {
         StringBuilder sb = new StringBuilder();
         appendField(sb, "书名", book.getTitle());
         appendField(sb, "关键词", book.getKeyword());
+        appendField(sb, "中图分类", ClcCategoryUtils.resolveCategory(book.getClc()));
+        appendField(sb, "中图分类号", book.getClc());
         return sb.toString();
     }
 
@@ -178,6 +178,8 @@ public class VectorServiceImpl implements VectorService {
         putIfNotBlank(metadataMap, "title", metadata.getTitle());
         putIfNotBlank(metadataMap, "author", metadata.getAuthor());
         putIfNotBlank(metadataMap, "keyword", metadata.getKeyword());
+        putIfNotBlank(metadataMap, "clc", metadata.getClc());
+        putIfNotBlank(metadataMap, "clcCategory", ClcCategoryUtils.resolveCategory(metadata.getClc()));
         putIfNotBlank(metadataMap, "coverUrl", metadata.getCoverUrl());
         return metadataMap;
     }
@@ -211,42 +213,18 @@ public class VectorServiceImpl implements VectorService {
     }
 
     private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit) {
-        String sql = """
-                WITH q AS (
-                    SELECT websearch_to_tsquery('simple', ?) AS ts_query,
-                           ? AS pattern
-                )
-                SELECT metadata->>'bookId' AS book_id,
-                       MAX(
-                           ts_rank_cd(to_tsvector('simple', coalesce(content, '')), q.ts_query)
-                           + CASE WHEN coalesce(content, '') ILIKE q.pattern THEN 0.50 ELSE 0 END
-                           + CASE WHEN coalesce(metadata->>'title', '') ILIKE q.pattern THEN 1.20 ELSE 0 END
-                           + CASE WHEN coalesce(metadata->>'author', '') ILIKE q.pattern THEN 1.00 ELSE 0 END
-                           + CASE WHEN coalesce(metadata->>'keyword', '') ILIKE q.pattern THEN 0.90 ELSE 0 END
-                           + (coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision * 0.05)
-                       ) AS rank_score
-                FROM %s, q
-                WHERE metadata->>'bookId' IS NOT NULL
-                  AND (
-                      q.ts_query @@ to_tsvector('simple', coalesce(content, ''))
-                      OR coalesce(content, '') ILIKE q.pattern
-                      OR coalesce(metadata->>'title', '') ILIKE q.pattern
-                      OR coalesce(metadata->>'author', '') ILIKE q.pattern
-                      OR coalesce(metadata->>'keyword', '') ILIKE q.pattern
-                  )
-                GROUP BY metadata->>'bookId'
-                ORDER BY rank_score DESC
-                LIMIT ?
-                """.formatted(qualifiedTableName());
-
         try {
-            return jdbcTemplate.query(sql,
-                    (rs, rowNum) -> new BookRank(parseBookId(rs.getString("book_id")), rs.getDouble("rank_score")),
-                    query,
-                    "%" + query.trim() + "%",
-                    candidateLimit
-            ).stream().filter(rank -> rank.bookId() != null).toList();
-        } catch (DataAccessException e) {
+            return bookEmbeddingMapper.searchKeywordBookRanks(
+                            qualifiedTableName(),
+                            query,
+                            "%" + query.trim() + "%",
+                            candidateLimit
+                    )
+                    .stream()
+                    .map(row -> new BookRank(row.getBookId(), resolveRankScore(row)))
+                    .filter(rank -> rank.bookId() != null)
+                    .toList();
+        } catch (RuntimeException e) {
             log.warn("关键词召回失败，回退为纯向量检索: query={}", query, e);
             return List.of();
         }
@@ -317,22 +295,21 @@ public class VectorServiceImpl implements VectorService {
     }
 
     private String findContentByBookId(Long bookId) {
-        List<String> contents = jdbcTemplate.query(
-                """
-                        SELECT content
-                        FROM %s
-                        WHERE metadata->>'bookId' = ?
-                        ORDER BY CASE metadata->>'chunkType'
-                            WHEN '%s' THEN 0
-                            WHEN '%s' THEN 1
-                            WHEN '%s' THEN 2
-                            ELSE 9
-                        END
-                        """.formatted(qualifiedTableName(), CHUNK_IDENTITY, CHUNK_SUBJECT, CHUNK_SUMMARY),
-                (rs, rowNum) -> rs.getString("content"),
-                bookId.toString()
+        List<String> contents = bookEmbeddingMapper.findContentsByBookId(
+                qualifiedTableName(),
+                bookId.toString(),
+                CHUNK_IDENTITY,
+                CHUNK_SUBJECT,
+                CHUNK_SUMMARY
         );
         return contents.isEmpty() ? null : String.join(" ", contents);
+    }
+
+    private double resolveRankScore(BookRankRow row) {
+        if (row == null || row.getRankScore() == null) {
+            return 1.0;
+        }
+        return row.getRankScore();
     }
 
     private String qualifiedTableName() {

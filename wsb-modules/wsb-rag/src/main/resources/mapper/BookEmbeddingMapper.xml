@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wsb.rag.mapper.BookEmbeddingMapper">
+
+    <resultMap id="BookRankRowMap" type="com.wsb.rag.mapper.BookRankRow">
+        <result column="book_id" property="bookId"/>
+        <result column="rank_score" property="rankScore"/>
+    </resultMap>
+
+    <delete id="deleteByBookId">
+        DELETE FROM ${tableName}
+        WHERE metadata->>'bookId' = #{bookId}
+    </delete>
+
+    <select id="findContentsByBookId" resultType="java.lang.String">
+        SELECT content
+        FROM ${tableName}
+        WHERE metadata->>'bookId' = #{bookId}
+        ORDER BY CASE metadata->>'chunkType'
+            WHEN #{identityChunkType} THEN 0
+            WHEN #{subjectChunkType} THEN 1
+            WHEN #{summaryChunkType} THEN 2
+            ELSE 9
+        END
+    </select>
+
+    <select id="searchKeywordBookRanks" resultMap="BookRankRowMap">
+        WITH q AS (
+            SELECT websearch_to_tsquery('simple', #{query}) AS ts_query,
+                   #{pattern} AS pattern
+        )
+        SELECT (metadata->>'bookId')::bigint AS book_id,
+               MAX(
+                   ts_rank_cd(to_tsvector('simple', coalesce(content, '')), q.ts_query)
+                   + CASE WHEN coalesce(content, '') ILIKE q.pattern THEN 0.50 ELSE 0 END
+                   + CASE WHEN coalesce(metadata->>'title', '') ILIKE q.pattern THEN 1.20 ELSE 0 END
+                   + CASE WHEN coalesce(metadata->>'author', '') ILIKE q.pattern THEN 1.00 ELSE 0 END
+                   + CASE WHEN coalesce(metadata->>'keyword', '') ILIKE q.pattern THEN 0.90 ELSE 0 END
+                   + CASE WHEN coalesce(metadata->>'clcCategory', '') ILIKE q.pattern THEN 0.75 ELSE 0 END
+                   + CASE WHEN coalesce(metadata->>'clc', '') ILIKE q.pattern THEN 0.70 ELSE 0 END
+                   + (coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision * 0.05)
+               ) AS rank_score
+        FROM ${tableName}, q
+        WHERE metadata->>'bookId' IS NOT NULL
+          AND (
+              q.ts_query @@ to_tsvector('simple', coalesce(content, ''))
+              OR coalesce(content, '') ILIKE q.pattern
+              OR coalesce(metadata->>'title', '') ILIKE q.pattern
+              OR coalesce(metadata->>'author', '') ILIKE q.pattern
+              OR coalesce(metadata->>'keyword', '') ILIKE q.pattern
+              OR coalesce(metadata->>'clcCategory', '') ILIKE q.pattern
+              OR coalesce(metadata->>'clc', '') ILIKE q.pattern
+          )
+        GROUP BY metadata->>'bookId'
+        ORDER BY rank_score DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

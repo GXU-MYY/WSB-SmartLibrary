@@ -1,5 +1,6 @@
 package com.wsb.rag;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
@@ -11,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = "com.wsb.book.api")
 @ComponentScan(basePackages = {"com.wsb.rag", "com.wsb.common"})
+@MapperScan("com.wsb.rag.mapper")
 @EnableScheduling
 public class WsbRagApplication {
     public static void main(String[] args) {

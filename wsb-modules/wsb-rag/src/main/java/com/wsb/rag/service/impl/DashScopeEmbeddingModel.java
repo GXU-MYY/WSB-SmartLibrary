@@ -20,11 +20,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
- * DashScope-compatible embedding model adapter for Spring AI.
+ * DashScope Embedding 模型适配器。
  */
 @Slf4j
 @Component
@@ -45,8 +47,21 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
     @Value("${dashscope.embedding-dimensions}")
     private Integer embeddingDimensions;
 
+    @Value("${dashscope.connect-timeout-seconds:10}")
+    private long connectTimeoutSeconds;
+
+    @Value("${dashscope.read-timeout-seconds:60}")
+    private long readTimeoutSeconds;
+
+    @Value("${dashscope.write-timeout-seconds:30}")
+    private long writeTimeoutSeconds;
+
+    @Value("${dashscope.call-timeout-seconds:90}")
+    private long callTimeoutSeconds;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OkHttpClient httpClient = new OkHttpClient();
+
+    private volatile OkHttpClient httpClient;
 
     @Override
     public EmbeddingResponse call(EmbeddingRequest request) {
@@ -70,7 +85,7 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
                     .post(RequestBody.create(objectMapper.writeValueAsString(requestPayload), JSON))
                     .build();
 
-            try (Response response = httpClient.newCall(httpRequest).execute()) {
+            try (Response response = getHttpClient().newCall(httpRequest).execute()) {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "";
                     log.error("DashScope Embedding API 调用失败: code={}, body={}", response.code(), errorBody);
@@ -89,6 +104,10 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
                 }
                 return new EmbeddingResponse(embeddings);
             }
+        } catch (SocketTimeoutException e) {
+            log.error("DashScope Embedding API 调用超时: connect={}s, read={}s, write={}s, call={}s",
+                    connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds, callTimeoutSeconds, e);
+            throw new ServiceException("生成嵌入向量超时，请稍后重试");
         } catch (IOException e) {
             log.error("生成嵌入向量异常", e);
             throw new ServiceException("生成嵌入向量失败: " + e.getMessage());
@@ -131,5 +150,22 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
 
     private String resolveEmbeddingEndpoint() {
         return StringUtils.removeEnd(embeddingBaseUrl, "/") + "/embeddings";
+    }
+
+    private OkHttpClient getHttpClient() {
+        if (httpClient == null) {
+            synchronized (this) {
+                if (httpClient == null) {
+                    httpClient = new OkHttpClient.Builder()
+                            .connectTimeout(Math.max(connectTimeoutSeconds, 1), TimeUnit.SECONDS)
+                            .readTimeout(Math.max(readTimeoutSeconds, 1), TimeUnit.SECONDS)
+                            .writeTimeout(Math.max(writeTimeoutSeconds, 1), TimeUnit.SECONDS)
+                            .callTimeout(Math.max(callTimeoutSeconds, 1), TimeUnit.SECONDS)
+                            .retryOnConnectionFailure(true)
+                            .build();
+                }
+            }
+        }
+        return httpClient;
     }
 }

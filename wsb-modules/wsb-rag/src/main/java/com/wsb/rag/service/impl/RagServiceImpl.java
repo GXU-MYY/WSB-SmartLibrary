@@ -10,6 +10,7 @@ import com.wsb.common.core.domain.Result;
 import com.wsb.rag.config.RagRecommendProperties;
 import com.wsb.rag.service.RagService;
 import com.wsb.rag.service.VectorService;
+import com.wsb.rag.util.ClcCategoryUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -208,6 +209,8 @@ public class RagServiceImpl implements RagService {
         score += calculateFieldScore(query, terms, book.getTitle(), 6.0);
         score += calculateFieldScore(query, terms, book.getAuthor(), 5.0);
         score += calculateFieldScore(query, terms, book.getKeyword(), 4.0);
+        score += calculateFieldScore(query, terms, ClcCategoryUtils.resolveCategory(book.getClc()), 3.0);
+        score += calculateFieldScore(query, terms, book.getClc(), 2.5);
         score += calculateFieldScore(query, terms, book.getSummary(), 1.0);
         return score;
     }
@@ -303,6 +306,8 @@ public class RagServiceImpl implements RagService {
                     .append("; 书名=").append(StringUtils.defaultString(book.getTitle()))
                     .append("; 作者=").append(StringUtils.defaultString(book.getAuthor()))
                     .append("; 关键词=").append(StringUtils.defaultString(book.getKeyword()))
+                    .append("; 中图分类=").append(StringUtils.defaultString(ClcCategoryUtils.resolveCategory(book.getClc())))
+                    .append("; 中图分类号=").append(StringUtils.defaultString(book.getClc()))
                     .append("; 摘要=").append(StringUtils.abbreviate(StringUtils.defaultString(book.getSummary()), 240))
                     .append("\n");
         }
