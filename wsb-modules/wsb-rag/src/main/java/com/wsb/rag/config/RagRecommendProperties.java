@@ -18,22 +18,7 @@ public class RagRecommendProperties {
     private int candidateMultiplier = 3;
 
     /**
-     * 是否使用已配置的对话模型进行重排序。
+     * 单次推荐最多生成的查询扩写数量。
      */
-    private boolean llmRerankEnabled = true;
-
-    /**
-     * 发送给对话模型的最大候选数量。
-     */
-    private int llmRerankMaxCandidates = 20;
-
-    /**
-     * 重排序使用的对话模型。
-     */
-    private String rerankModel = "deepseek-chat";
-
-    /**
-     * 重排序调用超时时间，单位秒。
-     */
-    private long rerankTimeoutSeconds = 20;
+    private int maxExpandedQueries = 3;
 }

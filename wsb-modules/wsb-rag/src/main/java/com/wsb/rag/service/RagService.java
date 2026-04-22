@@ -12,5 +12,4 @@ public interface RagService {
 
     void enqueueSummary(Long bookId);
 
-    void processNewBook(Long bookId);
 }

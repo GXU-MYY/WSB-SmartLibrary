@@ -28,30 +28,52 @@
 
     <select id="searchKeywordBookRanks" resultMap="BookRankRowMap">
         WITH q AS (
-            SELECT websearch_to_tsquery('simple', #{query}) AS ts_query,
+            SELECT websearch_to_tsquery('public.wsb_zhcfg', #{query}) AS ts_query,
                    #{pattern} AS pattern
         )
         SELECT (metadata->>'bookId')::bigint AS book_id,
                MAX(
-                   ts_rank_cd(to_tsvector('simple', coalesce(content, '')), q.ts_query)
-                   + CASE WHEN coalesce(content, '') ILIKE q.pattern THEN 0.50 ELSE 0 END
-                   + CASE WHEN coalesce(metadata->>'title', '') ILIKE q.pattern THEN 1.20 ELSE 0 END
-                   + CASE WHEN coalesce(metadata->>'author', '') ILIKE q.pattern THEN 1.00 ELSE 0 END
-                   + CASE WHEN coalesce(metadata->>'keyword', '') ILIKE q.pattern THEN 0.90 ELSE 0 END
-                   + CASE WHEN coalesce(metadata->>'clcCategory', '') ILIKE q.pattern THEN 0.75 ELSE 0 END
-                   + CASE WHEN coalesce(metadata->>'clc', '') ILIKE q.pattern THEN 0.70 ELSE 0 END
+                   ts_rank_cd(to_tsvector('public.wsb_zhcfg', coalesce(content, '')), q.ts_query)
+                   + CASE WHEN content ILIKE q.pattern ESCAPE '\' THEN 0.50 ELSE 0 END
+                   + CASE WHEN metadata->>'title' ILIKE q.pattern ESCAPE '\' THEN 1.20 ELSE 0 END
+                   + CASE WHEN metadata->>'author' ILIKE q.pattern ESCAPE '\' THEN 1.00 ELSE 0 END
+                   + CASE WHEN metadata->>'keyword' ILIKE q.pattern ESCAPE '\' THEN 0.90 ELSE 0 END
+                   + CASE WHEN metadata->>'clcCategory' ILIKE q.pattern ESCAPE '\' THEN 0.75 ELSE 0 END
+                   + CASE WHEN metadata->>'clc' ILIKE q.pattern ESCAPE '\' THEN 0.70 ELSE 0 END
+                   <foreach collection="queryPatterns" item="queryPattern">
+                   + CASE WHEN content ILIKE #{queryPattern} ESCAPE '\' THEN 0.20 ELSE 0 END
+                   + CASE WHEN metadata->>'title' ILIKE #{queryPattern} ESCAPE '\' THEN 0.55 ELSE 0 END
+                   + CASE WHEN metadata->>'author' ILIKE #{queryPattern} ESCAPE '\' THEN 0.45 ELSE 0 END
+                   + CASE WHEN metadata->>'keyword' ILIKE #{queryPattern} ESCAPE '\' THEN 0.40 ELSE 0 END
+                   + CASE WHEN metadata->>'clcCategory' ILIKE #{queryPattern} ESCAPE '\' THEN 0.35 ELSE 0 END
+                   + CASE WHEN metadata->>'clc' ILIKE #{queryPattern} ESCAPE '\' THEN 0.30 ELSE 0 END
+                   </foreach>
                    + (coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision * 0.05)
                ) AS rank_score
         FROM ${tableName}, q
         WHERE metadata->>'bookId' IS NOT NULL
+        <if test="bookIds != null and bookIds.size() > 0">
+          AND (metadata->>'bookId')::bigint IN
+            <foreach collection="bookIds" item="bookId" open="(" separator="," close=")">
+                #{bookId}
+            </foreach>
+        </if>
           AND (
-              q.ts_query @@ to_tsvector('simple', coalesce(content, ''))
-              OR coalesce(content, '') ILIKE q.pattern
-              OR coalesce(metadata->>'title', '') ILIKE q.pattern
-              OR coalesce(metadata->>'author', '') ILIKE q.pattern
-              OR coalesce(metadata->>'keyword', '') ILIKE q.pattern
-              OR coalesce(metadata->>'clcCategory', '') ILIKE q.pattern
-              OR coalesce(metadata->>'clc', '') ILIKE q.pattern
+              q.ts_query @@ to_tsvector('public.wsb_zhcfg', coalesce(content, ''))
+              OR content ILIKE q.pattern ESCAPE '\'
+              OR metadata->>'title' ILIKE q.pattern ESCAPE '\'
+              OR metadata->>'author' ILIKE q.pattern ESCAPE '\'
+              OR metadata->>'keyword' ILIKE q.pattern ESCAPE '\'
+              OR metadata->>'clcCategory' ILIKE q.pattern ESCAPE '\'
+              OR metadata->>'clc' ILIKE q.pattern ESCAPE '\'
+              <foreach collection="queryPatterns" item="queryPattern">
+              OR content ILIKE #{queryPattern} ESCAPE '\'
+              OR metadata->>'title' ILIKE #{queryPattern} ESCAPE '\'
+              OR metadata->>'author' ILIKE #{queryPattern} ESCAPE '\'
+              OR metadata->>'keyword' ILIKE #{queryPattern} ESCAPE '\'
+              OR metadata->>'clcCategory' ILIKE #{queryPattern} ESCAPE '\'
+              OR metadata->>'clc' ILIKE #{queryPattern} ESCAPE '\'
+              </foreach>
           )
         GROUP BY metadata->>'bookId'
         ORDER BY rank_score DESC

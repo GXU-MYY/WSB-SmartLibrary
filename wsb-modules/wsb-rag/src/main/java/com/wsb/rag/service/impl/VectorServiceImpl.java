@@ -7,11 +7,14 @@ import com.wsb.rag.mapper.BookEmbeddingMapper;
 import com.wsb.rag.mapper.BookRankRow;
 import com.wsb.rag.service.VectorService;
 import com.wsb.rag.util.ClcCategoryUtils;
+import com.wsb.rag.util.QueryTextAnalyzer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 基于 pgvector 的向量数据库服务。
@@ -57,6 +61,11 @@ public class VectorServiceImpl implements VectorService {
 
     @Override
     public List<Long> searchSimilar(String query, int limit) {
+        return searchSimilar(query, limit, Set.of());
+    }
+
+    @Override
+    public List<Long> searchSimilar(String query, int limit, Set<Long> bookIdFilter) {
         if (StringUtils.isBlank(query) || limit <= 0) {
             return List.of();
         }
@@ -65,9 +74,9 @@ public class VectorServiceImpl implements VectorService {
         Map<Long, Double> scores = new HashMap<>();
         Map<Long, Integer> bestRanks = new HashMap<>();
 
-        mergeRrfScores(scores, bestRanks, searchVectorBookRanks(query, candidateLimit),
+        mergeRrfScores(scores, bestRanks, searchVectorBookRanks(query, candidateLimit, bookIdFilter),
                 properties.getVectorScoreWeight());
-        mergeRrfScores(scores, bestRanks, searchKeywordBookRanks(query, candidateLimit),
+        mergeRrfScores(scores, bestRanks, searchKeywordBookRanks(query, candidateLimit, bookIdFilter),
                 properties.getKeywordScoreWeight());
 
         return scores.entrySet()
@@ -92,7 +101,7 @@ public class VectorServiceImpl implements VectorService {
             return List.of();
         }
 
-        return searchVectorBookRanks(content, resolveCandidateLimit(limit + 1))
+        return searchVectorBookRanks(content, resolveCandidateLimit(limit + 1), Set.of())
                 .stream()
                 .map(BookRank::bookId)
                 .filter(Objects::nonNull)
@@ -190,12 +199,17 @@ public class VectorServiceImpl implements VectorService {
         }
     }
 
-    private List<BookRank> searchVectorBookRanks(String query, int candidateLimit) {
-        List<Document> documents = pgVectorStore.similaritySearch(SearchRequest.builder()
+    private List<BookRank> searchVectorBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
+        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder()
                 .query(query)
                 .topK(candidateLimit)
-                .similarityThreshold(properties.getSimilarityThreshold())
-                .build());
+                .similarityThreshold(properties.getSimilarityThreshold());
+        Filter.Expression filterExpression = buildBookIdFilterExpression(bookIdFilter);
+        if (filterExpression != null) {
+            searchRequestBuilder.filterExpression(filterExpression);
+        }
+
+        List<Document> documents = pgVectorStore.similaritySearch(searchRequestBuilder.build());
 
         LinkedHashMap<Long, Double> rankedBooks = new LinkedHashMap<>();
         for (Document document : documents) {
@@ -212,12 +226,14 @@ public class VectorServiceImpl implements VectorService {
                 .toList();
     }
 
-    private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit) {
+    private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
         try {
             return bookEmbeddingMapper.searchKeywordBookRanks(
                             qualifiedTableName(),
                             query,
-                            "%" + query.trim() + "%",
+                            toLikePattern(query),
+                            buildQueryPatterns(query),
+                            bookIdFilter.stream().sorted().toList(),
                             candidateLimit
                     )
                     .stream()
@@ -228,6 +244,49 @@ public class VectorServiceImpl implements VectorService {
             log.warn("关键词召回失败，回退为纯向量检索: query={}", query, e);
             return List.of();
         }
+    }
+
+
+    private Filter.Expression buildBookIdFilterExpression(Set<Long> bookIdFilter) {
+        if (bookIdFilter == null || bookIdFilter.isEmpty()) {
+            return null;
+        }
+        List<Object> values = bookIdFilter.stream()
+                .sorted()
+                .map(id -> (Object) id)
+                .toList();
+        return new FilterExpressionBuilder().in("bookId", values).build();
+    }
+
+    private List<String> buildQueryPatterns(String query) {
+        LinkedHashMap<String, Boolean> terms = new LinkedHashMap<>();
+        for (String term : QueryTextAnalyzer.extractTerms(query, 8)) {
+            addQueryTerm(terms, term);
+        }
+        if (terms.isEmpty()) {
+            addQueryTerm(terms, query);
+        }
+        return terms.keySet().stream()
+                .map(this::toLikePattern)
+                .toList();
+    }
+
+    private void addQueryTerm(Map<String, Boolean> terms, String term) {
+        String normalized = QueryTextAnalyzer.normalize(term);
+        if (StringUtils.isNotBlank(normalized)) {
+            terms.putIfAbsent(normalized, Boolean.TRUE);
+        }
+    }
+
+    private String toLikePattern(String value) {
+        return "%" + escapeLike(QueryTextAnalyzer.normalize(value)) + "%";
+    }
+
+    private String escapeLike(String value) {
+        return StringUtils.defaultString(value)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     private void mergeRrfScores(Map<Long, Double> scores, Map<Long, Integer> bestRanks,
