@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 
 public final class QueryTextAnalyzer {
 
+    private static final int MAX_DIRECT_CJK_TERM_LENGTH = 12;
     private static final Pattern LATIN_TOKEN = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9_-]{1,}");
     private static final Pattern CJK_SEQUENCE = Pattern.compile("\\p{IsHan}+");
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
@@ -102,9 +103,11 @@ public final class QueryTextAnalyzer {
                 continue;
             }
 
+            boolean matchedDomainTerm = false;
             for (String term : DOMAIN_TERMS) {
                 if (sequence.contains(term)) {
                     terms.add(term);
+                    matchedDomainTerm = true;
                     if (terms.size() >= maxTerms) {
                         return;
                     }
@@ -115,17 +118,9 @@ public final class QueryTextAnalyzer {
                 return;
             }
 
-            if (sequence.length() <= 6) {
+            if (sequence.length() <= MAX_DIRECT_CJK_TERM_LENGTH || !matchedDomainTerm) {
                 terms.add(sequence);
-            } else {
-                collectNgrams(sequence, terms, maxTerms);
             }
-        }
-    }
-
-    private static void collectNgrams(String sequence, LinkedHashSet<String> terms, int maxTerms) {
-        for (int i = 0; i + 2 <= sequence.length() && terms.size() < maxTerms; i++) {
-            terms.add(sequence.substring(i, i + 2));
         }
     }
 

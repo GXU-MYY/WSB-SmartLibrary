@@ -39,6 +39,8 @@ public class VectorServiceImpl implements VectorService {
     private static final String CHUNK_IDENTITY = "identity";
     private static final String CHUNK_SUBJECT = "subject";
     private static final String CHUNK_SUMMARY = "summary";
+    private static final int MAX_QUERY_PATTERNS = 4;
+    private static final double CHUNK_WEIGHT_BOOST_STEP = 0.10;
 
     private final PgVectorStore pgVectorStore;
     private final BookEmbeddingMapper bookEmbeddingMapper;
@@ -75,11 +77,15 @@ public class VectorServiceImpl implements VectorService {
         int candidateLimit = resolveCandidateLimit(limit);
         Map<Long, Double> scores = new HashMap<>();
         Map<Long, Integer> bestRanks = new HashMap<>();
+        List<BookRank> vectorRanks = safeSearchVectorBookRanks(query, candidateLimit, bookIdFilter);
+        List<BookRank> keywordRanks = searchKeywordBookRanks(query, candidateLimit, bookIdFilter);
 
-        mergeRrfScores(scores, bestRanks, searchVectorBookRanks(query, candidateLimit, bookIdFilter),
-                properties.getVectorScoreWeight());
-        mergeRrfScores(scores, bestRanks, searchKeywordBookRanks(query, candidateLimit, bookIdFilter),
-                properties.getKeywordScoreWeight());
+        mergeRrfScores(scores, bestRanks, vectorRanks, properties.getVectorScoreWeight());
+        mergeRrfScores(scores, bestRanks, keywordRanks, properties.getKeywordScoreWeight());
+
+        log.info("混合检索召回统计: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
+                query, vectorRanks.size(), keywordRanks.size(), scores.size(),
+                bookIdFilter == null ? 0 : bookIdFilter.size());
 
         return scores.entrySet()
                 .stream()
@@ -103,7 +109,7 @@ public class VectorServiceImpl implements VectorService {
             return List.of();
         }
 
-        return searchVectorBookRanks(content, resolveCandidateLimit(limit + 1), Set.of())
+        return safeSearchVectorBookRanks(content, resolveCandidateLimit(limit + 1), Set.of())
                 .stream()
                 .map(BookRank::bookId)
                 .filter(Objects::nonNull)
@@ -213,19 +219,30 @@ public class VectorServiceImpl implements VectorService {
 
         List<Document> documents = pgVectorStore.similaritySearch(searchRequestBuilder.build());
 
-        LinkedHashMap<Long, Double> rankedBooks = new LinkedHashMap<>();
+        Map<Long, Double> rankedBooks = new HashMap<>();
         for (Document document : documents) {
             Long bookId = extractBookId(document);
             if (bookId == null) {
                 continue;
             }
-            rankedBooks.merge(bookId, extractChunkWeight(document), Math::max);
+            rankedBooks.merge(bookId, resolveVectorBoost(document), Math::max);
         }
 
         return rankedBooks.entrySet()
                 .stream()
+                .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(Map.Entry::getKey))
                 .map(entry -> new BookRank(entry.getKey(), entry.getValue()))
                 .toList();
+    }
+
+    private List<BookRank> safeSearchVectorBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
+        try {
+            return searchVectorBookRanks(query, candidateLimit, bookIdFilter);
+        } catch (RuntimeException e) {
+            log.warn("向量召回失败，回退到关键词检索: query={}", query, e);
+            return List.of();
+        }
     }
 
     private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
@@ -262,13 +279,14 @@ public class VectorServiceImpl implements VectorService {
 
     private List<String> buildQueryPatterns(String query) {
         LinkedHashMap<String, Boolean> terms = new LinkedHashMap<>();
-        for (String term : QueryTextAnalyzer.extractTerms(query, 8)) {
+        for (String term : QueryTextAnalyzer.extractTerms(query, MAX_QUERY_PATTERNS)) {
             addQueryTerm(terms, term);
         }
         if (terms.isEmpty()) {
             addQueryTerm(terms, query);
         }
         return terms.keySet().stream()
+                .limit(MAX_QUERY_PATTERNS)
                 .map(this::toLikePattern)
                 .toList();
     }
@@ -342,6 +360,19 @@ public class VectorServiceImpl implements VectorService {
             }
         }
         return 1.0;
+    }
+
+    private double extractSimilarityScore(Document document) {
+        if (document == null || document.getScore() == null) {
+            return 1.0;
+        }
+        return Math.max(document.getScore(), 0.0);
+    }
+
+    private double resolveVectorBoost(Document document) {
+        double similarityScore = extractSimilarityScore(document);
+        double chunkWeight = Math.max(extractChunkWeight(document), 1.0);
+        return similarityScore * (1.0 + (chunkWeight - 1.0) * CHUNK_WEIGHT_BOOST_STEP);
     }
 
     private Long parseBookId(String text) {
