@@ -11,7 +11,7 @@ BEGIN
         WHERE ns.nspname = 'public'
           AND cfg.cfgname = 'wsb_zhcfg'
     ) THEN
-        CREATE TEXT SEARCH CONFIGURATION public.wsb_zhcfg (PARSER = zhparser);
+        CREATE TEXT SEARCH CONFIGURATION public.wsb_zhcfg (PARSER = public.zhparser);
         ALTER TEXT SEARCH CONFIGURATION public.wsb_zhcfg ADD MAPPING FOR n, v, a, i, e, l WITH simple;
     END IF;
 END $$;
