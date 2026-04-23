@@ -17,6 +17,7 @@ import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,6 +45,7 @@ public class VectorServiceImpl implements VectorService {
     private final RagPgVectorProperties properties;
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void storeEmbedding(Long bookId, BookRemoteDTO metadata) {
         if (bookId == null) {
             throw new ServiceException("图书ID不能为空");

@@ -59,6 +59,15 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
     @Value("${dashscope.call-timeout-seconds:90}")
     private long callTimeoutSeconds;
 
+    @Value("${dashscope.embedding-batch-size:25}")
+    private int embeddingBatchSize;
+
+    @Value("${dashscope.embedding-max-attempts:3}")
+    private int embeddingMaxAttempts;
+
+    @Value("${dashscope.embedding-retry-backoff-millis:500}")
+    private long embeddingRetryBackoffMillis;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private volatile OkHttpClient httpClient;
@@ -72,38 +81,13 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
         }
 
         try {
-            var requestPayload = objectMapper.createObjectNode();
-            requestPayload.put("model", embeddingModel);
-            requestPayload.set("input", objectMapper.valueToTree(texts));
-            requestPayload.put("encoding_format", "float");
-            requestPayload.put("dimensions", embeddingDimensions);
-
-            Request httpRequest = new Request.Builder()
-                    .url(resolveEmbeddingEndpoint())
-                    .addHeader("Authorization", "Bearer " + apiKey)
-                    .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(objectMapper.writeValueAsString(requestPayload), JSON))
-                    .build();
-
-            try (Response response = getHttpClient().newCall(httpRequest).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("DashScope Embedding API 调用失败: code={}, body={}", response.code(), errorBody);
-                    throw new ServiceException("DashScope Embedding API 调用失败");
-                }
-
-                String responseBody = response.body() != null ? response.body().string() : "";
-                JsonNode root = objectMapper.readTree(responseBody);
-                JsonNode data = root.path("data");
-
-                List<Embedding> embeddings = new ArrayList<>();
-                int index = 0;
-                for (JsonNode item : data) {
-                    float[] vector = toVector(item.path("embedding"));
-                    embeddings.add(new Embedding(vector, index++));
-                }
-                return new EmbeddingResponse(embeddings);
+            List<Embedding> embeddings = new ArrayList<>(texts.size());
+            int batchSize = resolveEmbeddingBatchSize();
+            for (int start = 0; start < texts.size(); start += batchSize) {
+                int end = Math.min(start + batchSize, texts.size());
+                embeddings.addAll(callEmbeddingApiWithRetry(texts.subList(start, end), start));
             }
+            return new EmbeddingResponse(embeddings);
         } catch (SocketTimeoutException e) {
             log.error("DashScope Embedding API 调用超时: connect={}s, read={}s, write={}s, call={}s",
                     connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds, callTimeoutSeconds, e);
@@ -111,6 +95,63 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
         } catch (IOException e) {
             log.error("生成嵌入向量异常", e);
             throw new ServiceException("生成嵌入向量失败: " + e.getMessage());
+        }
+    }
+
+    private List<Embedding> callEmbeddingApiWithRetry(List<String> texts, int startIndex) throws IOException {
+        int maxAttempts = Math.max(embeddingMaxAttempts, 1);
+        IOException lastException = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return callEmbeddingApi(texts, startIndex);
+            } catch (IOException e) {
+                lastException = e;
+                if (attempt >= maxAttempts) {
+                    throw e;
+                }
+                log.warn("DashScope Embedding API 调用失败，准备重试: attempt={}/{}, batchSize={}",
+                        attempt, maxAttempts, texts.size(), e);
+                sleepBeforeRetry(attempt);
+            }
+        }
+        throw lastException != null ? lastException : new IOException("DashScope Embedding API 调用失败");
+    }
+
+    private List<Embedding> callEmbeddingApi(List<String> texts, int startIndex) throws IOException {
+        var requestPayload = objectMapper.createObjectNode();
+        requestPayload.put("model", embeddingModel);
+        requestPayload.set("input", objectMapper.valueToTree(texts));
+        requestPayload.put("encoding_format", "float");
+        requestPayload.put("dimensions", embeddingDimensions);
+
+        Request httpRequest = new Request.Builder()
+                .url(resolveEmbeddingEndpoint())
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(objectMapper.writeValueAsString(requestPayload), JSON))
+                .build();
+
+        try (Response response = getHttpClient().newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "";
+                log.error("DashScope Embedding API 调用失败: code={}, body={}", response.code(), errorBody);
+                if (isRetryableStatus(response.code())) {
+                    throw new IOException("DashScope Embedding API 可重试失败: code=" + response.code());
+                }
+                throw new ServiceException("DashScope Embedding API 调用失败");
+            }
+
+            String responseBody = response.body() != null ? response.body().string() : "";
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode data = root.path("data");
+
+            List<Embedding> embeddings = new ArrayList<>();
+            int index = 0;
+            for (JsonNode item : data) {
+                float[] vector = toVector(item.path("embedding"));
+                embeddings.add(new Embedding(vector, startIndex + index++));
+            }
+            return embeddings;
         }
     }
 
@@ -150,6 +191,25 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
 
     private String resolveEmbeddingEndpoint() {
         return StringUtils.removeEnd(embeddingBaseUrl, "/") + "/embeddings";
+    }
+
+    private int resolveEmbeddingBatchSize() {
+        return Math.max(1, Math.min(embeddingBatchSize, 25));
+    }
+
+    private boolean isRetryableStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private void sleepBeforeRetry(int attempt) throws IOException {
+        long backoffMillis = Math.max(embeddingRetryBackoffMillis, 1);
+        long sleepMillis = Math.min(backoffMillis * (1L << Math.min(attempt - 1, 4)), 10_000L);
+        try {
+            Thread.sleep(sleepMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("DashScope Embedding API 重试被中断", e);
+        }
     }
 
     private OkHttpClient getHttpClient() {

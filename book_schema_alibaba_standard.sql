@@ -45,7 +45,7 @@ CREATE TABLE `t_book` (
   `cover_url` varchar(500) DEFAULT NULL COMMENT '封面 URL',
   `author` varchar(255) DEFAULT NULL COMMENT '作者',
   `summary` text DEFAULT NULL COMMENT '内容简介',
-  `embedding_status` tinyint(1) NOT NULL DEFAULT 0 COMMENT '向量状态：0-未处理，1-处理中，2-已完成',
+  `embedding_status` tinyint(1) NOT NULL DEFAULT 0 COMMENT '向量状态：0-待处理，1-处理中，2-已完成',
   `publisher` varchar(255) DEFAULT NULL COMMENT '出版社',
   `publish_date` date DEFAULT NULL COMMENT '出版日期',
   `page_count` int DEFAULT NULL COMMENT '页数',

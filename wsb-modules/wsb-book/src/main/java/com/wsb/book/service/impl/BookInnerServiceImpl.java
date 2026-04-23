@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BookInnerServiceImpl implements BookInnerService {
 
+    private static final int EMBEDDING_STATUS_PENDING = 0;
+
     private final BookService bookService;
     private final BookBorrowService bookBorrowService;
     private final BookBorrowMapper bookBorrowMapper;
@@ -369,7 +371,9 @@ public class BookInnerServiceImpl implements BookInnerService {
     public List<Long> getBooksPendingEmbedding() {
         return bookService.list(Wrappers.<Book>lambdaQuery()
                         .eq(Book::getIsDeleted, false)
-                        .and(wrapper -> wrapper.isNull(Book::getEmbeddingStatus).or().eq(Book::getEmbeddingStatus, 0))
+                        .and(wrapper -> wrapper.isNull(Book::getEmbeddingStatus)
+                                .or()
+                                .eq(Book::getEmbeddingStatus, EMBEDDING_STATUS_PENDING))
                         .isNotNull(Book::getSummary)
                         .ne(Book::getSummary, "")
                         .select(Book::getId))

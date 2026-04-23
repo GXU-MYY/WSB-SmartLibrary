@@ -12,4 +12,8 @@ public interface RagService {
 
     void enqueueSummary(Long bookId);
 
+    void enqueueEmbedding(Long bookId);
+
+    int requeueDeadLetters(String taskType, int limit);
+
 }

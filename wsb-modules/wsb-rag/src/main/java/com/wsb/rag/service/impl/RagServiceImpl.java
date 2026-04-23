@@ -3,6 +3,7 @@ package com.wsb.rag.service.impl;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
+import com.wsb.common.core.exception.ServiceException;
 import com.wsb.rag.config.RagRecommendProperties;
 import com.wsb.rag.service.RagService;
 import com.wsb.rag.service.VectorService;
@@ -33,6 +34,8 @@ import java.util.stream.Collectors;
 public class RagServiceImpl implements RagService {
 
     private static final int QUERY_RRF_RANK_CONSTANT = 60;
+    private static final int DEFAULT_DLQ_REQUEUE_LIMIT = 20;
+    private static final int MAX_DLQ_REQUEUE_LIMIT = 100;
 
     private final RemoteBookService remoteBookService;
     private final VectorService vectorService;
@@ -47,6 +50,12 @@ public class RagServiceImpl implements RagService {
 
     @Value("${rag.routing.summary}")
     private String summaryRoutingKey;
+
+    @Value("${rag.queue.summary}")
+    private String summaryQueue;
+
+    @Value("${rag.queue.embedding}")
+    private String embeddingQueue;
 
     @Override
     public List<BookRemoteDTO> recommend(String query, int limit, Long ownerId) {
@@ -82,6 +91,29 @@ public class RagServiceImpl implements RagService {
     public void enqueueSummary(Long bookId) {
         rabbitTemplate.convertAndSend(exchange, summaryRoutingKey, bookId);
         log.info("已发送摘要生成任务: bookId={}", bookId);
+    }
+
+    @Override
+    public void enqueueEmbedding(Long bookId) {
+        rabbitTemplate.convertAndSend(exchange, embeddingRoutingKey, bookId);
+        log.info("已发送向量生成任务: bookId={}", bookId);
+    }
+
+    @Override
+    public int requeueDeadLetters(String taskType, int limit) {
+        DeadLetterTarget target = resolveDeadLetterTarget(taskType);
+        int safeLimit = resolveDeadLetterRequeueLimit(limit);
+        int count = 0;
+        for (int i = 0; i < safeLimit; i++) {
+            Object payload = rabbitTemplate.receiveAndConvert(target.queueName());
+            if (payload == null) {
+                break;
+            }
+            rabbitTemplate.convertAndSend(exchange, target.routingKey(), payload);
+            count++;
+        }
+        log.info("已重投 RAG 死信消息: taskType={}, count={}", taskType, count);
+        return count;
     }
 
     private List<Long> searchOwnedBooks(List<String> queries, int limit, Long ownerId) {
@@ -228,6 +260,25 @@ public class RagServiceImpl implements RagService {
         return Math.max(recommendProperties.getMinCandidates(), safeLimit * multiplier);
     }
 
+    private DeadLetterTarget resolveDeadLetterTarget(String taskType) {
+        String normalizedTaskType = StringUtils.lowerCase(StringUtils.trimToEmpty(taskType), Locale.ROOT);
+        return switch (normalizedTaskType) {
+            case "summary" -> new DeadLetterTarget(summaryQueue + ".dlq", summaryRoutingKey);
+            case "embedding" -> new DeadLetterTarget(embeddingQueue + ".dlq", embeddingRoutingKey);
+            default -> throw new ServiceException("不支持的 RAG 死信任务类型: " + taskType);
+        };
+    }
+
+    private int resolveDeadLetterRequeueLimit(int limit) {
+        if (limit <= 0) {
+            return DEFAULT_DLQ_REQUEUE_LIMIT;
+        }
+        return Math.min(limit, MAX_DLQ_REQUEUE_LIMIT);
+    }
+
     private record ScoredBook(BookRemoteDTO book, double score, int originalRank) {
+    }
+
+    private record DeadLetterTarget(String queueName, String routingKey) {
     }
 }
