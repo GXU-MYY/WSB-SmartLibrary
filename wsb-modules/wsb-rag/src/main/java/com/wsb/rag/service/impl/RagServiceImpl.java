@@ -7,7 +7,6 @@ import com.wsb.common.core.exception.ServiceException;
 import com.wsb.rag.config.RagRecommendProperties;
 import com.wsb.rag.service.RagService;
 import com.wsb.rag.service.VectorService;
-import com.wsb.rag.util.ClcCategoryUtils;
 import com.wsb.rag.util.QueryTextAnalyzer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,10 +15,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -74,7 +71,9 @@ public class RagServiceImpl implements RagService {
         }
 
         List<BookRemoteDTO> candidates = fetchBooksInOrder(bookIds);
-        return rerankBooks(query, candidates, limit);
+        return candidates.stream()
+                .limit(limit)
+                .toList();
     }
 
     @Override
@@ -173,85 +172,13 @@ public class RagServiceImpl implements RagService {
                 .collect(Collectors.toMap(
                         BookRemoteDTO::getId,
                         Function.identity(),
-                        (left, right) -> left,
-                        LinkedHashMap::new
+                        (existing, replacement) -> existing // 杜绝 ID 重复导致的异常
                 ));
 
         return bookIds.stream()
                 .map(booksById::get)
                 .filter(Objects::nonNull)
                 .toList();
-    }
-
-    private List<BookRemoteDTO> rerankBooks(String query, List<BookRemoteDTO> books, int limit) {
-        if (books.isEmpty()) {
-            return List.of();
-        }
-
-        return scoreBooksLocally(query, books).stream()
-                .map(ScoredBook::book)
-                .limit(limit)
-                .toList();
-    }
-
-    private List<ScoredBook> scoreBooksLocally(String query, List<BookRemoteDTO> books) {
-        List<String> terms = extractQueryTerms(query);
-        List<ScoredBook> scoredBooks = new ArrayList<>();
-        for (int i = 0; i < books.size(); i++) {
-            BookRemoteDTO book = books.get(i);
-            scoredBooks.add(new ScoredBook(book, calculateLocalScore(query, terms, book, i), i));
-        }
-
-        return scoredBooks.stream()
-                .sorted(Comparator
-                        .comparingDouble(ScoredBook::score)
-                        .reversed()
-                        .thenComparingInt(ScoredBook::originalRank))
-                .toList();
-    }
-
-    private double calculateLocalScore(String query, List<String> terms, BookRemoteDTO book, int originalRank) {
-        double score = 1.0 / (originalRank + 1);
-        score += calculateFieldScore(query, terms, book.getTitle(), 6.0);
-        score += calculateFieldScore(query, terms, book.getAuthor(), 5.0);
-        score += calculateFieldScore(query, terms, book.getKeyword(), 4.0);
-        score += calculateFieldScore(query, terms, ClcCategoryUtils.resolveCategory(book.getClc()), 3.0);
-        score += calculateFieldScore(query, terms, book.getClc(), 2.5);
-        score += calculateFieldScore(query, terms, book.getSummary(), 1.0);
-        return score;
-    }
-
-    private double calculateFieldScore(String query, List<String> terms, String fieldValue, double weight) {
-        if (StringUtils.isBlank(fieldValue)) {
-            return 0.0;
-        }
-
-        String normalizedField = fieldValue.toLowerCase(Locale.ROOT);
-        String normalizedQuery = StringUtils.defaultString(query).trim().toLowerCase(Locale.ROOT);
-        double score = 0.0;
-        if (StringUtils.isNotBlank(normalizedQuery)) {
-            if (normalizedField.equals(normalizedQuery)) {
-                score += weight * 3.0;
-            } else if (normalizedField.contains(normalizedQuery)) {
-                score += weight * 2.0;
-            }
-        }
-
-        for (String term : terms) {
-            if (StringUtils.isNotBlank(term) && normalizedField.contains(term)) {
-                score += weight;
-            }
-        }
-        return score;
-    }
-
-    private List<String> extractQueryTerms(String query) {
-        List<String> terms = QueryTextAnalyzer.extractTerms(query, 12);
-        if (!terms.isEmpty()) {
-            return terms;
-        }
-        String normalized = QueryTextAnalyzer.normalize(query).toLowerCase(Locale.ROOT);
-        return StringUtils.isBlank(normalized) ? List.of() : List.of(normalized);
     }
 
     private int resolveRecommendCandidateLimit(int limit) {
@@ -274,9 +201,6 @@ public class RagServiceImpl implements RagService {
             return DEFAULT_DLQ_REQUEUE_LIMIT;
         }
         return Math.min(limit, MAX_DLQ_REQUEUE_LIMIT);
-    }
-
-    private record ScoredBook(BookRemoteDTO book, double score, int originalRank) {
     }
 
     private record DeadLetterTarget(String queueName, String routingKey) {

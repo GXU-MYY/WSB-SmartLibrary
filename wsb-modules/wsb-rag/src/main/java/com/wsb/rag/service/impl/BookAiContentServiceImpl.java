@@ -20,7 +20,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -61,6 +65,12 @@ public class BookAiContentServiceImpl implements BookAiContentService {
 
     @Value("${deepseek.call-timeout-seconds:90}")
     private long callTimeoutSeconds;
+
+    @Value("${deepseek.chat-max-attempts:3}")
+    private int chatMaxAttempts;
+
+    @Value("${deepseek.chat-retry-backoff-millis:500}")
+    private long chatRetryBackoffMillis;
 
     private final RemoteBookService remoteBookService;
     private final StringRedisTemplate stringRedisTemplate;
@@ -161,31 +171,7 @@ public class BookAiContentServiceImpl implements BookAiContentService {
 
     private String callChatAPI(String prompt) {
         try {
-            String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("model", "deepseek-chat")
-                    .set("messages", objectMapper.createArrayNode()
-                            .add(objectMapper.createObjectNode()
-                                    .put("role", "user")
-                                    .put("content", prompt))));
-
-            Request request = new Request.Builder()
-                    .url(chatUrl + "/chat/completions")
-                    .addHeader("Authorization", "Bearer " + apiKey)
-                    .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(json, JSON))
-                    .build();
-
-            try (Response response = getHttpClient().newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("Chat API 调用失败: code={}, body={}", response.code(), errorBody);
-                    throw new ServiceException("AI 服务暂时不可用");
-                }
-
-                String responseBody = response.body() != null ? response.body().string() : "";
-                JsonNode root = objectMapper.readTree(responseBody);
-                return root.path("choices").path(0).path("message").path("content").asText();
-            }
+            return callChatAPIWithRetry(prompt);
         } catch (SocketTimeoutException e) {
             log.error("Chat API 调用超时: connect={}s, read={}s, write={}s, call={}s",
                     connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds, callTimeoutSeconds, e);
@@ -193,6 +179,87 @@ public class BookAiContentServiceImpl implements BookAiContentService {
         } catch (IOException e) {
             log.error("调用 Chat API 异常", e);
             throw new ServiceException("AI 服务调用失败: " + e.getMessage());
+        }
+    }
+
+    private String callChatAPIWithRetry(String prompt) throws IOException {
+        int maxAttempts = Math.max(chatMaxAttempts, 1);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return executeChatAPI(prompt);
+            } catch (IOException e) {
+                if (!isRetryableChatException(e) || attempt >= maxAttempts) {
+                    throw e;
+                }
+                log.warn("Chat API 调用失败，准备重试: attempt={}/{}, reason={}",
+                        attempt, maxAttempts, e.getMessage());
+                sleepBeforeRetry(attempt);
+            }
+        }
+        throw new IOException("AI 服务调用失败");
+    }
+
+    private String executeChatAPI(String prompt) throws IOException {
+        String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
+                .put("model", "deepseek-chat")
+                .set("messages", objectMapper.createArrayNode()
+                        .add(objectMapper.createObjectNode()
+                                .put("role", "user")
+                                .put("content", prompt))));
+
+        Request request = new Request.Builder()
+                .url(chatUrl + "/chat/completions")
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(json, JSON))
+                .build();
+
+        try (Response response = getHttpClient().newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "";
+                log.error("Chat API 调用失败: code={}, body={}", response.code(), errorBody);
+                if (isRetryableChatStatus(response.code())) {
+                    throw new RetryableChatException("Chat API 可重试失败: code=" + response.code());
+                }
+                throw new ServiceException("AI 服务暂时不可用");
+            }
+
+            String responseBody = response.body() != null ? response.body().string() : "";
+            JsonNode root = objectMapper.readTree(responseBody);
+            return root.path("choices").path(0).path("message").path("content").asText();
+        }
+    }
+
+    private boolean isRetryableChatStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private boolean isRetryableChatException(IOException e) {
+        return e instanceof RetryableChatException
+                || e instanceof SocketTimeoutException
+                || e instanceof ConnectException
+                || e instanceof UnknownHostException
+                || e instanceof SocketException
+                || e instanceof InterruptedIOException;
+    }
+
+    private void sleepBeforeRetry(int attempt) throws IOException {
+        long backoffMillis = Math.max(chatRetryBackoffMillis, 0L) * attempt;
+        if (backoffMillis <= 0) {
+            return;
+        }
+        try {
+            TimeUnit.MILLISECONDS.sleep(backoffMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Chat API 重试等待被中断", e);
+        }
+    }
+
+    private static class RetryableChatException extends IOException {
+
+        private RetryableChatException(String message) {
+            super(message);
         }
     }
 
