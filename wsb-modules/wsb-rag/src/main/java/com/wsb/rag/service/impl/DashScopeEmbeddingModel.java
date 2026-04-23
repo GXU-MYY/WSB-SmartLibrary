@@ -3,6 +3,7 @@ package com.wsb.rag.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wsb.common.core.exception.ServiceException;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -19,8 +20,12 @@ import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.InterruptedIOException;
 import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -44,7 +49,7 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
     @Value("${dashscope.embedding-model}")
     private String embeddingModel;
 
-    @Value("${dashscope.embedding-dimensions}")
+    @Value("${dashscope.embedding-dimensions:1024}")
     private Integer embeddingDimensions;
 
     @Value("${dashscope.connect-timeout-seconds:10}")
@@ -59,9 +64,6 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
     @Value("${dashscope.call-timeout-seconds:90}")
     private long callTimeoutSeconds;
 
-    @Value("${dashscope.embedding-batch-size:25}")
-    private int embeddingBatchSize;
-
     @Value("${dashscope.embedding-max-attempts:3}")
     private int embeddingMaxAttempts;
 
@@ -70,24 +72,29 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private volatile OkHttpClient httpClient;
+    private OkHttpClient httpClient;
+
+    @PostConstruct
+    public void init() {
+        validateConfig();
+        httpClient = new OkHttpClient.Builder()
+                .connectTimeout(Math.max(connectTimeoutSeconds, 1), TimeUnit.SECONDS)
+                .readTimeout(Math.max(readTimeoutSeconds, 1), TimeUnit.SECONDS)
+                .writeTimeout(Math.max(writeTimeoutSeconds, 1), TimeUnit.SECONDS)
+                .callTimeout(Math.max(callTimeoutSeconds, 1), TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .build();
+    }
 
     @Override
     public EmbeddingResponse call(EmbeddingRequest request) {
-        validateConfig();
         List<String> texts = request.getInstructions();
-        if (texts == null || texts.isEmpty()) {
+        if (texts.isEmpty()) {
             return new EmbeddingResponse(List.of());
         }
 
         try {
-            List<Embedding> embeddings = new ArrayList<>(texts.size());
-            int batchSize = resolveEmbeddingBatchSize();
-            for (int start = 0; start < texts.size(); start += batchSize) {
-                int end = Math.min(start + batchSize, texts.size());
-                embeddings.addAll(callEmbeddingApiWithRetry(texts.subList(start, end), start));
-            }
-            return new EmbeddingResponse(embeddings);
+            return new EmbeddingResponse(callEmbeddingApiWithRetry(texts));
         } catch (SocketTimeoutException e) {
             log.error("DashScope Embedding API 调用超时: connect={}s, read={}s, write={}s, call={}s",
                     connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds, callTimeoutSeconds, e);
@@ -98,14 +105,15 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
         }
     }
 
-    private List<Embedding> callEmbeddingApiWithRetry(List<String> texts, int startIndex) throws IOException {
+    private List<Embedding> callEmbeddingApiWithRetry(List<String> texts) throws IOException {
         int maxAttempts = Math.max(embeddingMaxAttempts, 1);
-        IOException lastException = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                return callEmbeddingApi(texts, startIndex);
+                return callEmbeddingApi(texts);
             } catch (IOException e) {
-                lastException = e;
+                if (!isRetryableException(e)) {
+                    throw e;
+                }
                 if (attempt >= maxAttempts) {
                     throw e;
                 }
@@ -114,10 +122,10 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
                 sleepBeforeRetry(attempt);
             }
         }
-        throw lastException != null ? lastException : new IOException("DashScope Embedding API 调用失败");
+        throw new IOException("DashScope Embedding API 调用失败");
     }
 
-    private List<Embedding> callEmbeddingApi(List<String> texts, int startIndex) throws IOException {
+    private List<Embedding> callEmbeddingApi(List<String> texts) throws IOException {
         var requestPayload = objectMapper.createObjectNode();
         requestPayload.put("model", embeddingModel);
         requestPayload.set("input", objectMapper.valueToTree(texts));
@@ -136,7 +144,7 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
                 String errorBody = response.body() != null ? response.body().string() : "";
                 log.error("DashScope Embedding API 调用失败: code={}, body={}", response.code(), errorBody);
                 if (isRetryableStatus(response.code())) {
-                    throw new IOException("DashScope Embedding API 可重试失败: code=" + response.code());
+                    throw new RetryableDashScopeException("DashScope Embedding API 可重试失败: code=" + response.code());
                 }
                 throw new ServiceException("DashScope Embedding API 调用失败");
             }
@@ -144,12 +152,16 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
             String responseBody = response.body() != null ? response.body().string() : "";
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode data = root.path("data");
+            validateDataNode(data, texts.size());
 
             List<Embedding> embeddings = new ArrayList<>();
             int index = 0;
             for (JsonNode item : data) {
-                float[] vector = toVector(item.path("embedding"));
-                embeddings.add(new Embedding(vector, startIndex + index++));
+                JsonNode embeddingNode = item.path("embedding");
+                validateEmbeddingNode(embeddingNode);
+                float[] vector = toVector(embeddingNode);
+                validateVectorDimensions(vector);
+                embeddings.add(new Embedding(vector, index++));
             }
             return embeddings;
         }
@@ -157,21 +169,19 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
 
     @Override
     public float[] embed(Document document) {
-        if (document == null || StringUtils.isBlank(document.getText())) {
+        if (StringUtils.isBlank(document.getText())) {
             return new float[0];
         }
         return embed(document.getText());
     }
 
-    @Override
-    public int dimensions() {
-        return embeddingDimensions != null ? embeddingDimensions : 1024;
-    }
-
-    private float[] toVector(JsonNode embeddingNode) {
+    private float[] toVector(JsonNode embeddingNode) throws IOException {
         float[] vector = new float[embeddingNode.size()];
         int index = 0;
         for (JsonNode value : embeddingNode) {
+            if (!value.isNumber()) {
+                throw new IOException("DashScope 响应格式异常: embedding 包含非数字元素");
+            }
             vector[index++] = (float) value.asDouble();
         }
         return vector;
@@ -187,18 +197,47 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
         if (StringUtils.isBlank(embeddingModel)) {
             throw new ServiceException("未配置 DashScope Embedding 模型");
         }
+        if (embeddingDimensions == null || embeddingDimensions <= 0) {
+            throw new ServiceException("未正确配置 DashScope Embedding 向量维度");
+        }
     }
 
     private String resolveEmbeddingEndpoint() {
         return StringUtils.removeEnd(embeddingBaseUrl, "/") + "/embeddings";
     }
 
-    private int resolveEmbeddingBatchSize() {
-        return Math.max(1, Math.min(embeddingBatchSize, 25));
-    }
-
     private boolean isRetryableStatus(int statusCode) {
         return statusCode == 429 || statusCode >= 500;
+    }
+
+    private boolean isRetryableException(IOException e) {
+        return e instanceof RetryableDashScopeException
+            || e instanceof SocketTimeoutException
+            || e instanceof ConnectException
+            || e instanceof UnknownHostException
+            || e instanceof SocketException
+            || e instanceof InterruptedIOException;
+    }
+
+    private void validateDataNode(JsonNode data, int expectedSize) throws IOException {
+        if (data.isMissingNode() || !data.isArray() || data.isEmpty()) {
+            throw new IOException("DashScope 响应格式异常: data 字段缺失或为空");
+        }
+        if (data.size() != expectedSize) {
+            throw new IOException("DashScope 响应数量不匹配: expected=" + expectedSize + ", actual=" + data.size());
+        }
+    }
+
+    private void validateEmbeddingNode(JsonNode embeddingNode) throws IOException {
+        if (embeddingNode.isMissingNode() || !embeddingNode.isArray() || embeddingNode.isEmpty()) {
+            throw new IOException("DashScope 响应格式异常: embedding 字段缺失或为空");
+        }
+    }
+
+    private void validateVectorDimensions(float[] vector) throws IOException {
+        if (vector.length != embeddingDimensions) {
+            throw new IOException("向量维度不匹配: expected=" + embeddingDimensions + ", actual=" + vector.length);
+        }
     }
 
     private void sleepBeforeRetry(int attempt) throws IOException {
@@ -213,19 +252,13 @@ public class DashScopeEmbeddingModel implements EmbeddingModel {
     }
 
     private OkHttpClient getHttpClient() {
-        if (httpClient == null) {
-            synchronized (this) {
-                if (httpClient == null) {
-                    httpClient = new OkHttpClient.Builder()
-                            .connectTimeout(Math.max(connectTimeoutSeconds, 1), TimeUnit.SECONDS)
-                            .readTimeout(Math.max(readTimeoutSeconds, 1), TimeUnit.SECONDS)
-                            .writeTimeout(Math.max(writeTimeoutSeconds, 1), TimeUnit.SECONDS)
-                            .callTimeout(Math.max(callTimeoutSeconds, 1), TimeUnit.SECONDS)
-                            .retryOnConnectionFailure(true)
-                            .build();
-                }
-            }
-        }
         return httpClient;
+    }
+
+    private static class RetryableDashScopeException extends IOException {
+
+        private RetryableDashScopeException(String message) {
+            super(message);
+        }
     }
 }
