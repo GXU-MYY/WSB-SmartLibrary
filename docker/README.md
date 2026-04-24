@@ -20,12 +20,11 @@ docker compose -f docker/docker-compose.yml up -d --build pgvector
 - `mysql -> E:/Docker/mysql`
 - `redis -> E:/Docker/redis`
 - `nacos -> E:/Docker/nacos`
-- `pgvector -> E:/pgvector`
+- `pgvector -> E:/Docker/pgvector`
 
 可通过环境变量覆盖：
 
 - `WSB_MYSQL_DATA_DIR`
-- `WSB_MYSQL_INIT_DIR`
 - `WSB_REDIS_DATA_DIR`
 - `WSB_NACOS_INIT_DIR`
 - `WSB_NACOS_LOG_DIR`
@@ -35,6 +34,8 @@ docker compose -f docker/docker-compose.yml up -d --build pgvector
 
 补充说明：
 
+- `mysql` 会挂载仓库内的 `docker/mysql/init/nacos-mysql-schema.sql`，用于初始化 `nacos_config` 表结构
+- `nacos` 现在使用 MySQL 持久化配置数据，服务注册相关的 raft / naming 数据仍在 `E:/Docker/nacos/data`
 - `pgvector` 初始化脚本默认使用 `sql/rag/rag_pgvector_init.sql`
 - Compose 项目名固定为 `wsb`
 - `rabbitmq` 现在使用 named volume `wsb_rabbitmq_data`

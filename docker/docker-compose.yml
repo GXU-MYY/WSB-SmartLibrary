@@ -12,7 +12,12 @@ services:
       - "3306:3306"
     volumes:
       - "${WSB_MYSQL_DATA_DIR:-E:/Docker/mysql/data}:/var/lib/mysql"
-      - "${WSB_MYSQL_INIT_DIR:-E:/Docker/mysql/init}:/docker-entrypoint-initdb.d"
+      - "./mysql/init/nacos-mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-mysql-schema.sql:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p123456 --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
     networks:
       - wsb-net
 
@@ -36,6 +41,14 @@ services:
     environment:
       MODE: standalone
       PREFER_HOST_MODE: ip
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysql
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_DB_NAME: nacos_config
+      MYSQL_SERVICE_USER: root
+      MYSQL_SERVICE_PASSWORD: "123456"
+      MYSQL_DATABASE_NUM: 1
+      MYSQL_SERVICE_DB_PARAM: "characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
       TIME_ZONE: Asia/Shanghai
       JVM_XMS: 1g
       JVM_XMX: 1g
@@ -48,7 +61,8 @@ services:
       - "${WSB_NACOS_LOG_DIR:-E:/Docker/nacos/logs}:/home/nacos/logs"
       - "${WSB_NACOS_DATA_DIR:-E:/Docker/nacos/data}:/home/nacos/data"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - wsb-net
 
@@ -80,7 +94,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - "${WSB_PGVECTOR_DATA_DIR:-E:/pgvector/data}:/var/lib/postgresql/data"
+      - "${WSB_PGVECTOR_DATA_DIR:-E:/Docker/pgvector/data}:/var/lib/postgresql/data"
       - "${WSB_PGVECTOR_INIT_SQL:-../sql/rag/rag_pgvector_init.sql}:/docker-entrypoint-initdb.d/01-rag-pgvector-init.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d wsb_rag"]

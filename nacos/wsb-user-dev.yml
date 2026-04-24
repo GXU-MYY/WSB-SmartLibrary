@@ -1,0 +1,11 @@
+server:
+  port: 9100
+
+wsb:
+  sms:
+    access-key-id: ${ALIYUN_ACCESS_KEY_ID:your-access-key-id}
+    access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET:your-access-key-secret}
+    sign-name: 云渚科技验证平台
+    template-code: 100003
+    scheme-name: 测试方案
+
