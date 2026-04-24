@@ -12,10 +12,8 @@ import com.wsb.community.convert.GroupConverter;
 import com.wsb.community.domain.Group;
 import com.wsb.community.domain.GroupBorrowRequest;
 import com.wsb.community.domain.GroupUser;
-import com.wsb.community.domain.Share;
 import com.wsb.community.mapper.GroupBorrowRequestMapper;
 import com.wsb.community.mapper.GroupMapper;
-import com.wsb.community.mapper.ShareMapper;
 import com.wsb.community.service.GroupService;
 import com.wsb.community.service.GroupUserService;
 import com.wsb.user.api.RemoteUserService;
@@ -37,7 +35,6 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, Group> implements
     private final GroupUserService groupUserService;
     private final RemoteUserService remoteUserService;
     private final GroupConverter groupConverter;
-    private final ShareMapper shareMapper;
     private final GroupBorrowRequestMapper groupBorrowRequestMapper;
 
     @Override
@@ -120,11 +117,6 @@ public class GroupServiceImpl extends ServiceImpl<GroupMapper, Group> implements
                 .eq(GroupUser::getGroupId, groupId)
                 .eq(GroupUser::getIsDeleted, false)
                 .set(GroupUser::getIsDeleted, true));
-
-        shareMapper.update(null, Wrappers.<Share>lambdaUpdate()
-                .eq(Share::getGroupId, groupId)
-                .eq(Share::getIsDeleted, false)
-                .set(Share::getIsDeleted, true));
 
         groupBorrowRequestMapper.update(null, Wrappers.<GroupBorrowRequest>lambdaUpdate()
                 .eq(GroupBorrowRequest::getGroupId, groupId)

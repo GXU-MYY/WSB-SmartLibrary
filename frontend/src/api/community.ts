@@ -14,9 +14,6 @@ import type {
   GroupUserOperatePayload,
   PageResult,
   PersonalStats,
-  ShareInfo,
-  SharePayload,
-  ShareRecord,
   UserRank,
 } from '@/types/models'
 
@@ -94,17 +91,6 @@ export const removeGroupMember = async (groupId: number, userId: number) => {
   invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${groupId}`)
   return result
 }
-
-export const shareToGroup = (payload: SharePayload) =>
-  request.post<ShareInfo>('/v1/group/share', payload)
-
-export const getShareRecords = (groupId: number, shareType?: string) =>
-  request.get<ShareRecord[]>('/v1/group/share', {
-    params: {
-      group_id: groupId,
-      share_type: shareType,
-    },
-  })
 
 export const getGroupPublicShelves = (groupId: number) =>
   cachedRequest(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${groupId}`, GROUP_PUBLIC_CACHE_TTL, () =>

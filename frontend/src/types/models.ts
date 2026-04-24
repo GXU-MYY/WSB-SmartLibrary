@@ -300,31 +300,6 @@ export interface GroupUserOperatePayload {
   type: 'add' | 'minus'
 }
 
-export interface SharePayload {
-  groupId: number
-  bookId?: number
-  bookshelfId?: number
-}
-
-export interface ShareInfo {
-  id: number
-  groupId: number
-  targetId: number
-  sharePerson: number
-  shareTime?: string
-}
-
-export interface ShareRecord {
-  id: number
-  groupId: number
-  targetId: number
-  shareType: string
-  sharePerson: number
-  shareTime?: string
-  nickName?: string
-  name?: string
-}
-
 export interface GroupPublicShelf {
   id: number
   shelfName: string
