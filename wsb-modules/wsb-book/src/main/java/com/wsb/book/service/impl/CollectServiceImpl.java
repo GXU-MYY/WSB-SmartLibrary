@@ -13,6 +13,7 @@ import com.wsb.book.domain.Collect;
 import com.wsb.book.mapper.CollectMapper;
 import com.wsb.book.service.BookService;
 import com.wsb.book.service.CollectService;
+import com.wsb.book.service.support.CommunityStatisticsCacheEvictService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
 
     private final CollectConverter collectConverter;
     private final BookService bookService;
+    private final CommunityStatisticsCacheEvictService communityStatisticsCacheEvictService;
 
     @Override
     public CollectVO addCollect(CollectAddDTO dto) {
@@ -59,6 +61,7 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
         if (collect != null) {
             collect.setIsDeleted(false);
             this.updateById(collect);
+            evictStatisticsCaches(currentUserId, book.getUserId());
             return collectConverter.toCollectVO(collect);
         }
 
@@ -68,6 +71,7 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
         collect.setCollectType(1);
         collect.setIsDeleted(false);
         this.save(collect);
+        evictStatisticsCaches(currentUserId, book.getUserId());
         return collectConverter.toCollectVO(collect);
     }
 
@@ -86,6 +90,8 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
 
         collect.setIsDeleted(true);
         this.updateById(collect);
+        Book book = bookService.getById(collect.getTargetId());
+        evictStatisticsCaches(currentUserId, book != null ? book.getUserId() : null);
     }
 
     @Override
@@ -117,6 +123,14 @@ public class CollectServiceImpl extends ServiceImpl<CollectMapper, Collect> impl
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private void evictStatisticsCaches(Long collectorUserId, Long ownerUserId) {
+        communityStatisticsCacheEvictService.evictPersonalStats(collectorUserId);
+        if (!Objects.equals(collectorUserId, ownerUserId)) {
+            communityStatisticsCacheEvictService.evictPersonalStats(ownerUserId);
+        }
+        communityStatisticsCacheEvictService.evictBookRank();
     }
 
 }

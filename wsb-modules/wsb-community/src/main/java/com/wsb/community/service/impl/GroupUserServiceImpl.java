@@ -13,6 +13,7 @@ import com.wsb.community.domain.GroupUser;
 import com.wsb.community.mapper.GroupMapper;
 import com.wsb.community.mapper.GroupUserMapper;
 import com.wsb.community.service.GroupUserService;
+import com.wsb.community.service.support.CommunityCacheService;
 import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
     private final GroupUserConverter groupUserConverter;
     private final GroupMapper groupMapper;
     private final RemoteUserService remoteUserService;
+    private final CommunityCacheService communityCacheService;
 
     @Override
     public List<GroupUserVO> getGroupUsers(Long groupId) {
@@ -120,6 +122,8 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
                 })
                 .toList();
         this.saveBatch(groupUsers);
+        communityCacheService.evictGroupPublicShelves(dto.getGroupId());
+        communityCacheService.evictGroupPublicBooks(dto.getGroupId());
     }
 
     @Override
@@ -156,6 +160,8 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         if (!removed) {
             throw new ServiceException("该成员已不在群组中");
         }
+        communityCacheService.evictGroupPublicShelves(groupId);
+        communityCacheService.evictGroupPublicBooks(groupId);
     }
 
     @Override
@@ -176,6 +182,8 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
         if (!removed) {
             throw new ServiceException("您当前不在该群组中");
         }
+        communityCacheService.evictGroupPublicShelves(groupId);
+        communityCacheService.evictGroupPublicBooks(groupId);
     }
 
     @Override

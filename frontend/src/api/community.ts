@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { cachedRequest, invalidateRequestCache } from '@/utils/requestCache'
 import type {
   BookRank,
   BorrowStats,
@@ -19,24 +20,53 @@ import type {
   UserRank,
 } from '@/types/models'
 
+const PERSONAL_STATS_CACHE_KEY = 'community:personal-stats'
+const BOOK_RANK_CACHE_PREFIX = 'community:book-rank:'
+const USER_RANK_CACHE_PREFIX = 'community:user-rank:'
+const GROUP_PUBLIC_SHELVES_CACHE_PREFIX = 'community:group-public-shelves:'
+const GROUP_PUBLIC_BOOKS_CACHE_PREFIX = 'community:group-public-books:'
+
+const PERSONAL_STATS_CACHE_TTL = 15_000
+const RANK_CACHE_TTL = 20_000
+const GROUP_PUBLIC_CACHE_TTL = 20_000
+
+const buildRankKey = (prefix: string, params: { page?: number; page_size?: number }) =>
+  `${prefix}${params.page || 1}:${params.page_size || 10}`
+
 export const getGroups = (params: { page?: number; page_size?: number; name?: string }) =>
   request.get<PageResult<Group>>('/v1/group', { params })
 
-export const createGroup = (payload: GroupPayload) =>
-  request.post<Group>('/v1/group', payload)
+export const createGroup = async (payload: GroupPayload) => {
+  const result = await request.post<Group>('/v1/group', payload)
+  invalidateRequestCache(GROUP_PUBLIC_SHELVES_CACHE_PREFIX)
+  invalidateRequestCache(GROUP_PUBLIC_BOOKS_CACHE_PREFIX)
+  return result
+}
 
-export const updateGroup = (payload: GroupPayload) =>
-  request.put<Group>('/v1/group', payload)
+export const updateGroup = async (payload: GroupPayload) => {
+  const result = await request.put<Group>('/v1/group', payload)
+  invalidateRequestCache(GROUP_PUBLIC_SHELVES_CACHE_PREFIX)
+  invalidateRequestCache(GROUP_PUBLIC_BOOKS_CACHE_PREFIX)
+  return result
+}
 
-export const deleteGroup = (groupId: number) =>
-  request.delete<void>('/v1/group', { params: { group_id: groupId } })
+export const deleteGroup = async (groupId: number) => {
+  const result = await request.delete<void>('/v1/group', { params: { group_id: groupId } })
+  invalidateRequestCache(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${groupId}`)
+  invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${groupId}`)
+  return result
+}
 
-export const exitGroup = (groupId: number) =>
-  request.delete<void>('/v1/group/user/exit', {
+export const exitGroup = async (groupId: number) => {
+  const result = await request.delete<void>('/v1/group/user/exit', {
     params: {
       group_id: groupId,
     },
   })
+  invalidateRequestCache(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${groupId}`)
+  invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${groupId}`)
+  return result
+}
 
 export const getGroupUsers = (groupId: number, type: 'in' | 'out') =>
   request.get<GroupUser[]>('/v1/group/user', {
@@ -46,16 +76,24 @@ export const getGroupUsers = (groupId: number, type: 'in' | 'out') =>
     },
   })
 
-export const operateGroupUsers = (payload: GroupUserOperatePayload) =>
-  request.post<void>('/v1/group/user', payload)
+export const operateGroupUsers = async (payload: GroupUserOperatePayload) => {
+  const result = await request.post<void>('/v1/group/user', payload)
+  invalidateRequestCache(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${payload.groupId}`)
+  invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${payload.groupId}`)
+  return result
+}
 
-export const removeGroupMember = (groupId: number, userId: number) =>
-  request.delete<void>('/v1/group/user', {
+export const removeGroupMember = async (groupId: number, userId: number) => {
+  const result = await request.delete<void>('/v1/group/user', {
     params: {
       group_id: groupId,
       user_id: userId,
     },
   })
+  invalidateRequestCache(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${groupId}`)
+  invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${groupId}`)
+  return result
+}
 
 export const shareToGroup = (payload: SharePayload) =>
   request.post<ShareInfo>('/v1/group/share', payload)
@@ -69,21 +107,28 @@ export const getShareRecords = (groupId: number, shareType?: string) =>
   })
 
 export const getGroupPublicShelves = (groupId: number) =>
-  request.get<GroupPublicShelf[]>('/v1/group/borrow/public/shelves', {
-    params: {
-      group_id: groupId,
-    },
-  })
+  cachedRequest(`${GROUP_PUBLIC_SHELVES_CACHE_PREFIX}${groupId}`, GROUP_PUBLIC_CACHE_TTL, () =>
+    request.get<GroupPublicShelf[]>('/v1/group/borrow/public/shelves', {
+      params: {
+        group_id: groupId,
+      },
+    }),
+  )
 
 export const getGroupPublicBooks = (groupId: number) =>
-  request.get<GroupPublicBook[]>('/v1/group/borrow/public/books', {
-    params: {
-      group_id: groupId,
-    },
-  })
+  cachedRequest(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${groupId}`, GROUP_PUBLIC_CACHE_TTL, () =>
+    request.get<GroupPublicBook[]>('/v1/group/borrow/public/books', {
+      params: {
+        group_id: groupId,
+      },
+    }),
+  )
 
-export const createGroupBorrowRequest = (payload: GroupBorrowRequestPayload) =>
-  request.post<GroupBorrowRequest>('/v1/group/borrow/request', payload)
+export const createGroupBorrowRequest = async (payload: GroupBorrowRequestPayload) => {
+  const result = await request.post<GroupBorrowRequest>('/v1/group/borrow/request', payload)
+  invalidateRequestCache(`${GROUP_PUBLIC_BOOKS_CACHE_PREFIX}${payload.groupId}`)
+  return result
+}
 
 export const getGroupBorrowRequests = (groupId: number) =>
   request.get<GroupBorrowRequest[]>('/v1/group/borrow/request', {
@@ -92,11 +137,16 @@ export const getGroupBorrowRequests = (groupId: number) =>
     },
   })
 
-export const approveGroupBorrowRequest = (requestId: number) =>
-  request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/approve`)
+export const approveGroupBorrowRequest = async (requestId: number) => {
+  const result = await request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/approve`)
+  invalidateRequestCache(GROUP_PUBLIC_BOOKS_CACHE_PREFIX)
+  return result
+}
 
-export const rejectGroupBorrowRequest = (requestId: number) =>
-  request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/reject`)
+export const rejectGroupBorrowRequest = async (requestId: number) => {
+  const result = await request.post<GroupBorrowRequest>(`/v1/group/borrow/request/${requestId}/reject`)
+  return result
+}
 
 export const getBorrowSummary = (scope: 'all' | 'mine') =>
   request.get<BorrowStats>('/v1/community/statistics/summary', {
@@ -115,20 +165,26 @@ export const getCollectSummary = (scope: 'all' | 'mine') =>
   })
 
 export const getPersonalStats = () =>
-  request.get<PersonalStats>('/v1/community/statistics/personal')
+  cachedRequest(PERSONAL_STATS_CACHE_KEY, PERSONAL_STATS_CACHE_TTL, () =>
+    request.get<PersonalStats>('/v1/community/statistics/personal'),
+  )
 
 export const getBookRank = (params: { page?: number; page_size?: number }) =>
-  request.get<PageResult<BookRank>>('/v1/community/statistics/rank', {
-    params: {
-      ...params,
-      type: 'book',
-    },
-  })
+  cachedRequest(buildRankKey(BOOK_RANK_CACHE_PREFIX, params), RANK_CACHE_TTL, () =>
+    request.get<PageResult<BookRank>>('/v1/community/statistics/rank', {
+      params: {
+        ...params,
+        type: 'book',
+      },
+    }),
+  )
 
 export const getUserRank = (params: { page?: number; page_size?: number }) =>
-  request.get<PageResult<UserRank>>('/v1/community/statistics/rank', {
-    params: {
-      ...params,
-      type: 'user',
-    },
-  })
+  cachedRequest(buildRankKey(USER_RANK_CACHE_PREFIX, params), RANK_CACHE_TTL, () =>
+    request.get<PageResult<UserRank>>('/v1/community/statistics/rank', {
+      params: {
+        ...params,
+        type: 'user',
+      },
+    }),
+  )

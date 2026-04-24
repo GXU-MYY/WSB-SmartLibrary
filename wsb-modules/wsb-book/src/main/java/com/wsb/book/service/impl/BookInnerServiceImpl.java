@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.wsb.book.api.constant.BookBorrowStatus;
 import com.wsb.book.api.dto.BookBorrowCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
-import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.PublicShelfBookDTO;
 import com.wsb.book.api.dto.ShelfRemoteDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
@@ -23,19 +23,17 @@ import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.service.BookBorrowService;
 import com.wsb.book.service.BookInnerService;
 import com.wsb.book.service.BookService;
+import com.wsb.book.service.support.BookRemoteCacheService;
 import com.wsb.book.util.BookClcUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * 图书内部服务实现
- */
 @Service
 @RequiredArgsConstructor
 public class BookInnerServiceImpl implements BookInnerService {
@@ -48,14 +46,23 @@ public class BookInnerServiceImpl implements BookInnerService {
     private final BookShelfMapper bookShelfMapper;
     private final ShelfMapper shelfMapper;
     private final BookInnerConverter bookInnerConverter;
+    private final BookRemoteCacheService bookRemoteCacheService;
 
     @Override
     public BookRemoteDTO getBookById(Long bookId) {
+        BookRemoteDTO cachedBook = bookRemoteCacheService.getBook(bookId);
+        if (cachedBook != null) {
+            return cachedBook;
+        }
+
         Book book = bookService.getById(bookId);
         if (book == null) {
             return null;
         }
-        return bookInnerConverter.toBookRemoteDTO(book);
+
+        BookRemoteDTO remoteDTO = bookInnerConverter.toBookRemoteDTO(book);
+        bookRemoteCacheService.cacheBook(remoteDTO);
+        return remoteDTO;
     }
 
     @Override
@@ -63,9 +70,32 @@ public class BookInnerServiceImpl implements BookInnerService {
         if (bookIds == null || bookIds.isEmpty()) {
             return List.of();
         }
-        return bookInnerConverter.toBookRemoteDTOList(bookService.listByIds(bookIds).stream()
-                .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
-                .toList());
+
+        List<Long> uniqueIds = bookIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (uniqueIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, BookRemoteDTO> cachedBooks = bookRemoteCacheService.getBooks(uniqueIds);
+        List<Long> missIds = uniqueIds.stream()
+                .filter(bookId -> !cachedBooks.containsKey(bookId))
+                .toList();
+
+        if (!missIds.isEmpty()) {
+            List<BookRemoteDTO> loadedBooks = bookInnerConverter.toBookRemoteDTOList(bookService.listByIds(missIds).stream()
+                    .filter(book -> !Boolean.TRUE.equals(book.getIsDeleted()))
+                    .toList());
+            bookRemoteCacheService.cacheBooks(loadedBooks);
+            loadedBooks.forEach(book -> cachedBooks.put(book.getId(), book));
+        }
+
+        return uniqueIds.stream()
+                .map(cachedBooks::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     @Override
@@ -138,7 +168,7 @@ public class BookInnerServiceImpl implements BookInnerService {
                     dto.setBorrowable(!Boolean.TRUE.equals(book.getIsBorrowed()) && !Boolean.TRUE.equals(book.getIsLentOut()));
                     return dto;
                 })
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(PublicShelfBookDTO::getShelfId).thenComparing(PublicShelfBookDTO::getBookId))
                 .toList();
     }
@@ -220,7 +250,6 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public List<BookBorrowCountDTO> countBorrowByBooks(List<Long> bookIds) {
-        syncOverdueBorrows();
         List<BookBorrow> borrows;
         if (bookIds != null && !bookIds.isEmpty()) {
             borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
@@ -248,7 +277,6 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public UserBorrowStatsDTO getUserBorrowStats(Long userId) {
-        syncOverdueBorrows();
         List<BookBorrow> borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
                 .eq(BookBorrow::getUserId, userId)
                 .eq(BookBorrow::getIsDeleted, false));
@@ -271,7 +299,6 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public Integer countUnreturnedByOwner(Long ownerId) {
-        syncOverdueBorrows();
         Long count = bookBorrowMapper.selectCount(Wrappers.<BookBorrow>lambdaQuery()
                 .eq(BookBorrow::getUserId, ownerId)
                 .eq(BookBorrow::getBorrowType, 2)
@@ -282,7 +309,6 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public List<BorrowCategoryStatsDTO> getBorrowStatsByCategory(List<Long> bookIds) {
-        syncOverdueBorrows();
         List<BookBorrow> borrows;
         if (bookIds != null && !bookIds.isEmpty()) {
             borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
@@ -334,7 +360,6 @@ public class BookInnerServiceImpl implements BookInnerService {
 
     @Override
     public BorrowCategoryStatsDTO getBorrowSummary(List<Long> bookIds) {
-        syncOverdueBorrows();
         List<BookBorrow> borrows;
         if (bookIds != null && !bookIds.isEmpty()) {
             borrows = bookBorrowMapper.selectList(Wrappers.<BookBorrow>lambdaQuery()
@@ -388,6 +413,7 @@ public class BookInnerServiceImpl implements BookInnerService {
         book.setId(bookId);
         book.setSummary(summary);
         bookService.updateById(book);
+        bookRemoteCacheService.evictBook(bookId);
     }
 
     @Override
@@ -396,31 +422,12 @@ public class BookInnerServiceImpl implements BookInnerService {
         book.setId(bookId);
         book.setEmbeddingStatus(status);
         bookService.updateById(book);
+        bookRemoteCacheService.evictBook(bookId);
     }
 
     @Override
     public CommunityBorrowFlowVO createCommunityBorrowFlow(CommunityBorrowCreateDTO dto) {
         return bookBorrowService.createCommunityBorrowFlow(dto);
-    }
-
-    private void syncOverdueBorrows() {
-        LocalDate today = LocalDate.now();
-
-        bookBorrowMapper.update(null, Wrappers.<BookBorrow>lambdaUpdate()
-                .eq(BookBorrow::getIsDeleted, false)
-                .eq(BookBorrow::getStatus, BookBorrowStatus.BORROWING)
-                .isNotNull(BookBorrow::getDueTime)
-                .lt(BookBorrow::getDueTime, today)
-                .set(BookBorrow::getStatus, BookBorrowStatus.OVERDUE));
-
-        bookBorrowMapper.update(null, Wrappers.<BookBorrow>lambdaUpdate()
-                .eq(BookBorrow::getIsDeleted, false)
-                .eq(BookBorrow::getStatus, BookBorrowStatus.OVERDUE)
-                .and(wrapper -> wrapper
-                        .isNull(BookBorrow::getDueTime)
-                        .or()
-                        .ge(BookBorrow::getDueTime, today))
-                .set(BookBorrow::getStatus, BookBorrowStatus.BORROWING));
     }
 
     private ShelfRemoteDTO toShelfRemoteDTO(Shelf shelf) {
@@ -432,5 +439,4 @@ public class BookInnerServiceImpl implements BookInnerService {
         dto.setRemark(shelf.getRemark());
         return dto;
     }
-
 }

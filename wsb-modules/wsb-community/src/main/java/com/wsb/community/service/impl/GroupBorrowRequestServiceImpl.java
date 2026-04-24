@@ -22,6 +22,7 @@ import com.wsb.community.mapper.GroupBorrowRequestMapper;
 import com.wsb.community.mapper.GroupMapper;
 import com.wsb.community.service.GroupBorrowRequestService;
 import com.wsb.community.service.GroupUserService;
+import com.wsb.community.service.support.CommunityCacheService;
 import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
@@ -32,12 +33,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * 群组借阅申请服务实现
- */
 @Service
 @RequiredArgsConstructor
 public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowRequestMapper, GroupBorrowRequest>
@@ -47,11 +44,17 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
     private final GroupUserService groupUserService;
     private final RemoteBookService remoteBookService;
     private final RemoteUserService remoteUserService;
+    private final CommunityCacheService communityCacheService;
 
     @Override
     public List<GroupPublicShelfVO> getPublicShelves(Long groupId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
         checkUserInGroup(groupId, currentUserId);
+
+        List<GroupPublicShelfVO> cachedShelves = communityCacheService.getGroupPublicShelves(groupId);
+        if (cachedShelves != null) {
+            return cachedShelves;
+        }
 
         List<Long> memberIds = getGroupMemberIds(groupId);
         if (memberIds.isEmpty()) {
@@ -61,11 +64,12 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
         Result<List<ShelfRemoteDTO>> result = remoteBookService.getPublicShelvesByOwners(memberIds);
         List<ShelfRemoteDTO> shelves = result != null && result.getData() != null ? result.getData() : List.of();
         if (shelves.isEmpty()) {
+            communityCacheService.cacheGroupPublicShelves(groupId, List.of());
             return List.of();
         }
 
         Map<Long, String> nicknameMap = getNicknameMap(memberIds);
-        return shelves.stream()
+        List<GroupPublicShelfVO> response = shelves.stream()
                 .map(shelf -> {
                     GroupPublicShelfVO vo = new GroupPublicShelfVO();
                     vo.setId(shelf.getId());
@@ -76,12 +80,19 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
                     return vo;
                 })
                 .toList();
+        communityCacheService.cacheGroupPublicShelves(groupId, response);
+        return response;
     }
 
     @Override
     public List<GroupPublicBookVO> getPublicBooks(Long groupId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
         checkUserInGroup(groupId, currentUserId);
+
+        List<GroupPublicBookVO> cachedBooks = communityCacheService.getGroupPublicBooks(groupId);
+        if (cachedBooks != null) {
+            return cachedBooks;
+        }
 
         List<Long> memberIds = getGroupMemberIds(groupId);
         if (memberIds.isEmpty()) {
@@ -91,11 +102,12 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
         Result<List<PublicShelfBookDTO>> result = remoteBookService.getPublicShelfBooksByOwners(memberIds);
         List<PublicShelfBookDTO> books = result != null && result.getData() != null ? result.getData() : List.of();
         if (books.isEmpty()) {
+            communityCacheService.cacheGroupPublicBooks(groupId, List.of());
             return List.of();
         }
 
         Map<Long, String> nicknameMap = getNicknameMap(memberIds);
-        return books.stream()
+        List<GroupPublicBookVO> response = books.stream()
                 .map(book -> {
                     GroupPublicBookVO vo = new GroupPublicBookVO();
                     vo.setShelfId(book.getShelfId());
@@ -112,6 +124,8 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
                     return vo;
                 })
                 .toList();
+        communityCacheService.cacheGroupPublicBooks(groupId, response);
+        return response;
     }
 
     @Override
@@ -139,7 +153,7 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
                 .eq(GroupBorrowRequest::getStatus, GroupBorrowRequestStatus.PENDING)
                 .eq(GroupBorrowRequest::getIsDeleted, false));
         if (duplicatedPending) {
-            throw new ServiceException("你已经发起过这本书的借阅申请");
+            throw new ServiceException("你已经发起过这本书的借阅请求");
         }
 
         Map<Long, String> nicknameMap = getNicknameMap(List.of(publicBook.getOwnerUserId(), currentUserId));
@@ -186,7 +200,7 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
         checkUserInGroup(request.getGroupId(), currentUserId);
 
         if (!currentUserId.equals(request.getOwnerUserId())) {
-            throw new ServiceException("只有出借人可以同意借阅申请");
+            throw new ServiceException("只有出借人才可以同意借阅请求");
         }
 
         CommunityBorrowCreateDTO dto = new CommunityBorrowCreateDTO();
@@ -203,7 +217,7 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
         Result<CommunityBorrowFlowVO> result = remoteBookService.createCommunityBorrowFlow(dto);
         CommunityBorrowFlowVO flow = result != null ? result.getData() : null;
         if (flow == null || flow.getBorrowFlowId() == null) {
-            throw new ServiceException("社群借阅流创建失败");
+            throw new ServiceException("群组借阅流创建失败");
         }
 
         request.setBorrowFlowId(flow.getBorrowFlowId());
@@ -217,6 +231,7 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
                 .ne(GroupBorrowRequest::getId, request.getId())
                 .set(GroupBorrowRequest::getStatus, GroupBorrowRequestStatus.REJECTED));
 
+        communityCacheService.evictGroupPublicBooks(request.getGroupId());
         return toVO(request);
     }
 
@@ -228,7 +243,7 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
         checkUserInGroup(request.getGroupId(), currentUserId);
 
         if (!currentUserId.equals(request.getOwnerUserId())) {
-            throw new ServiceException("只有出借人可以拒绝借阅申请");
+            throw new ServiceException("只有出借人才可以拒绝借阅请求");
         }
 
         request.setStatus(GroupBorrowRequestStatus.REJECTED);
@@ -300,10 +315,10 @@ public class GroupBorrowRequestServiceImpl extends ServiceImpl<GroupBorrowReques
     private GroupBorrowRequest requirePendingRequest(Long requestId) {
         GroupBorrowRequest request = this.getById(requestId);
         if (request == null || Boolean.TRUE.equals(request.getIsDeleted())) {
-            throw new ServiceException("借阅申请不存在");
+            throw new ServiceException("借阅请求不存在");
         }
         if (request.getStatus() == null || request.getStatus() != GroupBorrowRequestStatus.PENDING) {
-            throw new ServiceException("当前申请状态不支持该操作");
+            throw new ServiceException("当前请求状态不支持该操作");
         }
         return request;
     }
