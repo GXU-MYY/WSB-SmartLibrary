@@ -1,0 +1,98 @@
+name: wsb
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: nacos_config
+    ports:
+      - "3306:3306"
+    volumes:
+      - "${WSB_MYSQL_DATA_DIR:-E:/Docker/mysql/data}:/var/lib/mysql"
+      - "${WSB_MYSQL_INIT_DIR:-E:/Docker/mysql/init}:/docker-entrypoint-initdb.d"
+    networks:
+      - wsb-net
+
+  redis:
+    image: redis:7.0
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - "${WSB_REDIS_DATA_DIR:-E:/Docker/redis/data}:/data"
+    command:
+      - redis-server
+    networks:
+      - wsb-net
+
+  nacos:
+    image: nacos/nacos-server:v2.2.3
+    container_name: nacos
+    restart: always
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: ip
+      TIME_ZONE: Asia/Shanghai
+      JVM_XMS: 1g
+      JVM_XMX: 1g
+      JVM_XMN: 512m
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - "${WSB_NACOS_INIT_DIR:-E:/Docker/nacos/init.d}:/home/nacos/init.d"
+      - "${WSB_NACOS_LOG_DIR:-E:/Docker/nacos/logs}:/home/nacos/logs"
+      - "${WSB_NACOS_DATA_DIR:-E:/Docker/nacos/data}:/home/nacos/data"
+    depends_on:
+      - mysql
+    networks:
+      - wsb-net
+
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - wsb-net
+
+  pgvector:
+    build:
+      context: .
+      dockerfile: Dockerfile.pgvector
+    image: wsb-pgvector-zhparser:pg16
+    container_name: pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wsb_rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - "${WSB_PGVECTOR_DATA_DIR:-E:/pgvector/data}:/var/lib/postgresql/data"
+      - "${WSB_PGVECTOR_INIT_SQL:-../sql/rag/rag_pgvector_init.sql}:/docker-entrypoint-initdb.d/01-rag-pgvector-init.sql:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wsb_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - wsb-net
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  wsb-net:
+    driver: bridge
