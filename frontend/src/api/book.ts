@@ -3,6 +3,8 @@ import type {
   Book,
   BookFormPayload,
   BookUpdatePayload,
+  CollectBook,
+  CollectPayload,
   BorrowPayload,
   BorrowRecord,
   BorrowSummary,
@@ -32,6 +34,15 @@ export const getBookList = (params: {
 
 export const getBookDetail = (bookId: number) =>
   request.get<Book>('/v1/book/detail', { params: { book_id: bookId } })
+
+export const getMyBookCollects = () =>
+  request.get<CollectBook[]>('/v1/collect', { params: { type: 'book' } })
+
+export const addCollect = (payload: CollectPayload) =>
+  request.post<void>('/v1/collect', payload)
+
+export const deleteCollect = (collectId: number) =>
+  request.delete<void>('/v1/collect', { data: { collectId } })
 
 export const getBookShelves = (bookId: number) =>
   request.get<Shelf | null>('/v1/book/shelf', { params: { book_id: bookId } })

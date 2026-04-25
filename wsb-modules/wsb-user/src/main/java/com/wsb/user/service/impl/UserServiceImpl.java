@@ -7,29 +7,28 @@ import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
+import com.wsb.common.core.utils.SmsUtils;
 import com.wsb.user.api.dto.UserLoginDTO;
 import com.wsb.user.api.dto.UserNicknameDTO;
+import com.wsb.user.api.dto.UserRegisterDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
+import com.wsb.user.api.dto.UserResetPwdDTO;
+import com.wsb.user.api.dto.UserUpdateDTO;
 import com.wsb.user.api.vo.UserInfoVO;
 import com.wsb.user.convert.UserConverter;
 import com.wsb.user.domain.User;
-import com.wsb.user.api.dto.UserRegisterDTO;
-import com.wsb.user.api.dto.UserResetPwdDTO;
-import com.wsb.user.api.dto.UserUpdateDTO;
 import com.wsb.user.mapper.UserMapper;
 import com.wsb.user.service.UserService;
+import com.wsb.user.service.support.UserNicknameCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.transaction.annotation.Transactional;
 
-import com.wsb.common.core.utils.SmsUtils;
-import org.springframework.data.redis.core.StringRedisTemplate;
-
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -40,19 +39,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     private final UserConverter userConverter;
     private final SmsUtils smsUtils;
-    private final StringRedisTemplate redisTemplate;
-
-    private static final String CAPTCHA_KEY_PREFIX = "captcha:phone:";
+    private final UserNicknameCacheService userNicknameCacheService;
 
     @Override
     public UserInfoVO register(UserRegisterDTO dto) {
-        // 验证验证码
         boolean ok = smsUtils.checkVerifyCode(dto.getPhone(), dto.getCaptcha());
         if (!ok) {
             throw new ServiceException("验证码错误或已过期");
         }
 
-        // 检查手机号是否已存在
         long count = this.count(new LambdaQueryWrapper<User>().eq(User::getPhone, dto.getPhone()));
         if (count > 0) {
             throw new ServiceException("该手机号已注册");
@@ -60,13 +55,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         User user = new User();
         user.setPhone(dto.getPhone());
-        user.setPassword(BCrypt.hashpw(dto.getPassword(), BCrypt.gensalt())); // BCrypt加密
-        user.setUserName(dto.getPhone()); // 默认用户名为手机号
+        user.setPassword(BCrypt.hashpw(dto.getPassword(), BCrypt.gensalt()));
+        user.setUserName(dto.getPhone());
         user.setNickName("用户" + RandomUtil.randomString(6));
-        user.setIsActive(true); // 已激活
-        user.setIsConfirmed(true); // 已确认
+        user.setIsActive(true);
+        user.setIsConfirmed(true);
         user.setIsDeleted(false);
         this.save(user);
+
+        userNicknameCacheService.evictAllUsers();
         return userConverter.toUserInfoVO(user);
     }
 
@@ -92,6 +89,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setSignature(signature);
         user.setAvatar(avatar);
         this.updateById(user);
+
+        userNicknameCacheService.evictUser(userId);
+        userNicknameCacheService.evictAllUsers();
         return userConverter.toUserInfoVO(user);
     }
 
@@ -105,16 +105,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName) {
-        // 列表查询
+    public Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName, String phone) {
         Page<User> userPage = new Page<>(page, pageSize);
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        if (userName != null && !userName.isEmpty()) {
+        if (StringUtils.hasText(userName)) {
             wrapper.like(User::getUserName, userName);
         }
+        if (StringUtils.hasText(phone)) {
+            wrapper.eq(User::getPhone, phone.trim());
+        }
+        wrapper.eq(User::getIsDeleted, false);
 
         this.page(userPage, wrapper);
-
         return (Page<UserInfoVO>) userPage.convert(userConverter::toUserInfoVO);
     }
 
@@ -129,7 +131,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public void resetPassword(UserResetPwdDTO dto) {
-        // 验证验证码
         boolean ok = smsUtils.checkVerifyCode(dto.getPhone(), dto.getCaptcha());
         if (!ok) {
             throw new ServiceException("验证码错误或已过期");
@@ -140,16 +141,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new ServiceException("该手机号未注册");
         }
 
-        user.setPassword(BCrypt.hashpw(dto.getPasswd(), BCrypt.gensalt())); // BCrypt加密
+        user.setPassword(BCrypt.hashpw(dto.getPasswd(), BCrypt.gensalt()));
         this.updateById(user);
     }
 
     @Override
     public void sendCaptcha(String phone) {
-        // 发送短信
         String verifyCode = smsUtils.sendSmsVerifyCode(phone);
-
-        log.info("发送短信验证码{}到{}", verifyCode, phone);
+        log.info("发送短信验证码 {} 到 {}", verifyCode, phone);
     }
 
     @Override
@@ -165,45 +164,65 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
         }
-        List<User> users = this.listByIds(userIds);
-        return users.stream().map(user -> {
-            UserNicknameDTO dto = new UserNicknameDTO();
-            dto.setId(user.getId());
-            dto.setNickName(user.getNickName());
-            return dto;
-        }).collect(Collectors.toList());
+
+        List<Long> uniqueIds = userIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (uniqueIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, UserNicknameDTO> nicknameMap = new LinkedHashMap<>(userNicknameCacheService.getUsers(uniqueIds));
+        List<Long> missIds = uniqueIds.stream()
+                .filter(userId -> !nicknameMap.containsKey(userId))
+                .toList();
+
+        if (!missIds.isEmpty()) {
+            List<UserNicknameDTO> loadedUsers = this.listByIds(missIds).stream()
+                    .filter(Objects::nonNull)
+                    .map(this::toUserNicknameDTO)
+                    .collect(Collectors.toList());
+            userNicknameCacheService.cacheUsers(loadedUsers);
+            loadedUsers.forEach(user -> nicknameMap.put(user.getId(), user));
+        }
+
+        return uniqueIds.stream()
+                .map(nicknameMap::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     @Override
     public List<UserNicknameDTO> getAllUserNicknames() {
-        List<User> users = this.list();
-        return users.stream().map(user -> {
-            UserNicknameDTO dto = new UserNicknameDTO();
-            dto.setId(user.getId());
-            dto.setNickName(user.getNickName());
-            return dto;
-        }).collect(Collectors.toList());
+        List<UserNicknameDTO> cachedUsers = userNicknameCacheService.getAllUsers();
+        if (cachedUsers != null) {
+            return cachedUsers;
+        }
+
+        List<UserNicknameDTO> users = this.list().stream()
+                .map(this::toUserNicknameDTO)
+                .collect(Collectors.toList());
+        userNicknameCacheService.cacheUsers(users);
+        userNicknameCacheService.cacheAllUsers(users);
+        return users;
     }
 
     @Override
     public SaTokenInfo login(UserLoginDTO dto) {
-        // 1. 查询用户
         User user = this.getOne(new LambdaQueryWrapper<User>().eq(User::getUserName, dto.getUsername()));
         if (user == null) {
             throw new ServiceException("用户不存在");
         }
 
-        // 2. 校验密码
         if (!BCrypt.checkpw(dto.getPassword(), user.getPassword())) {
             throw new ServiceException("密码错误");
         }
 
-        // 3. 校验状态
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             throw new ServiceException("账号未激活");
         }
 
-        // 4. 登录
         StpUtil.login(user.getId());
         return StpUtil.getTokenInfo();
     }
@@ -224,6 +243,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (emailCount > 0) {
             throw new ServiceException("该邮箱已被其他用户使用");
         }
+    }
+
+    private UserNicknameDTO toUserNicknameDTO(User user) {
+        UserNicknameDTO dto = new UserNicknameDTO();
+        dto.setId(user.getId());
+        dto.setNickName(user.getNickName());
+        dto.setAvatar(user.getAvatar());
+        return dto;
     }
 
     private String trimToNull(String value) {

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import {
@@ -21,7 +21,28 @@ import type { BorrowRecord, BorrowSummary, IsbnBook, MyBookList, PageResult, She
 import { borrowStatusLabel, borrowTypeLabel, formatDate, resolvePictureUrl } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const formatLocalDateInput = (date: Date) => {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const today = () => formatLocalDateInput(new Date())
+
+const defaultDueDate = () => {
+  const now = new Date()
+  const result = new Date(now)
+  const currentDay = result.getDate()
+  result.setMonth(result.getMonth() + 1)
+
+  // Keep "one month later" stable for month-end dates like Jan 31.
+  if (result.getDate() < currentDay) {
+    result.setDate(0)
+  }
+
+  return formatLocalDateInput(result)
+}
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -39,6 +60,10 @@ const editingRecord = ref<BorrowRecord | null>(null)
 const borrowTypeFilter = ref(0)
 const statusFilter = ref(-1)
 const lendableBooks = computed(() => (bookList.value?.books || []).filter(book => !book.isBorrowed))
+const isCommunityBorrowRecord = (record: BorrowRecord) => Boolean(record.group_id)
+const canEditBorrowRecord = (record: BorrowRecord) => !isCommunityBorrowRecord(record)
+const canReturnBorrowRecord = (record: BorrowRecord) =>
+  record.status !== 1 && (!isCommunityBorrowRecord(record) || record.borrow_type === 1)
 
 const pagination = reactive({
   current: 1,
@@ -52,7 +77,7 @@ const borrowForm = reactive({
   shelf_id: 0,
   borrow_name: '',
   borrowing_time: today(),
-  due_time: '',
+  due_time: defaultDueDate(),
   borrow_type: 2,
   isbn: '',
   title: '',
@@ -83,14 +108,13 @@ const summaryCards = computed(() => {
   }
 
   return [
-    { label: '记录总数', value: summary.total, hint: '当前账号下所有借阅记录。', tone: 'brand' as const },
-    { label: '借入', value: summary.borrowedIn, hint: '你从外部借来的书。', tone: 'plain' as const },
-    { label: '借出', value: summary.borrowedOut, hint: '你借给别人的书。', tone: 'plain' as const },
+    { label: '记录总数', value: summary.total, hint: '当前账号下的全部借阅记录。' },
+    { label: '借入记录数', value: summary.borrowedIn, hint: '你从外部借来的图书。' },
+    { label: '借出记录数', value: summary.borrowedOut, hint: '你借给别人的图书。' },
     {
       label: '进行中 / 已逾期',
       value: `${summary.active} / ${summary.overdue}`,
       hint: '仍在流转中的记录，以及其中已经逾期的数量。',
-      tone: 'accent' as const,
     },
   ]
 })
@@ -144,7 +168,7 @@ const resetBorrowForm = () => {
   borrowForm.shelf_id = 0
   borrowForm.borrow_name = ''
   borrowForm.borrowing_time = today()
-  borrowForm.due_time = ''
+  borrowForm.due_time = defaultDueDate()
   borrowForm.borrow_type = 2
   borrowForm.isbn = ''
   borrowForm.title = ''
@@ -167,6 +191,11 @@ const resetUpdateForm = () => {
 }
 
 const openEditDialog = (record: BorrowRecord) => {
+  if (!canEditBorrowRecord(record)) {
+    notifyError('群组借阅记录不支持编辑')
+    return
+  }
+
   editingRecord.value = record
   updateForm.borrow_id = record.id
   updateForm.borrow_name = record.borrow_name
@@ -274,6 +303,11 @@ const handleUpdateRecord = async () => {
 }
 
 const handleReturn = async (record: BorrowRecord) => {
+  if (!canReturnBorrowRecord(record)) {
+    notifyError('群组借阅记录仅借入方可归还')
+    return
+  }
+
   returningId.value = record.id
 
   try {
@@ -281,7 +315,7 @@ const handleReturn = async (record: BorrowRecord) => {
       borrow_id: record.id,
       return_time: today(),
     })
-    notifySuccess('还书已登记', `《${record.title}》的归还时间已写入。`)
+    notifySuccess('已登记归还', `《${record.title}》的归还时间已写入。`)
     await Promise.all([loadBorrowRecords(pagination.current), loadBorrowSummary()])
   } finally {
     returningId.value = 0
@@ -323,20 +357,19 @@ onMounted(loadPage)
       description="左侧快速登记，右侧集中浏览和处理记录，让每一本书的借阅状态都能一眼看清。"
     />
 
-    <section class="page-grid metrics-grid">
+    <section class="summary-metric-grid">
       <MetricCard
         v-for="item in summaryCards"
         :key="item.label"
         :label="item.label"
         :value="item.value"
         :hint="item.hint"
-        :tone="item.tone"
       />
     </section>
 
     <section class="page-grid borrow-layout">
       <SectionPanel title="登记借阅" class="borrow-layout__form">
-        <div class="field-grid">
+        <div class="field-grid borrow-core-field-grid">
           <div class="field">
             <label>借阅对象</label>
             <input v-model="borrowForm.borrow_name" type="text" placeholder="填写对方姓名" />
@@ -372,12 +405,14 @@ onMounted(loadPage)
           <div class="field isbn-field">
             <label>ISBN</label>
             <div class="inline-field">
-              <input v-model="borrowForm.isbn" type="text" placeholder="可选，填写后可自动补全书籍信息" />
+              <input v-model="borrowForm.isbn" type="text" placeholder="可选" />
               <button class="button button--secondary" type="button" :disabled="isbnLoading" @click="handleFillIsbn">
                 {{ isbnLoading ? '补全中...' : 'ISBN 补全' }}
               </button>
             </div>
           </div>
+
+          <p class="field-hint">借入的图书不会上架到个人书架。</p>
 
           <div class="field">
             <label>书名</label>
@@ -407,7 +442,7 @@ onMounted(loadPage)
             </div>
             <div class="field">
               <label>放入书架</label>
-              <select v-model.number="borrowForm.shelf_id">
+              <select v-model.number="borrowForm.shelf_id" disabled>
                 <option :value="0">暂不上架</option>
                 <option v-for="shelf in shelfList" :key="shelf.id" :value="shelf.id">
                   {{ shelf.shelfName }}
@@ -430,12 +465,12 @@ onMounted(loadPage)
       <SectionPanel title="借阅记录" class="borrow-layout__records">
         <template #actions>
           <div class="record-toolbar">
-            <select v-model.number="borrowTypeFilter" @change="handleFilterChange">
+            <select class="record-toolbar__select" v-model.number="borrowTypeFilter" @change="handleFilterChange">
               <option :value="0">全部类型</option>
               <option :value="1">只看借入</option>
               <option :value="2">只看借出</option>
             </select>
-            <select v-model.number="statusFilter" @change="handleFilterChange">
+            <select class="record-toolbar__select" v-model.number="statusFilter" @change="handleFilterChange">
               <option :value="-1">全部状态</option>
               <option :value="0">借阅中</option>
               <option :value="1">已归还</option>
@@ -464,7 +499,7 @@ onMounted(loadPage)
             <tbody>
               <tr v-for="record in records" :key="record.id">
                 <td class="borrow-table__book">
-                  <div class="book-cell">
+                  <div class="book-cell book-cell--stacked">
                     <img
                       v-if="resolvePictureUrl(record.pic)"
                       :src="resolvePictureUrl(record.pic)"
@@ -491,17 +526,22 @@ onMounted(loadPage)
                 <td>{{ record.return_time ? formatDate(record.return_time) : '未归还' }}</td>
                 <td>
                   <div class="inline-actions borrow-table__actions">
-                    <button class="button button--ghost" type="button" @click="openEditDialog(record)">
+                    <button
+                      v-if="canEditBorrowRecord(record)"
+                      class="button button--ghost"
+                      type="button"
+                      @click="openEditDialog(record)"
+                    >
                       编辑
                     </button>
                     <button
-                      v-if="record.status !== 1"
+                      v-if="canReturnBorrowRecord(record)"
                       class="button button--secondary"
                       type="button"
                       :disabled="returningId === record.id"
                       @click="handleReturn(record)"
                     >
-                      {{ returningId === record.id ? '还书中...' : '还书' }}
+                      {{ returningId === record.id ? '处理中...' : '已还' }}
                     </button>
                   </div>
                 </td>
@@ -513,7 +553,7 @@ onMounted(loadPage)
           <div class="borrow-card-list">
             <article v-for="record in records" :key="`mobile-${record.id}`" class="borrow-record-card surface-card">
               <div class="borrow-record-card__head">
-                <div class="book-cell">
+                <div class="book-cell book-cell--stacked">
                   <img
                     v-if="resolvePictureUrl(record.pic)"
                     :src="resolvePictureUrl(record.pic)"
@@ -556,17 +596,22 @@ onMounted(loadPage)
               </div>
 
               <div class="inline-actions borrow-record-card__actions">
-                <button class="button button--ghost" type="button" @click="openEditDialog(record)">
+                <button
+                  v-if="canEditBorrowRecord(record)"
+                  class="button button--ghost"
+                  type="button"
+                  @click="openEditDialog(record)"
+                >
                   编辑
                 </button>
                 <button
-                  v-if="record.status !== 1"
+                  v-if="canReturnBorrowRecord(record)"
                   class="button button--secondary"
                   type="button"
                   :disabled="returningId === record.id"
                   @click="handleReturn(record)"
                 >
-                  {{ returningId === record.id ? '还书中...' : '还书' }}
+                  {{ returningId === record.id ? '处理中...' : '已还' }}
                 </button>
               </div>
             </article>
@@ -654,22 +699,31 @@ onMounted(loadPage)
 </template>
 
 <style scoped>
-.metrics-grid > * {
-  grid-column: span 3;
+.borrow-layout {
+  grid-template-columns: minmax(360px, 380px) minmax(0, 1fr);
+  align-items: start;
 }
 
 .borrow-layout__form {
-  grid-column: span 4;
+  grid-column: 1;
+  align-self: start;
+  min-width: 0;
 }
 
 .borrow-layout__records {
-  grid-column: span 8;
+  grid-column: 2;
+  min-width: 0;
 }
 
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.borrow-layout__form .field,
+.borrow-layout__form .field-grid > .field {
+  min-width: 0;
 }
 
 .offline-borrow-form {
@@ -702,6 +756,66 @@ onMounted(loadPage)
   justify-content: flex-end;
 }
 
+.record-toolbar__select {
+  min-width: 118px;
+  padding: 10px 40px 10px 14px;
+  border: 1px solid rgba(31, 95, 107, 0.18);
+  border-radius: 999px;
+  background-color: rgba(250, 252, 252, 0.96);
+  background-image:
+    linear-gradient(135deg, rgba(31, 95, 107, 0.08), rgba(31, 95, 107, 0.02)),
+    linear-gradient(45deg, transparent 50%, rgba(31, 95, 107, 0.72) 50%),
+    linear-gradient(135deg, rgba(31, 95, 107, 0.72) 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:
+    100% 100%,
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  box-shadow: 0 12px 24px rgba(31, 95, 107, 0.06);
+  color: var(--sl-brand-strong);
+  font-weight: 600;
+  line-height: 1.2;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.record-toolbar__select:hover {
+  border-color: rgba(31, 95, 107, 0.28);
+  background-color: rgba(255, 255, 255, 1);
+}
+
+.record-toolbar__select:focus {
+  border-color: rgba(31, 95, 107, 0.38);
+  box-shadow: 0 0 0 4px rgba(31, 95, 107, 0.1), 0 12px 24px rgba(31, 95, 107, 0.08);
+  outline: none;
+}
+
+[data-theme='dark'] .record-toolbar__select {
+  border-color: rgba(159, 217, 228, 0.18);
+  background-color: rgba(18, 28, 37, 0.96);
+  background-image:
+    linear-gradient(135deg, rgba(108, 185, 199, 0.18), rgba(18, 28, 37, 0.08)),
+    linear-gradient(45deg, transparent 50%, rgba(159, 217, 228, 0.88) 50%),
+    linear-gradient(135deg, rgba(159, 217, 228, 0.88) 50%, transparent 50%);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+  color: var(--sl-brand-strong);
+}
+
+[data-theme='dark'] .record-toolbar__select:hover {
+  border-color: rgba(159, 217, 228, 0.28);
+  background-color: rgba(22, 34, 45, 0.98);
+}
+
+[data-theme='dark'] .record-toolbar__select:focus {
+  border-color: rgba(159, 217, 228, 0.34);
+  box-shadow: 0 0 0 4px rgba(108, 185, 199, 0.14), 0 14px 28px rgba(0, 0, 0, 0.24);
+}
+
 .borrow-records-shell {
   display: grid;
   gap: 16px;
@@ -732,7 +846,7 @@ onMounted(loadPage)
 }
 
 .borrow-table__book {
-  width: 32%;
+  width: 26%;
 }
 
 .borrow-table__person {
@@ -756,16 +870,29 @@ onMounted(loadPage)
 
 .borrow-table th:last-child,
 .borrow-table td:last-child {
-  width: 150px;
+  width: 104px;
 }
 
 .borrow-table__actions {
   justify-content: flex-start;
-  flex-wrap: nowrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .borrow-card-list {
   display: none;
+}
+
+.book-cell--stacked {
+  grid-template-columns: 1fr;
+  justify-items: start;
+  align-items: start;
+  gap: 8px;
+}
+
+.book-cell--stacked .book-cell__cover {
+  width: 52px;
 }
 
 .borrow-record-card {
@@ -803,7 +930,16 @@ onMounted(loadPage)
 }
 
 .borrow-record-card__actions {
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.borrow-table__actions .button,
+.borrow-record-card__actions .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .book-cell {
@@ -838,6 +974,7 @@ onMounted(loadPage)
 
 .book-cell__meta strong {
   line-height: 1.45;
+  word-break: break-word;
 }
 
 .book-cell__meta span {
@@ -952,25 +1089,24 @@ onMounted(loadPage)
 }
 
 @media (max-width: 1200px) {
+  .borrow-layout {
+    grid-template-columns: 1fr;
+  }
+
   .borrow-layout__form,
   .borrow-layout__records {
-    grid-column: span 12;
-  }
-}
-
-@media (max-width: 960px) {
-  .metrics-grid > * {
-    grid-column: span 6;
+    grid-column: 1;
   }
 }
 
 @media (max-width: 720px) {
-  .metrics-grid > * {
-    grid-column: span 12;
-  }
-
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .borrow-core-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .inline-field {
@@ -995,12 +1131,7 @@ onMounted(loadPage)
   }
 
   .borrow-record-card__actions {
-    justify-content: stretch;
-  }
-
-  .borrow-record-card__actions :deep(.button),
-  .borrow-record-card__actions .button {
-    flex: 1;
+    justify-content: flex-start;
   }
 
   .pagination-bar,
@@ -1015,3 +1146,4 @@ onMounted(loadPage)
   }
 }
 </style>
+

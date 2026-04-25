@@ -1,0 +1,80 @@
+server:
+  port: 9700
+
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+deepseek:
+  chat-url: ${DEEPSEEK_CHAT_URL:https://api.deepseek.com/v1}
+  api-key: ${DEEPSEEK_API_KEY:}
+  connect-timeout-seconds: ${DEEPSEEK_CONNECT_TIMEOUT_SECONDS:10}
+  read-timeout-seconds: ${DEEPSEEK_READ_TIMEOUT_SECONDS:60}
+  write-timeout-seconds: ${DEEPSEEK_WRITE_TIMEOUT_SECONDS:30}
+  call-timeout-seconds: ${DEEPSEEK_CALL_TIMEOUT_SECONDS:90}
+
+dashscope:
+  embedding-base-url: ${DASHSCOPE_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+  api-key: ${DASHSCOPE_API_KEY:}
+  embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+  embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1024}
+  connect-timeout-seconds: ${DASHSCOPE_CONNECT_TIMEOUT_SECONDS:10}
+  read-timeout-seconds: ${DASHSCOPE_READ_TIMEOUT_SECONDS:60}
+  write-timeout-seconds: ${DASHSCOPE_WRITE_TIMEOUT_SECONDS:30}
+  call-timeout-seconds: ${DASHSCOPE_CALL_TIMEOUT_SECONDS:90}
+  embedding-max-attempts: ${DASHSCOPE_EMBEDDING_MAX_ATTEMPTS:3}
+  embedding-retry-backoff-millis: ${DASHSCOPE_EMBEDDING_RETRY_BACKOFF_MILLIS:500}
+
+tavily:
+  api-key: ${TAVILY_API_KEY:}
+  review-cache-days: ${TAVILY_REVIEW_CACHE_DAYS:7}
+
+rag:
+  queue:
+    summary: wsb.summary.queue
+    embedding: wsb.embedding.queue
+  exchange: wsb.rag.exchange
+  routing:
+    summary: wsb.summary
+    embedding: wsb.embedding
+  mq:
+    retry:
+      max-attempts: ${RAG_MQ_RETRY_MAX_ATTEMPTS:3}
+      initial-interval-ms: ${RAG_MQ_RETRY_INITIAL_INTERVAL_MS:1000}
+      multiplier: ${RAG_MQ_RETRY_MULTIPLIER:2.0}
+      max-interval-ms: ${RAG_MQ_RETRY_MAX_INTERVAL_MS:10000}
+    prefetch-count: ${RAG_MQ_PREFETCH_COUNT:4}
+  inflight-ttl-minutes: ${RAG_INFLIGHT_TTL_MINUTES:30}
+  job:
+    lock-ttl-minutes: ${RAG_JOB_LOCK_TTL_MINUTES:55}
+    batch-size: ${RAG_JOB_BATCH_SIZE:100}
+    dispatch-interval-ms: ${RAG_JOB_DISPATCH_INTERVAL_MS:100}
+  pgvector:
+    datasource:
+      url: ${RAG_PGVECTOR_JDBC_URL:jdbc:postgresql://127.0.0.1:5432/wsb_rag}
+      username: ${RAG_PGVECTOR_USERNAME:postgres}
+      password: ${RAG_PGVECTOR_PASSWORD:postgres}
+      driver-class-name: org.postgresql.Driver
+    schema-name: ${RAG_PGVECTOR_SCHEMA:public}
+    table-name: ${RAG_PGVECTOR_TABLE:book_embeddings}
+    dimensions: ${RAG_PGVECTOR_DIMENSIONS:1024}
+    initialize-schema: ${RAG_PGVECTOR_INIT_SCHEMA:true}
+    distance-type: ${RAG_PGVECTOR_DISTANCE_TYPE:COSINE_DISTANCE}
+    index-type: ${RAG_PGVECTOR_INDEX_TYPE:HNSW}
+    max-document-batch-size: ${RAG_PGVECTOR_BATCH_SIZE:1000}
+    similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.62}
+    hybrid-min-candidates: ${RAG_HYBRID_MIN_CANDIDATES:60}
+    hybrid-candidate-multiplier: ${RAG_HYBRID_CANDIDATE_MULTIPLIER:4}
+    rrf-rank-constant: ${RAG_RRF_RANK_CONSTANT:60}
+    vector-score-weight: ${RAG_VECTOR_SCORE_WEIGHT:1.0}
+    keyword-score-weight: ${RAG_KEYWORD_SCORE_WEIGHT:0.8}
+  recommend:
+    min-candidates: ${RAG_RECOMMEND_MIN_CANDIDATES:30}
+    candidate-multiplier: ${RAG_RECOMMEND_CANDIDATE_MULTIPLIER:3}
+    llm-rerank-enabled: ${RAG_LLM_RERANK_ENABLED:true}
+    llm-rerank-max-candidates: ${RAG_LLM_RERANK_MAX_CANDIDATES:20}
+    rerank-model: ${RAG_RERANK_MODEL:deepseek-chat}
+    rerank-timeout-seconds: ${RAG_RERANK_TIMEOUT_SECONDS:20}

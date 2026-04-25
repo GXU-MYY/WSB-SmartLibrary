@@ -16,4 +16,6 @@ public class ShelfRemoteDTO implements Serializable {
     private Long id;
     private String shelfName;
     private Long userId;
+    private Boolean isPublic;
+    private String remark;
 }

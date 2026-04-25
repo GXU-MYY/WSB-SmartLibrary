@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${WSB_MYSQL_JDBC_URL:jdbc:mysql://127.0.0.1:3306/WSB?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8}
+    username: ${WSB_MYSQL_USERNAME:root}
+    password: ${WSB_MYSQL_PASSWORD:123456}
+  data:
+    redis:
+      host: ${WSB_REDIS_HOST:127.0.0.1}
+      port: ${WSB_REDIS_PORT:6379}
+      password: ${WSB_REDIS_PASSWORD:}
+      database: ${WSB_REDIS_DATABASE:0}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+

@@ -20,7 +20,7 @@ export const getSimilarBooks = (bookId: number, limit = 6) =>
     params: { limit },
   })
 
-export const recommendBooks = (query: string, limit = 6) =>
+export const recommendBooks = (query: string, limit = 6, mineOnly = false) =>
   request.post<BookRemote[]>('/v1/rag/recommend', null, {
-    params: { query, limit },
+    params: { query, limit, mineOnly },
   })

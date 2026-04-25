@@ -17,8 +17,8 @@ const navItems = [
   { path: '/home', title: '首页' },
   { path: '/books', title: '图书' },
   { path: '/borrow', title: '借阅' },
+  { path: '/collections', title: '收藏' },
   { path: '/community', title: '社区' },
-  { path: '/social', title: '社交' },
   { path: '/statistics', title: '统计' },
   { path: '/profile', title: '个人' },
 ]
@@ -76,11 +76,7 @@ watch(
         <ThemeToggle compact icon-only class="main-layout__mobile-theme" />
 
         <RouterLink to="/profile" class="main-layout__account surface-card focus-ring">
-          <UserAvatar
-            :src="userStore.userInfo?.avatar"
-            :name="userStore.displayName"
-            :size="32"
-          />
+          <UserAvatar :src="userStore.userInfo?.avatar" :name="userStore.displayName" :size="32" />
           <div class="main-layout__account-copy">
             <strong>{{ userStore.displayName }}</strong>
           </div>
@@ -103,11 +99,7 @@ watch(
 
     <section v-if="mobileMenuOpen" class="main-layout__mobile-sheet surface-card">
       <RouterLink to="/profile" class="main-layout__mobile-account focus-ring">
-        <UserAvatar
-          :src="userStore.userInfo?.avatar"
-          :name="userStore.displayName"
-          :size="42"
-        />
+        <UserAvatar :src="userStore.userInfo?.avatar" :name="userStore.displayName" :size="42" />
         <div class="main-layout__mobile-account-copy">
           <strong>{{ userStore.displayName }}</strong>
         </div>
@@ -191,7 +183,10 @@ watch(
   border: 1px solid transparent;
   color: var(--sl-ink-soft);
   background: transparent;
-  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease,
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
     transform 180ms ease;
 }
 
@@ -244,9 +239,6 @@ watch(
 
 .main-layout__account-copy strong {
   margin: 0;
-}
-
-.main-layout__account-copy strong {
   font-size: 0.94rem;
   white-space: nowrap;
   line-height: 1;
@@ -379,6 +371,7 @@ watch(
     top: 8px;
     width: min(calc(100vw - 16px), var(--sl-max-width));
     padding: 10px 12px;
+    min-width: 0;
   }
 
   .main-layout__mobile-sheet {
@@ -394,6 +387,7 @@ watch(
 
   .main-layout__brand :deep(.logo) {
     gap: 10px;
+    min-width: 0;
   }
 
   .main-layout__brand :deep(.logo__mark) {
@@ -413,6 +407,43 @@ watch(
 
   .main-layout__tools {
     gap: 8px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .main-layout {
+    padding-inline: 8px;
+  }
+
+  .main-layout__topbar {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .main-layout__brand :deep(.logo__copy) {
+    display: none;
+  }
+
+  .main-layout__tools {
+    gap: 6px;
+  }
+
+  .main-layout__mobile-toggle {
+    min-width: 40px;
+    padding-inline: 0;
+    font-size: 0;
+  }
+
+  .main-layout__mobile-toggle::before {
+    content: '☰';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .main-layout__mobile-toggle[aria-expanded='true']::before {
+    content: '×';
+    font-size: 1.2rem;
   }
 }
 </style>

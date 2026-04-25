@@ -1,5 +1,6 @@
 package com.wsb.community.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wsb.common.core.domain.Result;
@@ -30,11 +31,21 @@ public class GroupController {
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer page_size,
             @RequestParam(required = false) String name) {
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+
         Page<Group> pageParam = new Page<>(page, page_size);
         LambdaQueryWrapper<Group> wrapper = new LambdaQueryWrapper<>();
-        if (name != null) {
-            wrapper.like(Group::getGroupName, name);
+        wrapper.eq(Group::getIsDeleted, false);
+        if (name != null && !name.isBlank()) {
+            wrapper.like(Group::getGroupName, name.trim());
         }
+        wrapper.and(query -> query
+                .eq(Group::getOwnerId, currentUserId)
+                .or()
+                .inSql(Group::getId,
+                        "select group_id from t_group_user where user_id = " + currentUserId + " and is_deleted = 0"));
+        wrapper.orderByDesc(Group::getCreateTime);
+
         return Result.success(groupService.page(pageParam, wrapper));
     }
 
@@ -52,7 +63,7 @@ public class GroupController {
         return Result.success(groupVO);
     }
 
-    @Operation(summary = "删除群组")
+    @Operation(summary = "解散群组")
     @DeleteMapping
     public Result<Void> delete(@RequestParam("group_id") Long groupId) {
         groupService.delete(groupId);

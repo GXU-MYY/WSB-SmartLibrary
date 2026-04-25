@@ -145,6 +145,11 @@ public class Book implements Serializable {
     private Boolean isBorrowed;
 
     /**
+     * 鏄惁姝ｅ湪鍊熷嚭涓?
+     */
+    private Boolean isLentOut;
+
+    /**
      * 所有者用户ID
      */
     private Long userId;
@@ -155,7 +160,7 @@ public class Book implements Serializable {
     private Boolean isDeleted;
 
     /**
-     * 向量状态：0-未处理 1-处理中 2-已完成
+     * 向量状态：0-待处理 1-处理中 2-已完成
      */
     private Integer embeddingStatus;
 

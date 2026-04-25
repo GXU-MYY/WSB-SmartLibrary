@@ -6,11 +6,14 @@ import java.util.List;
 
 public interface RagService {
 
-    List<BookRemoteDTO> recommend(String query, int limit);
+    List<BookRemoteDTO> recommend(String query, int limit, Long ownerId);
 
     List<BookRemoteDTO> getSimilarBooks(Long bookId, int limit);
 
     void enqueueSummary(Long bookId);
 
-    void processNewBook(Long bookId);
+    void enqueueEmbedding(Long bookId);
+
+    int requeueDeadLetters(String taskType, int limit);
+
 }

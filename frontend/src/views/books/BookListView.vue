@@ -167,6 +167,8 @@ const attachBookTitle = computed(
     attachBook.value?.title ||
     '当前图书',
 )
+const canManageBookShelf = (book: Book | null | undefined) =>
+  Boolean(book?.isOnShelf) || !Boolean(book?.isBorrowed)
 const isOffShelfAction = computed(() => Boolean(attachBook.value?.isOnShelf))
 const attachDialogTitle = computed(() =>
   isOffShelfAction.value
@@ -483,6 +485,11 @@ const closeDeleteDialog = () => {
 }
 
 const openEditDialog = (book: Book) => {
+  if (book.isBorrowed) {
+    notifyError('借入图书暂不支持编辑')
+    return
+  }
+
   closeAllDialogs()
   editForm.id = book.id
   editForm.title = book.title || ''
@@ -516,6 +523,11 @@ const closeEditDialog = () => {
 }
 
 const openAttachDialog = (book: Book) => {
+  if (!canManageBookShelf(book)) {
+    notifyError('借入图书不能上架')
+    return
+  }
+
   closeAllDialogs()
   attachForm.bookId = book.id
   attachForm.shelfId = 0
@@ -839,6 +851,10 @@ const handleAttachToShelf = async () => {
     )
     return
   }
+  if (attachBook.value?.isBorrowed && !isOffShelfAction.value) {
+    notifyError('借入图书不能上架')
+    return
+  }
 
   attachingShelf.value = true
 
@@ -865,6 +881,18 @@ const handleAttachToShelf = async () => {
 watch(hasOpenDialog, (open) => {
   document.body.style.overflow = open ? 'hidden' : ''
 })
+
+watch(
+  () => createForm.isBorrowed,
+  (isBorrowed) => {
+    if (!isBorrowed) {
+      return
+    }
+
+    createForm.shelfId = null
+    createForm.isOnShelf = false
+  },
+)
 
 onUnmounted(() => {
   document.body.style.overflow = ''
@@ -962,6 +990,8 @@ onMounted(() => {
               secondary: `${formatCurrency(book.price)} · ${book.publisher || '出版社待补充'}`,
               badge: book.isBorrowed
                 ? '借阅中'
+                : book.isLentOut
+                  ? '借出中'
                 : book.isOnShelf
                   ? '已上架'
                   : '',
@@ -977,6 +1007,7 @@ onMounted(() => {
               详情
             </button>
             <button
+              v-if="!book.isBorrowed"
               class="button button--secondary book-card-action"
               type="button"
               @click="openEditDialog(book)"
@@ -984,6 +1015,7 @@ onMounted(() => {
               编辑
             </button>
             <button
+              v-if="canManageBookShelf(book)"
               class="button button--ghost book-card-action"
               type="button"
               @click="openAttachDialog(book)"
@@ -1115,7 +1147,7 @@ onMounted(() => {
 
           <footer class="desk-dialog__foot desk-dialog__foot--align-end">
             <button
-              v-if="detailBook"
+              v-if="detailBook && !detailBook.isBorrowed"
               class="button button--secondary"
               type="button"
               @click="openEditDialog(detailBook)"
@@ -1221,7 +1253,7 @@ onMounted(() => {
                 <div class="field-grid field-grid--single">
                   <div class="field">
                     <label>目标书架</label>
-                    <select v-model="createForm.shelfId">
+                    <select v-model="createForm.shelfId" :disabled="createForm.isBorrowed">
                       <option :value="null">暂不入架</option>
                       <option
                         v-for="shelf in shelves"
@@ -1236,7 +1268,7 @@ onMounted(() => {
 
                 <div class="toggle-row">
                   <label
-                    ><input v-model="createForm.isOnShelf" type="checkbox" />
+                    ><input v-model="createForm.isOnShelf" type="checkbox" :disabled="createForm.isBorrowed" />
                     已上架</label
                   >
                   <label
@@ -1586,6 +1618,7 @@ onMounted(() => {
   grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1.1fr) auto;
   gap: 14px;
   align-items: end;
+  min-width: 0;
 }
 
 .books-filter-toolbar__search {
@@ -1601,6 +1634,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .books-filter-toolbar__actions {
@@ -1608,6 +1642,7 @@ onMounted(() => {
   grid-template-columns: repeat(2, minmax(0, auto));
   gap: 10px;
   align-items: end;
+  min-width: 0;
 }
 
 .books-filter-toolbar__button {
@@ -1624,8 +1659,13 @@ onMounted(() => {
 
 .books-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
+}
+
+.books-grid :deep(.book-card) {
+  min-width: 0;
 }
 
 .books-grid :deep(.book-card__actions) {
@@ -1742,6 +1782,7 @@ onMounted(() => {
   padding: 24px;
   overflow: auto;
   border-radius: 30px;
+  min-width: 0;
 }
 
 .desk-dialog--wide {
@@ -1781,6 +1822,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+  min-width: 0;
 }
 
 .desk-dialog__head h2,
@@ -1800,6 +1842,7 @@ onMounted(() => {
 .desk-dialog__body {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .desk-dialog__hint {
@@ -1818,6 +1861,7 @@ onMounted(() => {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 22px;
   align-items: start;
+  min-width: 0;
 }
 
 .detail-card__cover {
@@ -1924,6 +1968,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .desk-dialog__foot--align-end {
@@ -2206,23 +2251,32 @@ onMounted(() => {
   .books-list-panel :deep(.section-panel__actions) {
     flex-wrap: nowrap;
     gap: 8px;
+    min-width: 0;
   }
 
   .books-list-panel :deep(.section-panel__actions .button) {
+    flex: 1 1 0;
     min-width: 0;
     min-height: 34px;
     padding-inline: 10px;
     font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .books-grid :deep(.book-card__actions) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .books-grid :deep(.book-card__actions .book-card-action) {
+    min-width: 0;
     min-height: 34px;
     padding: 0 6px;
     font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .dialog-scrim {
@@ -2230,6 +2284,7 @@ onMounted(() => {
   }
 
   .desk-dialog {
+    width: min(100%, calc(100vw - 28px));
     padding: 18px;
     border-radius: 24px;
   }
@@ -2242,6 +2297,7 @@ onMounted(() => {
   .desk-dialog__close,
   .desk-dialog__foot .button {
     width: 100%;
+    min-width: 0;
   }
 
   .shelf-list li {
@@ -2260,6 +2316,18 @@ onMounted(() => {
   .books-filter-toolbar__group,
   .books-filter-toolbar__actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .books-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .books-filter-toolbar,
+  .books-filter-toolbar__group,
+  .books-filter-toolbar__actions {
+    grid-template-columns: 1fr;
   }
 }
 </style>

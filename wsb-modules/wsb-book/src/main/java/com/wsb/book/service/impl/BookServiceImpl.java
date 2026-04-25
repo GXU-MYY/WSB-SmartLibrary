@@ -27,10 +27,11 @@ import com.wsb.book.mapper.BookMapper;
 import com.wsb.book.mapper.BookShelfMapper;
 import com.wsb.book.mapper.ShelfMapper;
 import com.wsb.book.response.AliyunIsbnResponse;
-import com.wsb.book.response.AliyunIsbnResponse.BookDetail;
 import com.wsb.book.response.GoogleBooksResponse;
-import com.wsb.book.response.GoogleBooksResponse.VolumeInfo;
 import com.wsb.book.service.BookService;
+import com.wsb.book.service.support.BookRemoteCacheService;
+import com.wsb.book.service.support.CommunityStatisticsCacheEvictService;
+import com.wsb.book.service.support.IsbnBookCacheService;
 import com.wsb.common.core.exception.ServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +57,9 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     private final AliyunIsbnClient aliyunIsbnClient;
     private final GoogleBooksClient googleBooksClient;
     private final RagFeignClient ragFeignClient;
+    private final BookRemoteCacheService bookRemoteCacheService;
+    private final CommunityStatisticsCacheEvictService communityStatisticsCacheEvictService;
+    private final IsbnBookCacheService isbnBookCacheService;
 
     @Value("${aliyun.isbn.app-code}")
     private String aliyunAppCode;
@@ -75,12 +79,13 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             }
 
             LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
+            applyVisibleBookFilter(wrapper, currentUserId);
             wrapper.in(Book::getId, bookIds);
             return bookConverter.toVOPage(this.page(pageParam, wrapper));
         }
 
         LambdaQueryWrapper<Book> wrapper = buildSearchWrapper(keyword, classify);
-        wrapper.eq(Book::getUserId, currentUserId);
+        applyVisibleBookFilter(wrapper, currentUserId);
         return bookConverter.toVOPage(this.page(pageParam, wrapper));
     }
 
@@ -89,6 +94,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Long currentUserId = StpUtil.getLoginIdAsLong();
         List<Book> books = this.list(Wrappers.<Book>lambdaQuery()
                 .eq(Book::getUserId, currentUserId)
+                .and(wrapper -> wrapper
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false))
                 .orderByDesc(Book::getCreateTime));
 
         List<MyBookVO> bookVOs = books.stream()
@@ -107,6 +116,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         Page<Book> pageParam = new Page<>(1, 6, false);
         LambdaQueryWrapper<Book> wrapper = Wrappers.<Book>lambdaQuery()
                 .eq(Book::getUserId, currentUserId)
+                .and(query -> query
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false))
                 .orderByDesc(Book::getUpdateTime)
                 .orderByDesc(Book::getCreateTime);
 
@@ -119,14 +132,21 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
     @Override
     public IsbnBookVO getBookByIsbn(String isbn) {
-        if (StringUtils.isBlank(isbn)) {
+        String normalizedIsbn = StringUtils.trimToNull(isbn);
+        if (normalizedIsbn == null) {
             throw new ServiceException("ISBN 不能为空");
         }
 
-        IsbnBookVO aliyunBook = queryFromAliyun(isbn);
-        IsbnBookVO googleBook = queryFromGoogle(isbn);
+        IsbnBookVO cachedBook = isbnBookCacheService.get(normalizedIsbn);
+        if (cachedBook != null) {
+            return cachedBook;
+        }
+
+        IsbnBookVO aliyunBook = queryFromAliyun(normalizedIsbn);
+        IsbnBookVO googleBook = queryFromGoogle(normalizedIsbn);
         IsbnBookVO mergedBook = mergeIsbnBook(aliyunBook, googleBook);
         if (mergedBook != null) {
+            isbnBookCacheService.cache(normalizedIsbn, mergedBook);
             return mergedBook;
         }
 
@@ -151,7 +171,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 return null;
             }
 
-            BookDetail detail = response.getData().getDetails().get(0);
+            AliyunIsbnResponse.BookDetail detail = response.getData().getDetails().get(0);
             if (StringUtils.isBlank(detail.getTitle())) {
                 return null;
             }
@@ -173,13 +193,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             }
 
             GoogleBooksResponse.BookItem searchItem = response.getItems().get(0);
-            VolumeInfo volumeInfo = searchItem.getVolumeInfo();
-            if (StringUtils.isNotBlank(searchItem.getId())) {
-                GoogleBooksResponse.BookItem detailItem = googleBooksClient.getVolumeById(searchItem.getId(), googleApiKey);
-                if (detailItem != null && detailItem.getVolumeInfo() != null) {
-                    volumeInfo = detailItem.getVolumeInfo();
-                }
-            }
+            GoogleBooksResponse.VolumeInfo volumeInfo = searchItem.getVolumeInfo();
             if (volumeInfo == null || StringUtils.isBlank(volumeInfo.getTitle())) {
                 return null;
             }
@@ -194,6 +208,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BookAddVO add(BookAddDTO dto) {
+        validateBorrowedBookShelfConstraint(Boolean.TRUE.equals(dto.getIsBorrowed()), dto.getShelfId());
         Book book = bookConverter.toBook(dto);
         book.setUserId(StpUtil.getLoginIdAsLong());
         book.setIsDeleted(false);
@@ -232,6 +247,9 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         }
 
         enqueueSummaryAfterCommit(book.getId());
+        evictBookCacheAfterCommit(book.getId());
+        evictPersonalStatsAfterCommit(book.getUserId());
+        evictUserRankAfterCommit();
         return bookConverter.toBookAddVO(book);
     }
 
@@ -248,12 +266,15 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     public BookVO update(BookUpdateDTO dto) {
         Book book = this.getById(dto.getId());
         if (book == null) {
-            throw new ServiceException("书籍不存在");
+            throw new ServiceException("图书不存在");
         }
 
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
-            throw new ServiceException("无权修改他人书籍");
+            throw new ServiceException("无权修改他人图书");
+        }
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入图书暂不支持编辑");
         }
 
         if (dto.getTitle() != null && StringUtils.isBlank(dto.getTitle())) {
@@ -262,6 +283,8 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
 
         bookConverter.updateBookFromDto(dto, book);
         this.updateById(book);
+        evictBookCacheAfterCommit(book.getId());
+        evictPersonalStatsAfterCommit(book.getUserId());
         return bookConverter.toBookVO(book);
     }
 
@@ -270,12 +293,12 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     public void delete(Long id) {
         Book book = this.getById(id);
         if (book == null) {
-            throw new ServiceException("书籍不存在");
+            throw new ServiceException("图书不存在");
         }
 
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
-            throw new ServiceException("无权删除他人书籍");
+            throw new ServiceException("无权删除他人图书");
         }
 
         Long count = bookBorrowMapper.selectCount(
@@ -285,7 +308,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                         .isNull(BookBorrow::getReturnTime));
 
         if (count > 0) {
-            throw new ServiceException("书籍已借出且未归还，无法删除");
+            throw new ServiceException("图书已借出且未归还，无法删除");
         }
 
         bookBorrowMapper.delete(
@@ -297,6 +320,10 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                         .eq(BookShelf::getBookId, id));
 
         this.removeById(id);
+        evictBookCacheAfterCommit(id);
+        evictPersonalStatsAfterCommit(book.getUserId());
+        evictBookRankAfterCommit();
+        evictUserRankAfterCommit();
     }
 
     @Override
@@ -304,11 +331,15 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     public void onShelf(BookShelfDTO dto) {
         Book book = this.getById(dto.getBookId());
         if (book == null) {
-            throw new ServiceException("书籍不存在");
+            throw new ServiceException("图书不存在");
         }
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
             throw new ServiceException("无权操作他人的图书");
+        }
+
+        if (Boolean.TRUE.equals(book.getIsBorrowed())) {
+            throw new ServiceException("借入图书不能上架");
         }
 
         Shelf shelf = shelfMapper.selectById(dto.getShelfId());
@@ -316,14 +347,14 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             throw new ServiceException("书架不存在");
         }
         if (!shelf.getUserId().equals(currentUserId)) {
-            throw new ServiceException("无权将书籍放入他人书架");
+            throw new ServiceException("无权将图书放入他人书架");
         }
 
         BookShelf currentRelation = bookShelfMapper.selectOne(new LambdaQueryWrapper<BookShelf>()
                 .eq(BookShelf::getBookId, dto.getBookId())
                 .last("limit 1"));
         if (currentRelation != null && currentRelation.getShelfId().equals(dto.getShelfId())) {
-            throw new ServiceException("书籍已存在于该书架");
+            throw new ServiceException("图书已存在于该书架");
         }
 
         bookShelfMapper.delete(new LambdaQueryWrapper<BookShelf>()
@@ -335,6 +366,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         bookShelf.setIsDeleted(false);
         bookShelfMapper.insert(bookShelf);
         updateBookShelfState(book.getId(), true);
+        evictBookCacheAfterCommit(book.getId());
     }
 
     @Override
@@ -342,7 +374,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
     public void offShelf(BookShelfDTO dto) {
         Book book = this.getById(dto.getBookId());
         if (book == null) {
-            throw new ServiceException("书籍不存在");
+            throw new ServiceException("图书不存在");
         }
         Long currentUserId = StpUtil.getLoginIdAsLong();
         if (!book.getUserId().equals(currentUserId)) {
@@ -355,11 +387,14 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
             throw new ServiceException("当前图书未上架");
         }
         updateBookShelfState(book.getId(), false);
+        evictBookCacheAfterCommit(book.getId());
     }
 
     private IsbnBookVO mergeIsbnBook(IsbnBookVO primary, IsbnBookVO fallback) {
         if (primary == null) {
-            if (fallback != null) fallback.setSummary(null);
+            if (fallback != null) {
+                fallback.setSummary(null);
+            }
             return fallback;
         }
         if (fallback == null) {
@@ -405,7 +440,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         if (StringUtils.isBlank(author)) {
             return false;
         }
-        String normalized = author.replaceAll("[\\s,，/]+", "");
+        String normalized = author.replaceAll("[\\s,，]+", "");
         return normalized.contains("无名氏")
                 || normalized.contains("佚名")
                 || normalized.contains("匿名")
@@ -416,16 +451,7 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         if (bookId == null) {
             return;
         }
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            enqueueSummary(bookId);
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                enqueueSummary(bookId);
-            }
-        });
+        runAfterCommit(() -> enqueueSummary(bookId));
     }
 
     private void enqueueSummary(Long bookId) {
@@ -435,6 +461,41 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         } catch (Exception e) {
             log.warn("通知 RAG 加入摘要任务失败: bookId={}", bookId, e);
         }
+    }
+
+    private void evictBookCacheAfterCommit(Long bookId) {
+        if (bookId == null) {
+            return;
+        }
+        runAfterCommit(() -> bookRemoteCacheService.evictBook(bookId));
+    }
+
+    private void evictPersonalStatsAfterCommit(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        runAfterCommit(() -> communityStatisticsCacheEvictService.evictPersonalStats(userId));
+    }
+
+    private void evictUserRankAfterCommit() {
+        runAfterCommit(communityStatisticsCacheEvictService::evictUserRank);
+    }
+
+    private void evictBookRankAfterCommit() {
+        runAfterCommit(communityStatisticsCacheEvictService::evictBookRank);
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     private List<Long> listShelfBookIds(Long shelfId, Long currentUserId) {
@@ -469,6 +530,12 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
                 .update();
     }
 
+    private void validateBorrowedBookShelfConstraint(boolean isBorrowed, Long shelfId) {
+        if (isBorrowed && shelfId != null) {
+            throw new ServiceException("借入图书不能上架");
+        }
+    }
+
     private LambdaQueryWrapper<Book> buildSearchWrapper(String keyword, String classify) {
         LambdaQueryWrapper<Book> wrapper = new LambdaQueryWrapper<>();
         applyKeywordSearch(wrapper, keyword);
@@ -477,6 +544,14 @@ public class BookServiceImpl extends ServiceImpl<BookMapper, Book> implements Bo
         }
         wrapper.orderByDesc(Book::getCreateTime);
         return wrapper;
+    }
+
+    private void applyVisibleBookFilter(LambdaQueryWrapper<Book> wrapper, Long currentUserId) {
+        wrapper.eq(Book::getUserId, currentUserId)
+                .and(query -> query
+                        .isNull(Book::getIsLentOut)
+                        .or()
+                        .eq(Book::getIsLentOut, false));
     }
 
     private void applyKeywordSearch(LambdaQueryWrapper<Book> wrapper, String keyword) {

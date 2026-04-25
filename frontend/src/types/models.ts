@@ -94,6 +94,7 @@ export interface Book {
   remark?: string
   isOnShelf?: boolean
   isBorrowed?: boolean
+  isLentOut?: boolean
   userId?: number
   createTime?: string
   updateTime?: string
@@ -220,6 +221,7 @@ export interface BorrowRecord {
   title: string
   book_id: number
   user_id: number
+  group_id?: number | null
   borrow_name: string
   borrowing_time: string
   due_time?: string
@@ -289,7 +291,7 @@ export interface GroupUser {
   id: number
   userId: number
   nickname: string
-  joinTime?: string
+  avatar?: string
 }
 
 export interface GroupUserOperatePayload {
@@ -298,76 +300,65 @@ export interface GroupUserOperatePayload {
   type: 'add' | 'minus'
 }
 
-export interface SharePayload {
-  groupId: number
-  bookId?: number
-  bookshelfId?: number
+export interface GroupPublicShelf {
+  id: number
+  shelfName: string
+  remark?: string
+  ownerUserId: number
+  ownerNickname?: string
 }
 
-export interface ShareInfo {
-  id: number
-  groupId: number
-  targetId: number
-  sharePerson: number
-  shareTime?: string
-}
-
-export interface ShareRecord {
-  id: number
-  groupId: number
-  targetId: number
-  shareType: string
-  sharePerson: number
-  shareTime?: string
-  nickName?: string
-  name?: string
-}
-
-export interface CommentItem {
-  id: number
+export interface GroupPublicBook {
+  shelfId: number
+  shelfName: string
+  ownerUserId: number
+  ownerNickname?: string
   bookId: number
-  userId: number
-  comment: string
-  comTime?: string
-  stars: number
+  title: string
+  author?: string
+  coverUrl?: string
+  isBorrowed?: boolean
+  isLentOut?: boolean
+  borrowable?: boolean
 }
 
-export interface BookCommentList {
-  starMean: number
-  comments: CommentItem[]
-}
-
-export interface CommentPayload {
+export interface GroupBorrowRequestPayload {
+  groupId: number
   bookId: number
-  comment: string
-  starRating: number
+  dueTime?: string
+  requestRemark?: string
+}
+
+export interface GroupBorrowRequest {
+  id: number
+  groupId: number
+  bookId: number
+  bookName: string
+  coverUrl?: string
+  shelfId?: number
+  shelfName?: string
+  ownerUserId: number
+  ownerNickname?: string
+  borrowerUserId: number
+  borrowerNickname?: string
+  dueTime?: string
+  requestRemark?: string
+  borrowFlowId?: string
+  status: number
+  createTime?: string
 }
 
 export interface CollectBook {
   id: number
   bookId: number
   title: string
+  author?: string
   pic?: string
-  collectTime?: string
-}
-
-export interface CollectShelf {
-  id: number
-  shelfId: number
-  shelfName: string
   collectTime?: string
 }
 
 export interface CollectPayload {
   bookId?: number
-  bookshelfId?: number
-}
-
-export interface TopRatedBook {
-  id: number
-  title: string
-  stars: number
-  pic?: string
 }
 
 export interface PersonalStats {
@@ -379,6 +370,8 @@ export interface PersonalStats {
   }
   borrowed: {
     totalBorrowed: number
+    borrowedIn: number
+    borrowedOut: number
     unreturned: number
   }
   collected: {

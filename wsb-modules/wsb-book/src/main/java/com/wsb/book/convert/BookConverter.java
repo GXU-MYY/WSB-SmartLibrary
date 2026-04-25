@@ -33,6 +33,7 @@ public interface BookConverter {
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
     @Mapping(target = "embeddingStatus", ignore = true)
+    @Mapping(target = "isLentOut", ignore = true)
     @Mapping(target = "createTime", ignore = true)
     @Mapping(target = "updateTime", ignore = true)
     Book toBook(BookAddDTO dto);
@@ -56,6 +57,7 @@ public interface BookConverter {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "isOnShelf", ignore = true)
     @Mapping(target = "isBorrowed", ignore = true)
+    @Mapping(target = "isLentOut", ignore = true)
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
     @Mapping(target = "embeddingStatus", ignore = true)

@@ -65,6 +65,10 @@ public class PersonalStatsVO implements Serializable {
          */
         private Integer totalBorrowed;
 
+        private Integer borrowedIn;
+
+        private Integer borrowedOut;
+
         /**
          * 未归还数
          */

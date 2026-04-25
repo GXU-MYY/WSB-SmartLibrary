@@ -1,39 +1,32 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
+  addCollect,
   addReadingRecord,
-  borrowBook,
+  deleteCollect,
   getBookDetail,
-  getReadingRecords,
   getBookShelves,
+  getMyBookCollects,
+  getReadingRecords,
   getShelves,
   offShelf,
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
 import { aggregateReviews, getAiSummary, getReviewDigest, getSimilarBooks } from '@/api/rag'
-import {
-  addCollect,
-  addComment,
-  deleteCollect,
-  deleteComment,
-  getBookComments,
-  getMyBookCollects,
-} from '@/api/social'
 import BookCard from '@/components/BookCard.vue'
-import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
-import type { Book, CollectBook, CommentItem, ReadingRecord, Shelf } from '@/types/models'
+import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
+import type { Book, CollectBook, ReadingRecord, Shelf } from '@/types/models'
 import {
   buildBookCard,
   formatCurrency,
   formatDate,
-  formatDateTime,
   parseTagList,
   readingStatusLabel,
   resolvePictureUrl,
@@ -45,15 +38,11 @@ const router = useRouter()
 
 const loading = ref(false)
 const reviewLoading = ref(false)
-const commentLoading = ref(false)
 const collectLoading = ref(false)
-const borrowLoading = ref(false)
 const shelfLoading = ref(false)
 const activeAiPane = ref<'summary' | 'reviews'>('summary')
 
 const book = ref<Book | null>(null)
-const comments = ref<CommentItem[]>([])
-const averageScore = ref(0)
 const readingRecord = ref<ReadingRecord | null>(null)
 const collectRecord = ref<CollectBook | null>(null)
 const shelves = ref<Shelf[]>([])
@@ -62,17 +51,6 @@ const similarBooks = ref<Book[]>([])
 const aiSummary = ref('')
 const reviewDigest = ref('')
 
-const commentForm = reactive({
-  comment: '',
-  starRating: 5,
-})
-
-const borrowForm = reactive({
-  borrow_name: '',
-  borrowing_time: new Date().toISOString().slice(0, 10),
-  borrow_type: 2,
-})
-
 const attachShelfId = ref(0)
 
 const bookId = computed(() => Number(route.params.id))
@@ -80,10 +58,12 @@ const coverUrl = computed(() => resolvePictureUrl(book.value?.coverUrl))
 const tagItems = computed(() => parseTagList(book.value?.label))
 const attachedShelfIds = computed(() => (bookShelf.value?.id ? [bookShelf.value.id] : []))
 const attachedShelfNames = computed(() => (bookShelf.value?.shelfName ? [bookShelf.value.shelfName] : []))
+const isBorrowedBook = computed(() => Boolean(book.value?.isBorrowed))
 const isOnShelf = computed(() => Boolean(bookShelf.value) || Boolean(book.value?.isOnShelf))
 const isSelectedShelfAttached = computed(
   () => attachShelfId.value > 0 && attachedShelfIds.value.includes(attachShelfId.value),
 )
+const canManageShelf = computed(() => !isBorrowedBook.value || isOnShelf.value)
 const shelfStatusText = computed(() =>
   attachedShelfNames.value.length > 0 ? attachedShelfNames.value.join('、') : '当前未上架',
 )
@@ -97,10 +77,12 @@ const shelfActionText = computed(() => {
 
   return isSelectedShelfAttached.value ? '下架' : '上架'
 })
-const collectButtonLabel = computed(() =>
-  collectRecord.value ? '取消收藏' : '加入收藏',
-)
-const collectButtonIcon = computed(() => (collectRecord.value ? '★' : '☆'))
+const collectButtonLabel = computed(() => (collectRecord.value ? '取消收藏' : '加入收藏'))
+
+const isSameId = (left: number | string | null | undefined, right: number | string | null | undefined) =>
+  Number(left || 0) === Number(right || 0)
+const findBookCollectRecord = (collects: CollectBook[]) =>
+  collects.find((item) => isSameId(item.bookId, bookId.value)) || null
 
 const syncAttachShelfSelection = () => {
   if (bookShelf.value?.id) {
@@ -115,10 +97,9 @@ const loadPage = async () => {
   loading.value = true
 
   try {
-    const [bookResult, commentResult, readingResult, similarResult, collectResult, shelfResult, bookShelfResult] =
+    const [bookResult, readingResult, similarResult, collectResult, shelfResult, bookShelfResult] =
       await Promise.allSettled([
         getBookDetail(bookId.value),
-        getBookComments(bookId.value),
         getReadingRecords(bookId.value),
         getSimilarBooks(bookId.value, 4),
         getMyBookCollects(),
@@ -128,11 +109,6 @@ const loadPage = async () => {
 
     if (bookResult.status === 'fulfilled') {
       book.value = bookResult.value
-    }
-
-    if (commentResult.status === 'fulfilled') {
-      comments.value = commentResult.value.comments
-      averageScore.value = commentResult.value.starMean
     }
 
     if (readingResult.status === 'fulfilled' && !Array.isArray(readingResult.value)) {
@@ -146,7 +122,7 @@ const loadPage = async () => {
     }
 
     if (collectResult.status === 'fulfilled') {
-      collectRecord.value = collectResult.value.find((item) => item.bookId === bookId.value) || null
+      collectRecord.value = findBookCollectRecord(collectResult.value)
     }
 
     if (shelfResult.status === 'fulfilled') {
@@ -167,7 +143,7 @@ const loadPage = async () => {
     ])
 
     aiSummary.value = summaryResult.status === 'fulfilled' ? summaryResult.value : ''
-    reviewDigest.value = reviewResult.status === 'fulfilled' ? (reviewResult.value || '') : ''
+    reviewDigest.value = reviewResult.status === 'fulfilled' ? reviewResult.value || '' : ''
   } finally {
     loading.value = false
   }
@@ -180,7 +156,6 @@ const handleReadingStatusChange = async (event: Event) => {
 
   const target = event.target as HTMLSelectElement
   const status = Number(target.value)
-
   const payload = {
     bookId: book.value.id,
     readingStatus: status,
@@ -195,39 +170,6 @@ const handleReadingStatusChange = async (event: Event) => {
   notifySuccess('阅读状态已更新', `当前状态：${readingStatusLabel(status)}`)
 }
 
-const handleSubmitComment = async () => {
-  if (!commentForm.comment.trim()) {
-    notifyError('评论内容不能为空')
-    return
-  }
-
-  commentLoading.value = true
-
-  try {
-    await addComment({
-      bookId: bookId.value,
-      comment: commentForm.comment,
-      starRating: commentForm.starRating,
-    })
-    commentForm.comment = ''
-    commentForm.starRating = 5
-    const result = await getBookComments(bookId.value)
-    comments.value = result.comments
-    averageScore.value = result.starMean
-    notifySuccess('评论已发布')
-  } finally {
-    commentLoading.value = false
-  }
-}
-
-const handleDeleteComment = async (commentId: number) => {
-  await deleteComment(commentId)
-  const result = await getBookComments(bookId.value)
-  comments.value = result.comments
-  averageScore.value = result.starMean
-  notifySuccess('评论已删除')
-}
-
 const toggleCollect = async () => {
   collectLoading.value = true
 
@@ -239,7 +181,7 @@ const toggleCollect = async () => {
     } else {
       await addCollect({ bookId: bookId.value })
       const collects = await getMyBookCollects()
-      collectRecord.value = collects.find((item) => item.bookId === bookId.value) || null
+      collectRecord.value = findBookCollectRecord(collects)
       notifySuccess('已加入收藏')
     }
   } finally {
@@ -262,61 +204,20 @@ const handleAggregateReviews = async () => {
 
   try {
     reviewDigest.value = await aggregateReviews(bookId.value)
-    notifySuccess('聚合书评已生成')
+    notifySuccess('网络书评已聚合')
   } finally {
     reviewLoading.value = false
-  }
-}
-
-const handleBorrow = async () => {
-  if (!book.value) {
-    return
-  }
-
-  if (!borrowForm.borrow_name.trim()) {
-    notifyError('请填写借阅对象')
-    return
-  }
-
-  borrowLoading.value = true
-
-  try {
-    await borrowBook({
-      book_id: book.value.id,
-      borrow_name: borrowForm.borrow_name,
-      borrowing_time: borrowForm.borrowing_time,
-      borrow_type: borrowForm.borrow_type,
-    })
-    notifySuccess('借阅记录已创建')
-    router.push('/borrow')
-  } finally {
-    borrowLoading.value = false
-  }
-}
-
-const handleAttachShelf = async () => {
-  if (!book.value || !attachShelfId.value) {
-    notifyError('请先选择目标书架')
-    return
-  }
-
-  shelfLoading.value = true
-
-  try {
-    await onShelf({
-      book_id: book.value.id,
-      shelf_id: attachShelfId.value,
-    })
-    notifySuccess('图书已加入书架')
-    await loadPage()
-  } finally {
-    shelfLoading.value = false
   }
 }
 
 const handleShelfAction = async () => {
   if (!book.value || !attachShelfId.value) {
     notifyError('请选择目标书架')
+    return
+  }
+
+  if (isBorrowedBook.value && !isSelectedShelfAttached.value) {
+    notifyError('借入图书不能上架')
     return
   }
 
@@ -328,13 +229,13 @@ const handleShelfAction = async () => {
         book_id: book.value.id,
         shelf_id: attachShelfId.value,
       })
-      notifySuccess('图书已下架', '这本书已从当前书架移出。')
+      notifySuccess('图书已下架')
     } else {
       await onShelf({
         book_id: book.value.id,
         shelf_id: attachShelfId.value,
       })
-      notifySuccess('图书已上架', '这本书已经放入选定书架。')
+      notifySuccess('图书已上架')
     }
     await loadPage()
   } finally {
@@ -361,19 +262,21 @@ onMounted(loadPage)
     <PageIntro
       eyebrow="Book Detail"
       :title="book?.title || '图书详情'"
-      :description="book?.summary || '查看图书元数据、评论反馈、阅读状态、AI 摘要和相似书籍。'"
+      :description="book?.summary || '查看图书元数据、AI 摘要与相似图书推荐。'"
     >
       <template #actions>
         <button
-          class="button button--secondary detail-page-action detail-page-action--favorite"
+          class="favorite-icon-button favorite-icon-button--large"
           type="button"
-          :class="{ 'detail-page-action--active': collectRecord }"
+          :class="{ 'is-collected': collectRecord }"
           :disabled="collectLoading"
           :aria-label="collectButtonLabel"
           :title="collectButtonLabel"
           @click="toggleCollect"
         >
-          {{ collectRecord ? '取消收藏' : '加入收藏' }}
+          <span class="favorite-icon-button__icon" aria-hidden="true">
+            {{ collectRecord ? '★' : '☆' }}
+          </span>
         </button>
         <button
           class="button button--ghost detail-page-action"
@@ -382,12 +285,12 @@ onMounted(loadPage)
           title="返回上一页"
           @click="handleGoBack"
         >
-          <span aria-hidden="true" class="detail-page-action__icon">↩</span>
+          <span aria-hidden="true" class="detail-page-action__icon">←</span>
         </button>
       </template>
     </PageIntro>
 
-    <LoadingState v-if="loading && !book" title="正在装载图书详情" />
+    <LoadingState v-if="loading && !book" title="正在加载图书详情" />
 
     <EmptyState
       v-else-if="!loading && !book"
@@ -412,7 +315,7 @@ onMounted(loadPage)
             </div>
             <div class="inline-actions">
               <span v-if="book?.classify" class="badge">{{ book.classify }}</span>
-              <span v-if="book?.isBorrowed" class="badge badge--accent">借阅中</span>
+              <span v-if="book?.isBorrowed" class="badge badge--accent">借入图书</span>
             </div>
           </div>
 
@@ -428,10 +331,6 @@ onMounted(loadPage)
             <article>
               <span>出版时间</span>
               <strong>{{ formatDate(book?.publishDate) }}</strong>
-            </article>
-            <article>
-              <span>评分</span>
-              <strong>{{ averageScore }}/5</strong>
             </article>
           </div>
 
@@ -451,8 +350,8 @@ onMounted(loadPage)
             </div>
             <div class="field">
               <label>{{ shelfFieldLabel }}</label>
-              <div class="detail-hero__attach">
-                <select v-model.number="attachShelfId">
+              <div v-if="canManageShelf" class="detail-hero__attach">
+                <select v-model.number="attachShelfId" :disabled="isBorrowedBook">
                   <option :value="0" disabled hidden>选择书架</option>
                   <option v-for="item in shelves" :key="item.id" :value="item.id">{{ item.shelfName }}</option>
                 </select>
@@ -460,16 +359,14 @@ onMounted(loadPage)
                   {{ shelfActionText }}
                 </button>
               </div>
+              <p v-else class="detail-hero__shelf-note">借入的图书不能上架到个人书架。</p>
             </div>
           </div>
         </div>
       </section>
 
       <section class="page-grid detail-grid">
-        <SectionPanel
-          title="AI 阅读助手"
-          hint="这里集中展示摘要、聚合书评与延展阅读结果。"
-        >
+        <SectionPanel title="AI 阅读助手" hint="这里集中展示摘要、聚合书评与延展阅读结果。">
           <div class="ai-reader-switch">
             <button
               class="button ai-reader-switch__item"
@@ -494,88 +391,26 @@ onMounted(loadPage)
           </div>
 
           <div v-else class="copy-block">
-            <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '待聚合...' }}</p>
+            <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '暂未聚合。' }}</p>
             <div class="copy-block__footer">
-              <button class="button button--ghost copy-block__trigger" type="button" :disabled="reviewLoading" @click="handleAggregateReviews">
+              <button
+                class="button button--ghost copy-block__trigger"
+                type="button"
+                :disabled="reviewLoading"
+                @click="handleAggregateReviews"
+              >
                 {{ reviewLoading ? '聚合中...' : '聚合网络书评' }}
               </button>
             </div>
           </div>
         </SectionPanel>
 
-        <SectionPanel
-          title="借阅登记"
-          hint="当你要把这本书借出或借入时，可以在这里直接登记。"
-        >
-          <div class="field">
-            <label>借阅对象</label>
-            <input v-model="borrowForm.borrow_name" type="text" placeholder="填写借阅对象姓名" />
-          </div>
-          <div class="field-grid">
-            <div class="field">
-              <label>借阅类型</label>
-              <select v-model.number="borrowForm.borrow_type">
-                <option :value="1">借入</option>
-                <option :value="2">借出</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>借阅日期</label>
-              <input v-model="borrowForm.borrowing_time" type="date" />
-            </div>
-          </div>
-          <button class="button button--primary" type="button" :disabled="borrowLoading" @click="handleBorrow">
-            {{ borrowLoading ? '登记中...' : '保存借阅记录' }}
-          </button>
-        </SectionPanel>
-
-        <SectionPanel
-          title="评论与评分"
-          hint="书评既是你的阅读回声，也是社区关系的一部分。"
-        >
-          <div class="field">
-            <label>评分</label>
-            <select v-model.number="commentForm.starRating">
-              <option :value="5">5 分</option>
-              <option :value="4">4 分</option>
-              <option :value="3">3 分</option>
-              <option :value="2">2 分</option>
-              <option :value="1">1 分</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>评论内容</label>
-            <textarea v-model="commentForm.comment" placeholder="写下你对这本书的感受、摘录或判断。" />
-          </div>
-
-          <button class="button button--secondary" type="button" :disabled="commentLoading" @click="handleSubmitComment">
-            {{ commentLoading ? '提交中...' : '发布评论' }}
-          </button>
-
-          <ul v-if="comments.length" class="comment-list list-reset">
-            <li v-for="item in comments" :key="item.id" class="comment-list__item">
-              <div class="split-actions">
-                <div>
-                  <strong>用户 {{ item.userId }}</strong>
-                  <p>{{ formatDateTime(item.comTime) }} · {{ item.stars }} 分</p>
-                </div>
-                <button class="button button--ghost" type="button" @click="handleDeleteComment(item.id)">删除</button>
-              </div>
-              <p class="comment-list__body">{{ item.comment }}</p>
-            </li>
-          </ul>
-          <EmptyState v-else title="还没有评论" />
-        </SectionPanel>
-
-        <SectionPanel
-          title="相似图书"
-          hint="来自 RAG 相似检索结果，适合继续扩展阅读链路。"
-        >
+        <SectionPanel title="相似图书" hint="来自 RAG 相似检索结果，适合继续扩展阅读链路。">
           <div class="similar-grid">
             <BookCard
               v-for="item in similarBooks"
               :key="item.id"
+              mobile-minimal
               :book="
                 buildBookCard({
                   id: item.id,
@@ -583,7 +418,7 @@ onMounted(loadPage)
                   author: item.author,
                   coverUrl: item.coverUrl,
                   summary: item.summary,
-                  badge: '相似'
+                  badge: '相似',
                 })
               "
             >
@@ -604,36 +439,41 @@ onMounted(loadPage)
 
 <style scoped>
 .detail-page-action {
+  width: 46px;
+  height: 46px;
   min-width: 46px;
-  min-height: 46px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--sl-line);
+  background: var(--sl-ghost-bg);
+  color: var(--sl-ink);
   font-size: 1.18rem;
   line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.detail-page-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.detail-page-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .detail-page-action__icon {
   font-family: 'Segoe UI Symbol', 'Apple Symbols', 'Noto Sans Symbols 2', sans-serif;
   font-size: 1.26rem;
   line-height: 1;
-}
-
-.detail-page-action--favorite {
-  position: relative;
-  font-size: 0;
-}
-
-.detail-page-action--favorite::before {
-  content: '☆';
-  font-size: 1.32rem;
-  line-height: 1;
-  color: currentColor;
-}
-
-.detail-page-action--favorite.detail-page-action--active::before {
-  content: '★';
 }
 
 .detail-hero {
@@ -692,7 +532,7 @@ onMounted(loadPage)
 
 .detail-hero__meta {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -730,11 +570,14 @@ onMounted(loadPage)
   gap: 10px;
 }
 
-.detail-hero__shelf-status {
-  margin: 0 0 10px;
+.detail-hero__shelf-note {
+  margin: 8px 0 0;
   color: var(--sl-ink-soft);
-  font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+
+.detail-grid {
+  align-items: start;
 }
 
 .detail-grid > * {
@@ -746,12 +589,6 @@ onMounted(loadPage)
   gap: 10px;
 }
 
-.copy-block__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .copy-block__footer {
   display: flex;
   justify-content: flex-end;
@@ -760,11 +597,6 @@ onMounted(loadPage)
 .copy-block__trigger {
   padding-inline: 14px;
   font-size: 0.92rem;
-}
-
-.copy-block h3,
-.copy-block p {
-  margin: 0;
 }
 
 .copy-block__body {
@@ -791,38 +623,6 @@ onMounted(loadPage)
   box-shadow: 0 10px 24px rgba(22, 40, 28, 0.14);
 }
 
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.comment-list {
-  display: grid;
-  gap: 14px;
-}
-
-.comment-list__item {
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.58);
-}
-
-.comment-list__item p {
-  margin: 0;
-}
-
-.comment-list__item .split-actions p {
-  margin-top: 6px;
-  color: var(--sl-ink-soft);
-}
-
-.comment-list__body {
-  margin-top: 12px !important;
-  line-height: 1.8;
-  color: var(--sl-ink-soft);
-}
-
 .similar-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -841,25 +641,12 @@ onMounted(loadPage)
   }
 
   .detail-hero__meta,
-  .detail-hero__tools,
-  .field-grid,
-  .similar-grid {
+  .detail-hero__tools {
     grid-template-columns: 1fr;
   }
 
   .detail-hero__attach {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (min-width: 901px) {
-  .detail-hero__meta article {
-    padding: 11px 14px;
-  }
-
-  .detail-hero__meta strong {
-    margin-top: 4px;
-    font-size: 0.98rem;
   }
 }
 </style>

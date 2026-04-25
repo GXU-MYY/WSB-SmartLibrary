@@ -2,10 +2,14 @@ package com.wsb.book.service;
 
 import com.wsb.book.api.dto.BookBorrowCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.PublicShelfBookDTO;
+import com.wsb.book.api.dto.ShelfRemoteDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.book.api.dto.UserBorrowStatsDTO;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
 
 import java.util.List;
 
@@ -17,6 +21,10 @@ public interface BookInnerService {
     BookRemoteDTO getBookById(Long bookId);
 
     List<BookRemoteDTO> getBooksByIds(List<Long> bookIds);
+
+    List<ShelfRemoteDTO> getPublicShelvesByOwners(List<Long> userIds);
+
+    List<PublicShelfBookDTO> getPublicShelfBooksByOwners(List<Long> userIds);
 
     List<UserBookCountDTO> countBooksByUsers(List<Long> userIds);
 
@@ -41,4 +49,6 @@ public interface BookInnerService {
     void updateSummary(Long bookId, String summary);
 
     void updateEmbeddingStatus(Long bookId, Integer status);
+
+    CommunityBorrowFlowVO createCommunityBorrowFlow(CommunityBorrowCreateDTO dto);
 }

@@ -71,14 +71,32 @@ public class BookBorrow implements Serializable {
     private Integer status;
 
     /**
-     * 图书名称（冗余）
+     * 图书名称快照
      */
     private String bookName;
 
     /**
-     * 封面URL（冗余）
+     * 封面URL快照
      */
     private String coverUrl;
+
+    /**
+     * 社群借阅流ID，用于绑定借入和借出两条记录
+     */
+    @TableField("borrow_flow_id")
+    private String borrowFlowId;
+
+    /**
+     * 群组ID，标记这条借阅记录来源于哪个群组
+     */
+    @TableField("group_id")
+    private Long groupId;
+
+    /**
+     * 借阅申请ID，关联群组借阅申请记录
+     */
+    @TableField("request_id")
+    private Long requestId;
 
     /**
      * 是否删除

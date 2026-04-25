@@ -1,229 +1,420 @@
 package com.wsb.rag.service.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.exception.ServiceException;
+import com.wsb.rag.config.RagPgVectorProperties;
+import com.wsb.rag.mapper.BookEmbeddingMapper;
+import com.wsb.rag.mapper.BookRankRow;
 import com.wsb.rag.service.VectorService;
+import com.wsb.rag.util.ClcCategoryUtils;
+import com.wsb.rag.util.QueryTextAnalyzer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * 向量数据库服务实现（Supabase）。
+ * 基于 pgvector 的向量数据库服务。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class VectorServiceImpl implements VectorService {
 
-    private static final MediaType JSON = MediaType.parse("application/json");
-    private static final String TABLE_NAME = "book_embeddings";
+    private static final String CHUNK_IDENTITY = "identity";
+    private static final String CHUNK_SUBJECT = "subject";
+    private static final String CHUNK_SUMMARY = "summary";
+    private static final int MAX_QUERY_PATTERNS = 4;
+    private static final double CHUNK_WEIGHT_BOOST_STEP = 0.10;
 
-    @Value("${supabase.url}")
-    private String supabaseUrl;
-
-    @Value("${supabase.service-role-key}")
-    private String serviceRoleKey;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final OkHttpClient httpClient = new OkHttpClient();
+    private final PgVectorStore pgVectorStore;
+    private final BookEmbeddingMapper bookEmbeddingMapper;
+    private final RagPgVectorProperties properties;
 
     @Override
-    public void storeEmbedding(Long bookId, List<Float> embedding, BookRemoteDTO metadata) {
-        try {
-            String embeddingStr = embedding.toString();
-            String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("book_id", bookId)
-                    .put("title", metadata.getTitle())
-                    .put("author", metadata.getAuthor())
-                    .put("embedding", "[" + embeddingStr.substring(1, embeddingStr.length() - 1) + "]"));
-
-            Request request = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("Prefer", "resolution=merge-duplicates")
-                    .post(RequestBody.create(json, JSON))
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("存储向量失败: {}, body={}", response.code(), errorBody);
-                    throw new ServiceException("存储向量失败");
-                }
-                log.info("存储向量成功: bookId={}", bookId);
-            }
-        } catch (IOException e) {
-            log.error("存储向量异常", e);
-            throw new ServiceException("存储向量失败: " + e.getMessage());
+    @Transactional(rollbackFor = Exception.class)
+    public void storeEmbedding(Long bookId, BookRemoteDTO metadata) {
+        if (bookId == null) {
+            throw new ServiceException("图书ID不能为空");
         }
+
+        List<Document> documents = buildDocuments(bookId, metadata);
+        if (documents.isEmpty()) {
+            throw new ServiceException("向量内容不能为空");
+        }
+
+        deleteEmbedding(bookId);
+        pgVectorStore.add(documents);
+        log.info("已写入 pgvector 向量: bookId={}, chunks={}", bookId, documents.size());
     }
 
     @Override
-    public List<Long> searchSimilar(List<Float> queryEmbedding, int limit) {
-        if (queryEmbedding == null || queryEmbedding.isEmpty()) {
-            log.warn("跳过向量搜索：查询向量为空");
+    public List<Long> searchSimilar(String query, int limit) {
+        return searchSimilar(query, limit, Set.of());
+    }
+
+    @Override
+    public List<Long> searchSimilar(String query, int limit, Set<Long> bookIdFilter) {
+        if (StringUtils.isBlank(query) || limit <= 0) {
             return List.of();
         }
 
-        try {
-            String embeddingJson = queryEmbedding.toString();
-            String rpcUrl = supabaseUrl + "/rest/v1/rpc/match_book_embeddings";
+        int candidateLimit = resolveCandidateLimit(limit);
+        Map<Long, Double> scores = new HashMap<>();
+        Map<Long, Integer> bestRanks = new HashMap<>();
+        List<BookRank> vectorRanks = safeSearchVectorBookRanks(query, candidateLimit, bookIdFilter);
+        List<BookRank> keywordRanks = searchKeywordBookRanks(query, candidateLimit, bookIdFilter);
 
-            String json = objectMapper.writeValueAsString(objectMapper.createObjectNode()
-                    .put("query_embedding", "[" + embeddingJson.substring(1, embeddingJson.length() - 1) + "]")
-                    .put("match_count", limit));
+        mergeRrfScores(scores, bestRanks, vectorRanks, properties.getVectorScoreWeight());
+        mergeRrfScores(scores, bestRanks, keywordRanks, properties.getKeywordScoreWeight());
 
-            Request request = new Request.Builder()
-                    .url(rpcUrl)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .addHeader("Content-Type", "application/json")
-                    .post(RequestBody.create(json, JSON))
-                    .build();
+        log.info("混合检索召回统计: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
+                query, vectorRanks.size(), keywordRanks.size(), scores.size(),
+                bookIdFilter == null ? 0 : bookIdFilter.size());
 
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("向量搜索失败: {}, body={}", response.code(), errorBody);
-                    return List.of();
-                }
-
-                String responseBody = response.body().string();
-                JsonNode root = objectMapper.readTree(responseBody);
-                List<Long> result = new ArrayList<>();
-                for (JsonNode item : root) {
-                    result.add(item.path("book_id").asLong());
-                }
-                return result;
-            }
-        } catch (IOException e) {
-            log.error("向量搜索异常", e);
-            return List.of();
-        }
+        return scores.entrySet()
+                .stream()
+                .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(entry -> bestRanks.getOrDefault(entry.getKey(), Integer.MAX_VALUE))
+                        .thenComparing(Map.Entry::getKey))
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
     }
 
     @Override
     public List<Long> getSimilarBooks(Long bookId, int limit) {
-        try {
-            Request getRequest = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId + "&select=embedding")
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .get()
-                    .build();
-
-            try (Response getResponse = httpClient.newCall(getRequest).execute()) {
-                if (!getResponse.isSuccessful()) {
-                    String errorBody = getResponse.body() != null ? getResponse.body().string() : "";
-                    log.error("获取书籍向量失败: {}, body={}", getResponse.code(), errorBody);
-                    return List.of();
-                }
-
-                String responseBody = getResponse.body().string();
-                JsonNode root = objectMapper.readTree(responseBody);
-                if (root.isEmpty()) {
-                    return List.of();
-                }
-
-                List<Float> embedding = parseEmbedding(root.get(0).path("embedding"));
-                if (embedding.isEmpty()) {
-                    log.warn("书籍向量为空或解析失败: bookId={}", bookId);
-                    return List.of();
-                }
-
-                return searchSimilar(embedding, limit + 1).stream()
-                        .filter(id -> !id.equals(bookId))
-                        .limit(limit)
-                        .toList();
-            }
-        } catch (IOException e) {
-            log.error("获取相似书籍异常", e);
+        if (bookId == null || limit <= 0) {
             return List.of();
         }
+
+        String content = findContentByBookId(bookId);
+        if (StringUtils.isBlank(content)) {
+            log.warn("未找到可用于相似推荐的向量内容: bookId={}", bookId);
+            return List.of();
+        }
+
+        return safeSearchVectorBookRanks(content, resolveCandidateLimit(limit + 1), Set.of())
+                .stream()
+                .map(BookRank::bookId)
+                .filter(Objects::nonNull)
+                .filter(id -> !id.equals(bookId))
+                .distinct()
+                .limit(limit)
+                .toList();
     }
 
     @Override
     public void deleteEmbedding(Long bookId) {
-        try {
-            Request request = new Request.Builder()
-                    .url(supabaseUrl + "/rest/v1/" + TABLE_NAME + "?book_id=eq." + bookId)
-                    .addHeader("apikey", serviceRoleKey)
-                    .addHeader("Authorization", "Bearer " + serviceRoleKey)
-                    .delete()
-                    .build();
+        if (bookId == null) {
+            return;
+        }
 
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "";
-                    log.error("删除向量失败: {}, body={}", response.code(), errorBody);
-                } else {
-                    log.info("删除向量成功: bookId={}", bookId);
-                }
-            }
-        } catch (IOException e) {
-            log.error("删除向量异常", e);
+        int deleted = bookEmbeddingMapper.deleteByBookId(qualifiedTableName(), bookId.toString());
+        if (deleted > 0) {
+            log.info("已删除 pgvector 向量: bookId={}, rows={}", bookId, deleted);
         }
     }
 
-    private List<Float> parseEmbedding(JsonNode embeddingNode) {
-        List<Float> embedding = new ArrayList<>();
-        if (embeddingNode == null || embeddingNode.isMissingNode() || embeddingNode.isNull()) {
-            return embedding;
+    private List<Document> buildDocuments(Long bookId, BookRemoteDTO book) {
+        List<Document> documents = new ArrayList<>();
+        if (book == null) {
+            return documents;
         }
 
-        if (embeddingNode.isArray()) {
-            for (JsonNode value : embeddingNode) {
-                embedding.add((float) value.asDouble());
-            }
-            return embedding;
+        addDocument(documents, bookId, book, CHUNK_IDENTITY, 4, buildIdentityText(book));
+        addDocument(documents, bookId, book, CHUNK_SUBJECT, 3, buildSubjectText(book));
+        addDocument(documents, bookId, book, CHUNK_SUMMARY, 1, buildSummaryText(book));
+        return documents;
+    }
+
+    private void addDocument(List<Document> documents, Long bookId, BookRemoteDTO book,
+                             String chunkType, int chunkWeight, String text) {
+        if (StringUtils.isBlank(text)) {
+            return;
+        }
+        documents.add(new Document(text, buildMetadata(bookId, book, chunkType, chunkWeight)));
+    }
+
+    private String buildIdentityText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "作者", book.getAuthor());
+        return sb.toString();
+    }
+
+    private String buildSubjectText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "关键词", book.getKeyword());
+        appendField(sb, "中图分类", ClcCategoryUtils.resolveCategory(book.getClc()));
+        appendField(sb, "中图分类号", book.getClc());
+        return sb.toString();
+    }
+
+    private String buildSummaryText(BookRemoteDTO book) {
+        StringBuilder sb = new StringBuilder();
+        appendField(sb, "书名", book.getTitle());
+        appendField(sb, "摘要", book.getSummary());
+        return sb.toString();
+    }
+
+    private void appendField(StringBuilder sb, String fieldName, String value) {
+        if (StringUtils.isBlank(value)) {
+            return;
+        }
+        if (!sb.isEmpty()) {
+            sb.append(" | ");
+        }
+        sb.append(fieldName).append(": ").append(value.trim());
+    }
+
+    private Map<String, Object> buildMetadata(Long bookId, BookRemoteDTO metadata, String chunkType, int chunkWeight) {
+        Map<String, Object> metadataMap = new LinkedHashMap<>();
+        metadataMap.put("bookId", bookId);
+        metadataMap.put("chunkType", chunkType);
+        metadataMap.put("chunkWeight", chunkWeight);
+        if (metadata == null) {
+            return metadataMap;
+        }
+        putIfNotBlank(metadataMap, "title", metadata.getTitle());
+        putIfNotBlank(metadataMap, "author", metadata.getAuthor());
+        putIfNotBlank(metadataMap, "keyword", metadata.getKeyword());
+        putIfNotBlank(metadataMap, "clc", metadata.getClc());
+        putIfNotBlank(metadataMap, "clcCategory", ClcCategoryUtils.resolveCategory(metadata.getClc()));
+        putIfNotBlank(metadataMap, "coverUrl", metadata.getCoverUrl());
+        return metadataMap;
+    }
+
+    private void putIfNotBlank(Map<String, Object> metadataMap, String key, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            metadataMap.put(key, value);
+        }
+    }
+
+    private List<BookRank> searchVectorBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
+        SearchRequest.Builder searchRequestBuilder = SearchRequest.builder()
+                .query(query)
+                .topK(candidateLimit)
+                .similarityThreshold(properties.getSimilarityThreshold());
+        Filter.Expression filterExpression = buildBookIdFilterExpression(bookIdFilter);
+        if (filterExpression != null) {
+            searchRequestBuilder.filterExpression(filterExpression);
         }
 
-        if (!embeddingNode.isTextual()) {
-            return embedding;
-        }
+        List<Document> documents = pgVectorStore.similaritySearch(searchRequestBuilder.build());
 
-        String raw = embeddingNode.asText();
-        if (StringUtils.isBlank(raw)) {
-            return embedding;
-        }
-
-        String normalized = raw.trim();
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
-
-        if (StringUtils.isBlank(normalized)) {
-            return embedding;
-        }
-
-        for (String item : normalized.split(",")) {
-            String token = item.trim();
-            if (token.isEmpty()) {
+        Map<Long, Double> rankedBooks = new HashMap<>();
+        for (Document document : documents) {
+            Long bookId = extractBookId(document);
+            if (bookId == null) {
                 continue;
             }
-            try {
-                embedding.add(Float.parseFloat(token));
-            } catch (NumberFormatException ex) {
-                log.warn("书籍向量包含非法数字: token={}", token);
-                return List.of();
-            }
+            rankedBooks.merge(bookId, resolveVectorBoost(document), Math::max);
         }
 
-        return embedding;
+        return rankedBooks.entrySet()
+                .stream()
+                .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(Map.Entry::getKey))
+                .map(entry -> new BookRank(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private List<BookRank> safeSearchVectorBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
+        try {
+            return searchVectorBookRanks(query, candidateLimit, bookIdFilter);
+        } catch (RuntimeException e) {
+            log.warn("向量召回失败，回退到关键词检索: query={}", query, e);
+            return List.of();
+        }
+    }
+
+    private List<BookRank> searchKeywordBookRanks(String query, int candidateLimit, Set<Long> bookIdFilter) {
+        try {
+            return bookEmbeddingMapper.searchKeywordBookRanks(
+                            qualifiedTableName(),
+                            query,
+                            toLikePattern(query),
+                            buildQueryPatterns(query),
+                            bookIdFilter.stream().sorted().toList(),
+                            candidateLimit
+                    )
+                    .stream()
+                    .map(row -> new BookRank(row.getBookId(), resolveRankScore(row)))
+                    .filter(rank -> rank.bookId() != null)
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("关键词召回失败，回退为纯向量检索: query={}", query, e);
+            return List.of();
+        }
+    }
+
+
+    private Filter.Expression buildBookIdFilterExpression(Set<Long> bookIdFilter) {
+        if (bookIdFilter == null || bookIdFilter.isEmpty()) {
+            return null;
+        }
+        List<Object> values = bookIdFilter.stream()
+                .sorted()
+                .map(id -> (Object) id)
+                .toList();
+        return new FilterExpressionBuilder().in("bookId", values).build();
+    }
+
+    private List<String> buildQueryPatterns(String query) {
+        LinkedHashMap<String, Boolean> terms = new LinkedHashMap<>();
+        for (String term : QueryTextAnalyzer.extractTerms(query, MAX_QUERY_PATTERNS)) {
+            addQueryTerm(terms, term);
+        }
+        if (terms.isEmpty()) {
+            addQueryTerm(terms, query);
+        }
+        return terms.keySet().stream()
+                .limit(MAX_QUERY_PATTERNS)
+                .map(this::toLikePattern)
+                .toList();
+    }
+
+    private void addQueryTerm(Map<String, Boolean> terms, String term) {
+        String normalized = QueryTextAnalyzer.normalize(term);
+        if (StringUtils.isNotBlank(normalized)) {
+            terms.putIfAbsent(normalized, Boolean.TRUE);
+        }
+    }
+
+    private String toLikePattern(String value) {
+        return "%" + escapeLike(QueryTextAnalyzer.normalize(value)) + "%";
+    }
+
+    private String escapeLike(String value) {
+        return StringUtils.defaultString(value)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+    }
+
+    private void mergeRrfScores(Map<Long, Double> scores, Map<Long, Integer> bestRanks,
+                                List<BookRank> ranks, double sourceWeight) {
+        int rank = 1;
+        for (BookRank item : ranks) {
+            if (item.bookId() == null) {
+                continue;
+            }
+            double boost = Math.max(1.0, Math.min(item.boost(), 4.0));
+            double score = sourceWeight * boost / (properties.getRrfRankConstant() + rank);
+            scores.merge(item.bookId(), score, Double::sum);
+            bestRanks.merge(item.bookId(), rank, Math::min);
+            rank++;
+        }
+    }
+
+    private int resolveCandidateLimit(int limit) {
+        int safeLimit = Math.max(limit, 1);
+        int multiplier = Math.max(properties.getHybridCandidateMultiplier(), 1);
+        return Math.max(properties.getHybridMinCandidates(), safeLimit * multiplier);
+    }
+
+    private Long extractBookId(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return null;
+        }
+        Object value = document.getMetadata().get("bookId");
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && StringUtils.isNotBlank(text)) {
+            return parseBookId(text);
+        }
+        return null;
+    }
+
+    private double extractChunkWeight(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return 1.0;
+        }
+        Object value = document.getMetadata().get("chunkWeight");
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && StringUtils.isNotBlank(text)) {
+            try {
+                return Double.parseDouble(text);
+            } catch (NumberFormatException ignored) {
+                return 1.0;
+            }
+        }
+        return 1.0;
+    }
+
+    private double extractSimilarityScore(Document document) {
+        if (document == null || document.getScore() == null) {
+            return 1.0;
+        }
+        return Math.max(document.getScore(), 0.0);
+    }
+
+    private double resolveVectorBoost(Document document) {
+        double similarityScore = extractSimilarityScore(document);
+        double chunkWeight = Math.max(extractChunkWeight(document), 1.0);
+        return similarityScore * (1.0 + (chunkWeight - 1.0) * CHUNK_WEIGHT_BOOST_STEP);
+    }
+
+    private Long parseBookId(String text) {
+        if (StringUtils.isBlank(text)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private String findContentByBookId(Long bookId) {
+        List<String> contents = bookEmbeddingMapper.findContentsByBookId(
+                qualifiedTableName(),
+                bookId.toString(),
+                CHUNK_IDENTITY,
+                CHUNK_SUBJECT,
+                CHUNK_SUMMARY
+        );
+        return contents.isEmpty() ? null : String.join(" ", contents);
+    }
+
+    private double resolveRankScore(BookRankRow row) {
+        if (row == null || row.getRankScore() == null) {
+            return 1.0;
+        }
+        return row.getRankScore();
+    }
+
+    private String qualifiedTableName() {
+        return safeIdentifier(properties.getSchemaName()) + "." + safeIdentifier(properties.getTableName());
+    }
+
+    private String safeIdentifier(String identifier) {
+        if (StringUtils.isBlank(identifier) || !identifier.matches("[A-Za-z0-9_]+")) {
+            throw new ServiceException("非法的 pgvector 标识符配置: " + identifier);
+        }
+        return identifier;
+    }
+
+    private record BookRank(Long bookId, double boost) {
     }
 }

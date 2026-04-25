@@ -30,23 +30,37 @@ const notifications = useNotifications()
   z-index: 120;
   display: grid;
   gap: 12px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 24px));
 }
 
 .toast {
   padding: 16px 18px;
   border-radius: 20px;
+  max-height: min(48vh, 420px);
+  overflow: auto;
 }
 
 .toast strong,
 .toast p {
   margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .toast p {
   margin-top: 6px;
   color: var(--sl-ink-soft);
   line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .toast-stack {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+  }
 }
 
 .toast--success {

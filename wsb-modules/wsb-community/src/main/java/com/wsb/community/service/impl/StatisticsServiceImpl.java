@@ -3,9 +3,12 @@ package com.wsb.community.service.impl;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wsb.book.api.RemoteBookService;
+import com.wsb.book.api.RemoteCollectService;
+import com.wsb.book.api.dto.BookCollectCountDTO;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
 import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.CollectCategoryStatsDTO;
 import com.wsb.book.api.dto.UserBookCountDTO;
 import com.wsb.book.api.dto.UserBorrowStatsDTO;
 import com.wsb.common.core.domain.Result;
@@ -16,9 +19,7 @@ import com.wsb.community.api.vo.PersonalStatsVO;
 import com.wsb.community.api.vo.UserRankVO;
 import com.wsb.community.convert.StatisticsConverter;
 import com.wsb.community.service.StatisticsService;
-import com.wsb.social.api.RemoteCollectService;
-import com.wsb.social.api.dto.BookCollectCountDTO;
-import com.wsb.social.api.dto.CollectCategoryStatsDTO;
+import com.wsb.community.service.support.CommunityCacheService;
 import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
@@ -28,9 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * 统计服务实现类
- */
 @Service
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
@@ -39,97 +37,26 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final RemoteCollectService remoteCollectService;
     private final RemoteUserService remoteUserService;
     private final StatisticsConverter statisticsConverter;
+    private final CommunityCacheService communityCacheService;
 
     @Override
     public Page<BookRankVO> getBookRank(Integer page, Integer pageSize) {
-        // 获取所有书籍收藏统计
-        Result<List<BookCollectCountDTO>> collectResult = remoteCollectService.countCollectByBooks(null);
-        if (collectResult == null || collectResult.getData() == null || collectResult.getData().isEmpty()) {
-            return new Page<>(page, pageSize, 0);
+        List<BookRankVO> cachedRanks = communityCacheService.getBookRanks();
+        if (cachedRanks == null) {
+            cachedRanks = buildBookRanks();
+            communityCacheService.cacheBookRanks(cachedRanks);
         }
-
-        // 按收藏数降序排序
-        List<BookCollectCountDTO> sortedList = collectResult.getData().stream()
-                .sorted((a, b) -> b.getCollectCount().compareTo(a.getCollectCount()))
-                .collect(Collectors.toList());
-
-        // 分页
-        int total = sortedList.size();
-        int fromIndex = (page - 1) * pageSize;
-        int toIndex = Math.min(fromIndex + pageSize, total);
-
-        if (fromIndex >= total) {
-            return new Page<>(page, pageSize, total);
-        }
-
-        List<BookCollectCountDTO> pageList = sortedList.subList(fromIndex, toIndex);
-
-        // 批量获取书籍信息
-        List<Long> bookIds = pageList.stream().map(BookCollectCountDTO::getBookId).collect(Collectors.toList());
-        Result<List<BookRemoteDTO>> booksResult = remoteBookService.getBooksByIds(bookIds);
-        Map<Long, BookRemoteDTO> bookMap = booksResult != null && booksResult.getData() != null
-                ? booksResult.getData().stream().collect(Collectors.toMap(BookRemoteDTO::getId, b -> b, (a, b) -> a))
-                : Map.of();
-
-        // 组装VO
-        List<BookRankVO> voList = new java.util.ArrayList<>();
-        int rank = fromIndex + 1;
-        for (BookCollectCountDTO dto : pageList) {
-            BookRemoteDTO book = bookMap.get(dto.getBookId());
-            if (book != null) {
-                voList.add(statisticsConverter.toBookRankVO(dto.getBookId(), book, dto.getCollectCount(), rank++));
-            }
-        }
-
-        Page<BookRankVO> result = new Page<>(page, pageSize, total);
-        result.setRecords(voList);
-        return result;
+        return paginate(cachedRanks, page, pageSize);
     }
 
     @Override
     public Page<UserRankVO> getUserRank(Integer page, Integer pageSize) {
-        // 获取所有用户拥书统计
-        Result<List<UserBookCountDTO>> countResult = remoteBookService.countBooksByUsers(null);
-        if (countResult == null || countResult.getData() == null || countResult.getData().isEmpty()) {
-            return new Page<>(page, pageSize, 0);
+        List<UserRankVO> cachedRanks = communityCacheService.getUserRanks();
+        if (cachedRanks == null) {
+            cachedRanks = buildUserRanks();
+            communityCacheService.cacheUserRanks(cachedRanks);
         }
-
-        // 按书籍数降序排序
-        List<UserBookCountDTO> sortedList = countResult.getData().stream()
-                .sorted((a, b) -> b.getBookCount().compareTo(a.getBookCount()))
-                .collect(Collectors.toList());
-
-        // 分页
-        int total = sortedList.size();
-        int fromIndex = (page - 1) * pageSize;
-        int toIndex = Math.min(fromIndex + pageSize, total);
-
-        if (fromIndex >= total) {
-            return new Page<>(page, pageSize, total);
-        }
-
-        List<UserBookCountDTO> pageList = sortedList.subList(fromIndex, toIndex);
-
-        // 批量获取用户信息
-        List<Long> userIds = pageList.stream().map(UserBookCountDTO::getUserId).collect(Collectors.toList());
-        Result<List<UserNicknameDTO>> usersResult = remoteUserService.getUserNicknamesByIds(userIds);
-        Map<Long, UserNicknameDTO> userMap = usersResult != null && usersResult.getData() != null
-                ? usersResult.getData().stream().collect(Collectors.toMap(UserNicknameDTO::getId, u -> u, (a, b) -> a))
-                : Map.of();
-
-        // 组装VO
-        List<UserRankVO> voList = new java.util.ArrayList<>();
-        int rank = fromIndex + 1;
-        for (UserBookCountDTO dto : pageList) {
-            UserNicknameDTO user = userMap.get(dto.getUserId());
-            if (user != null) {
-                voList.add(statisticsConverter.toUserRankVO(dto.getUserId(), user, dto.getBookCount(), rank++));
-            }
-        }
-
-        Page<UserRankVO> result = new Page<>(page, pageSize, total);
-        result.setRecords(voList);
-        return result;
+        return paginate(cachedRanks, page, pageSize);
     }
 
     @Override
@@ -145,7 +72,6 @@ public class StatisticsServiceImpl implements StatisticsService {
             bookIds = booksResult.getData();
         }
 
-        // 获取借阅分类统计
         Result<List<BorrowCategoryStatsDTO>> statsResult = remoteBookService.getBorrowStatsByCategory(bookIds);
         if (statsResult == null || statsResult.getData() == null) {
             return createEmptyBorrowStats();
@@ -178,7 +104,6 @@ public class StatisticsServiceImpl implements StatisticsService {
             bookIds = booksResult.getData();
         }
 
-        // 获取收藏分类统计
         Result<List<CollectCategoryStatsDTO>> statsResult = remoteCollectService.getCollectStatsByCategory(bookIds);
         if (statsResult == null || statsResult.getData() == null) {
             return createEmptyCollectStats();
@@ -199,22 +124,88 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public PersonalStatsVO getPersonalStats() {
         Long currentUserId = StpUtil.getLoginIdAsLong();
+        PersonalStatsVO cachedStats = communityCacheService.getPersonalStats(currentUserId);
+        if (cachedStats != null) {
+            return cachedStats;
+        }
 
+        PersonalStatsVO stats = buildPersonalStats(currentUserId);
+        communityCacheService.cachePersonalStats(currentUserId, stats);
+        return stats;
+    }
+
+    private List<BookRankVO> buildBookRanks() {
+        Result<List<BookCollectCountDTO>> collectResult = remoteCollectService.countCollectByBooks(null);
+        if (collectResult == null || collectResult.getData() == null || collectResult.getData().isEmpty()) {
+            return List.of();
+        }
+
+        List<BookCollectCountDTO> sortedList = collectResult.getData().stream()
+                .sorted((a, b) -> b.getCollectCount().compareTo(a.getCollectCount()))
+                .toList();
+
+        List<Long> bookIds = sortedList.stream()
+                .map(BookCollectCountDTO::getBookId)
+                .toList();
+        Result<List<BookRemoteDTO>> booksResult = remoteBookService.getBooksByIds(bookIds);
+        Map<Long, BookRemoteDTO> bookMap = booksResult != null && booksResult.getData() != null
+                ? booksResult.getData().stream().collect(Collectors.toMap(BookRemoteDTO::getId, b -> b, (a, b) -> a))
+                : Map.of();
+
+        List<BookRankVO> voList = new java.util.ArrayList<>();
+        int rank = 1;
+        for (BookCollectCountDTO dto : sortedList) {
+            BookRemoteDTO book = bookMap.get(dto.getBookId());
+            if (book != null) {
+                voList.add(statisticsConverter.toBookRankVO(dto.getBookId(), book, dto.getCollectCount(), rank++));
+            }
+        }
+        return voList;
+    }
+
+    private List<UserRankVO> buildUserRanks() {
+        Result<List<UserBookCountDTO>> countResult = remoteBookService.countBooksByUsers(null);
+        if (countResult == null || countResult.getData() == null || countResult.getData().isEmpty()) {
+            return List.of();
+        }
+
+        List<UserBookCountDTO> sortedList = countResult.getData().stream()
+                .sorted((a, b) -> b.getBookCount().compareTo(a.getBookCount()))
+                .collect(Collectors.toList());
+
+        List<Long> userIds = sortedList.stream()
+                .map(UserBookCountDTO::getUserId)
+                .toList();
+        Result<List<UserNicknameDTO>> usersResult = remoteUserService.getUserNicknamesByIds(userIds);
+        Map<Long, UserNicknameDTO> userMap = usersResult != null && usersResult.getData() != null
+                ? usersResult.getData().stream().collect(Collectors.toMap(UserNicknameDTO::getId, u -> u, (a, b) -> a))
+                : Map.of();
+
+        List<UserRankVO> voList = new java.util.ArrayList<>();
+        int rank = 1;
+        for (UserBookCountDTO dto : sortedList) {
+            UserNicknameDTO user = userMap.get(dto.getUserId());
+            if (user != null) {
+                voList.add(statisticsConverter.toUserRankVO(dto.getUserId(), user, dto.getBookCount(), rank++));
+            }
+        }
+        return voList;
+    }
+
+    private PersonalStatsVO buildPersonalStats(Long currentUserId) {
         PersonalStatsVO vo = new PersonalStatsVO();
 
-        // 我拥有的书籍统计
         PersonalStatsVO.OwnedStats owned = new PersonalStatsVO.OwnedStats();
         Result<List<Long>> myBooksResult = remoteBookService.getBookIdsByOwner(currentUserId);
         List<Long> myBookIds = myBooksResult != null && myBooksResult.getData() != null
-                ? myBooksResult.getData() : List.of();
+                ? myBooksResult.getData()
+                : List.of();
 
         owned.setTotalBooks(myBookIds.size());
 
-        // 借出未归还数
         Result<Integer> unreturnedResult = remoteBookService.countUnreturnedByOwner(currentUserId);
-        owned.setBooksLentUnreturned(unreturnedResult != null ? unreturnedResult.getData() : 0);
+        owned.setBooksLentUnreturned(unreturnedResult != null && unreturnedResult.getData() != null ? unreturnedResult.getData() : 0);
 
-        // 被收藏数
         if (!myBookIds.isEmpty()) {
             Result<List<BookCollectCountDTO>> collectResult = remoteCollectService.countCollectByBooks(myBookIds);
             int totalCollect = 0;
@@ -228,7 +219,6 @@ public class StatisticsServiceImpl implements StatisticsService {
             owned.setBooksBeingCollected(0);
         }
 
-        // 按分类统计
         Result<List<CategoryCountDTO>> categoryResult = remoteBookService.countBooksByCategory(currentUserId);
         if (categoryResult != null && categoryResult.getData() != null) {
             owned.setBooksByCategory(statisticsConverter.toCategoryCountList(categoryResult.getData()));
@@ -237,26 +227,45 @@ public class StatisticsServiceImpl implements StatisticsService {
         }
         vo.setOwned(owned);
 
-        // 我借阅的书籍统计
         PersonalStatsVO.BorrowedStats borrowed = new PersonalStatsVO.BorrowedStats();
         Result<UserBorrowStatsDTO> borrowResult = remoteBookService.getUserBorrowStats(currentUserId);
         if (borrowResult != null && borrowResult.getData() != null) {
             UserBorrowStatsDTO stats = borrowResult.getData();
             borrowed.setTotalBorrowed(stats.getTotalBorrowed() != null ? stats.getTotalBorrowed() : 0);
+            borrowed.setBorrowedIn(stats.getBorrowedIn() != null ? stats.getBorrowedIn() : 0);
+            borrowed.setBorrowedOut(stats.getBorrowedOut() != null ? stats.getBorrowedOut() : 0);
             borrowed.setUnreturned(stats.getUnreturned() != null ? stats.getUnreturned() : 0);
         } else {
             borrowed.setTotalBorrowed(0);
+            borrowed.setBorrowedIn(0);
+            borrowed.setBorrowedOut(0);
             borrowed.setUnreturned(0);
         }
         vo.setBorrowed(borrowed);
 
-        // 我收藏的书籍统计
         PersonalStatsVO.CollectedStats collected = new PersonalStatsVO.CollectedStats();
         Result<Integer> collectCountResult = remoteCollectService.countUserCollected(currentUserId);
-        collected.setTotalCollected(collectCountResult != null ? collectCountResult.getData() : 0);
+        collected.setTotalCollected(collectCountResult != null && collectCountResult.getData() != null ? collectCountResult.getData() : 0);
         vo.setCollected(collected);
 
         return vo;
+    }
+
+    private <T> Page<T> paginate(List<T> records, Integer page, Integer pageSize) {
+        int current = page == null || page < 1 ? 1 : page;
+        int size = pageSize == null || pageSize < 1 ? 10 : pageSize;
+        int total = records.size();
+        int fromIndex = (current - 1) * size;
+
+        Page<T> result = new Page<>(current, size, total);
+        if (fromIndex >= total) {
+            result.setRecords(List.of());
+            return result;
+        }
+
+        int toIndex = Math.min(fromIndex + size, total);
+        result.setRecords(records.subList(fromIndex, toIndex));
+        return result;
     }
 
     private BorrowStatsVO createEmptyBorrowStats() {

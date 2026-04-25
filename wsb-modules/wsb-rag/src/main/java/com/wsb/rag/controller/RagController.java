@@ -1,5 +1,6 @@
 package com.wsb.rag.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
@@ -28,6 +29,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RagController {
 
+    private static final int MIN_LIMIT = 1;
+    private static final int MAX_LIMIT = 20;
+
     private final RagService ragService;
     private final BookAiContentService bookAiContentService;
     private final RemoteBookService remoteBookService;
@@ -36,8 +40,16 @@ public class RagController {
     @PostMapping("/recommend")
     public Result<List<BookRemoteDTO>> recommend(
             @RequestParam("query") String query,
-            @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
-        return Result.success(ragService.recommend(query, limit));
+            @RequestParam(value = "limit", defaultValue = "10") Integer limit,
+            @RequestParam(value = "mineOnly", defaultValue = "false") Boolean mineOnly) {
+        if (!isValidLimit(limit)) {
+            return Result.error(400, buildLimitErrorMessage());
+        }
+        if (Boolean.TRUE.equals(mineOnly) && !StpUtil.isLogin()) {
+            return Result.error(401, "请先登录后再查看我的推荐");
+        }
+        Long ownerId = Boolean.TRUE.equals(mineOnly) ? StpUtil.getLoginIdAsLong() : null;
+        return Result.success(ragService.recommend(query, limit, ownerId));
     }
 
     @Operation(summary = "相似图书", description = "获取与指定书籍相似的其他书籍")
@@ -45,6 +57,9 @@ public class RagController {
     public Result<List<BookRemoteDTO>> getSimilar(
             @PathVariable Long bookId,
             @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
+        if (!isValidLimit(limit)) {
+            return Result.error(400, buildLimitErrorMessage());
+        }
         return Result.success(ragService.getSimilarBooks(bookId, limit));
     }
 
@@ -84,5 +99,13 @@ public class RagController {
     public Result<String> getAggregatedReviews(@PathVariable Long bookId) {
         log.info("读取聚合网络书评缓存: bookId={}", bookId);
         return Result.success(bookAiContentService.getCachedReviewDigest(bookId));
+    }
+
+    private boolean isValidLimit(Integer limit) {
+        return limit != null && limit >= MIN_LIMIT && limit <= MAX_LIMIT;
+    }
+
+    private String buildLimitErrorMessage() {
+        return "limit 参数错误，可选范围：" + MIN_LIMIT + "-" + MAX_LIMIT;
     }
 }

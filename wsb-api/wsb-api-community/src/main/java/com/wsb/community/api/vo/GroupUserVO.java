@@ -1,11 +1,9 @@
 package com.wsb.community.api.vo;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.LocalDateTime;
 
 /**
  * 群组成员VO
@@ -31,8 +29,7 @@ public class GroupUserVO implements Serializable {
     private String nickname;
 
     /**
-     * 加入时间
+     * 用户头像
      */
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime joinTime;
+    private String avatar;
 }

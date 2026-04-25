@@ -13,18 +13,22 @@ import com.wsb.community.domain.GroupUser;
 import com.wsb.community.mapper.GroupMapper;
 import com.wsb.community.mapper.GroupUserMapper;
 import com.wsb.community.service.GroupUserService;
+import com.wsb.community.service.support.CommunityCacheService;
 import com.wsb.user.api.RemoteUserService;
 import com.wsb.user.api.dto.UserNicknameDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 群组成员服务实现类
+ * 群组成员服务实现
  */
 @Service
 @RequiredArgsConstructor
@@ -33,23 +37,13 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
     private final GroupUserConverter groupUserConverter;
     private final GroupMapper groupMapper;
     private final RemoteUserService remoteUserService;
+    private final CommunityCacheService communityCacheService;
 
     @Override
     public List<GroupUserVO> getGroupUsers(Long groupId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireGroupAccessible(groupId, currentUserId);
 
-        // 校验群组存在
-        Group group = groupMapper.selectById(groupId);
-        if (group == null || group.getIsDeleted()) {
-            throw new ServiceException("群组不存在");
-        }
-
-        // 校验当前用户是否在群组中
-        if (!isInGroup(groupId, currentUserId)) {
-            throw new ServiceException("您不在该群组中，无权查看成员列表");
-        }
-
-        // 查询群组成员
         List<GroupUser> groupUsers = this.list(Wrappers.<GroupUser>lambdaQuery()
                 .eq(GroupUser::getGroupId, groupId)
                 .eq(GroupUser::getIsDeleted, false)
@@ -59,98 +53,145 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
             return List.of();
         }
 
-        // 批量获取用户昵称
         List<Long> userIds = groupUsers.stream()
                 .map(GroupUser::getUserId)
-                .collect(Collectors.toList());
+                .toList();
         Result<List<UserNicknameDTO>> nicknamesResult = remoteUserService.getUserNicknamesByIds(userIds);
         if (nicknamesResult == null || nicknamesResult.getData() == null) {
             return List.of();
         }
 
         Map<Long, UserNicknameDTO> userMap = nicknamesResult.getData().stream()
-                .collect(Collectors.toMap(UserNicknameDTO::getId, u -> u, (a, b) -> a));
+                .collect(Collectors.toMap(UserNicknameDTO::getId, user -> user, (left, right) -> left));
 
-        // 组装VO
+        if (!userMap.containsKey(group.getOwnerId())) {
+            UserNicknameDTO owner = new UserNicknameDTO();
+            owner.setId(group.getOwnerId());
+            owner.setNickName("群主");
+            userMap.put(group.getOwnerId(), owner);
+        }
+
         return groupUsers.stream()
-                .map(gu -> groupUserConverter.toGroupUserVO(gu, userMap.get(gu.getUserId())))
+                .map(groupUser -> groupUserConverter.toGroupUserVO(groupUser, userMap.get(groupUser.getUserId())))
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void addUsers(GroupUserOperateDTO dto) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireOwner(dto.getGroupId(), currentUserId);
 
-        // 校验群组存在
-        Group group = groupMapper.selectById(dto.getGroupId());
-        if (group == null || group.getIsDeleted()) {
-            throw new ServiceException("群组不存在");
+        List<Long> targetUserIds = dto.getUserIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .filter(userId -> !Objects.equals(userId, group.getOwnerId()))
+                .toList();
+        if (targetUserIds.isEmpty()) {
+            throw new ServiceException("没有可加入的成员");
         }
 
-        // 校验当前用户是否在群组中
-        if (!isInGroup(dto.getGroupId(), currentUserId)) {
-            throw new ServiceException("您不在该群组中，无权邀请成员");
+        Result<Void> checkResult = remoteUserService.checkUserExists(targetUserIds);
+        if (checkResult.getCode() != 200) {
+            throw new ServiceException(checkResult.getMsg());
         }
 
-        // 校验用户是否存在
-        remoteUserService.checkUserExists(dto.getUserIds());
-
-        // 过滤已在群组的用户
-        List<Long> existingUserIds = this.list(Wrappers.<GroupUser>lambdaQuery()
-                .eq(GroupUser::getGroupId, dto.getGroupId())
-                .in(GroupUser::getUserId, dto.getUserIds())
-                .eq(GroupUser::getIsDeleted, false))
+        Set<Long> existingUserIds = this.list(Wrappers.<GroupUser>lambdaQuery()
+                        .eq(GroupUser::getGroupId, dto.getGroupId())
+                        .in(GroupUser::getUserId, targetUserIds)
+                        .eq(GroupUser::getIsDeleted, false))
                 .stream()
                 .map(GroupUser::getUserId)
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
 
-        List<Long> newUserIds = dto.getUserIds().stream()
-                .filter(id -> !existingUserIds.contains(id))
-                .collect(Collectors.toList());
-
+        List<Long> newUserIds = targetUserIds.stream()
+                .filter(userId -> !existingUserIds.contains(userId))
+                .toList();
         if (newUserIds.isEmpty()) {
-            throw new ServiceException("所有用户已在群组中");
+            throw new ServiceException("所选用户均已在群组中");
         }
 
-        // 批量插入
         List<GroupUser> groupUsers = newUserIds.stream()
                 .map(userId -> {
-                    GroupUser gu = new GroupUser();
-                    gu.setGroupId(dto.getGroupId());
-                    gu.setUserId(userId);
-                    gu.setIsDeleted(false);
-                    return gu;
+                    GroupUser groupUser = new GroupUser();
+                    groupUser.setGroupId(dto.getGroupId());
+                    groupUser.setUserId(userId);
+                    groupUser.setIsDeleted(false);
+                    return groupUser;
                 })
-                .collect(Collectors.toList());
+                .toList();
         this.saveBatch(groupUsers);
+        communityCacheService.evictGroupPublicShelves(dto.getGroupId());
+        communityCacheService.evictGroupPublicBooks(dto.getGroupId());
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void removeUsers(GroupUserOperateDTO dto) {
+        List<Long> targetUserIds = dto.getUserIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (targetUserIds.isEmpty()) {
+            throw new ServiceException("请至少选择一名成员");
+        }
+
+        for (Long userId : targetUserIds) {
+            kickUser(dto.getGroupId(), userId);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void kickUser(Long groupId, Long userId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireOwner(groupId, currentUserId);
 
-        // 校验群组存在
-        Group group = groupMapper.selectById(dto.getGroupId());
-        if (group == null || group.getIsDeleted()) {
-            throw new ServiceException("群组不存在");
+        if (Objects.equals(userId, group.getOwnerId())) {
+            throw new ServiceException("不能移除群主");
         }
 
-        // 校验当前用户是否在群组中
-        if (!isInGroup(dto.getGroupId(), currentUserId)) {
-            throw new ServiceException("您不在该群组中，无权移除成员");
-        }
-
-        // 软删除
-        this.update(Wrappers.<GroupUser>lambdaUpdate()
-                .eq(GroupUser::getGroupId, dto.getGroupId())
-                .in(GroupUser::getUserId, dto.getUserIds())
+        boolean removed = this.update(Wrappers.<GroupUser>lambdaUpdate()
+                .eq(GroupUser::getGroupId, groupId)
+                .eq(GroupUser::getUserId, userId)
                 .eq(GroupUser::getIsDeleted, false)
                 .set(GroupUser::getIsDeleted, true));
+        if (!removed) {
+            throw new ServiceException("该成员已不在群组中");
+        }
+        communityCacheService.evictGroupPublicShelves(groupId);
+        communityCacheService.evictGroupPublicBooks(groupId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void exitGroup(Long groupId) {
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireGroupAccessible(groupId, currentUserId);
+
+        if (Objects.equals(group.getOwnerId(), currentUserId)) {
+            throw new ServiceException("群主不能退出群聊，只能解散群组");
+        }
+
+        boolean removed = this.update(Wrappers.<GroupUser>lambdaUpdate()
+                .eq(GroupUser::getGroupId, groupId)
+                .eq(GroupUser::getUserId, currentUserId)
+                .eq(GroupUser::getIsDeleted, false)
+                .set(GroupUser::getIsDeleted, true));
+        if (!removed) {
+            throw new ServiceException("您当前不在该群组中");
+        }
+        communityCacheService.evictGroupPublicShelves(groupId);
+        communityCacheService.evictGroupPublicBooks(groupId);
     }
 
     @Override
     public boolean isInGroup(Long groupId, Long userId) {
+        Group group = groupMapper.selectById(groupId);
+        if (group != null && !Boolean.TRUE.equals(group.getIsDeleted()) && Objects.equals(group.getOwnerId(), userId)) {
+            return true;
+        }
         return this.exists(Wrappers.<GroupUser>lambdaQuery()
                 .eq(GroupUser::getGroupId, groupId)
                 .eq(GroupUser::getUserId, userId)
@@ -160,41 +201,49 @@ public class GroupUserServiceImpl extends ServiceImpl<GroupUserMapper, GroupUser
     @Override
     public List<GroupUserVO> getNonGroupUsers(Long groupId) {
         Long currentUserId = StpUtil.getLoginIdAsLong();
+        Group group = requireGroupAccessible(groupId, currentUserId);
 
-        // 校验群组存在
-        Group group = groupMapper.selectById(groupId);
-        if (group == null || group.getIsDeleted()) {
-            throw new ServiceException("群组不存在");
-        }
-
-        // 校验当前用户是否在群组中
-        if (!isInGroup(groupId, currentUserId)) {
-            throw new ServiceException("您不在该群组中，无权查看非成员列表");
-        }
-
-        // 获取群组已存在的成员ID
-        java.util.Set<Long> existingUserIds = this.list(Wrappers.<GroupUser>lambdaQuery()
-                .eq(GroupUser::getGroupId, groupId)
-                .eq(GroupUser::getIsDeleted, false))
+        Set<Long> existingUserIds = new LinkedHashSet<>(this.list(Wrappers.<GroupUser>lambdaQuery()
+                        .eq(GroupUser::getGroupId, groupId)
+                        .eq(GroupUser::getIsDeleted, false))
                 .stream()
                 .map(GroupUser::getUserId)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()));
+        existingUserIds.add(group.getOwnerId());
 
-        // 获取所有用户
         Result<List<UserNicknameDTO>> allUsersResult = remoteUserService.getAllUserNicknames();
         if (allUsersResult == null || allUsersResult.getData() == null) {
             return List.of();
         }
 
-        // 过滤出非群组成员
         return allUsersResult.getData().stream()
                 .filter(user -> !existingUserIds.contains(user.getId()))
                 .map(user -> {
                     GroupUserVO vo = new GroupUserVO();
                     vo.setUserId(user.getId());
                     vo.setNickname(user.getNickName());
+                    vo.setAvatar(user.getAvatar());
                     return vo;
                 })
-                .collect(Collectors.toList());
+                .toList();
+    }
+
+    private Group requireGroupAccessible(Long groupId, Long userId) {
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || Boolean.TRUE.equals(group.getIsDeleted())) {
+            throw new ServiceException("群组不存在");
+        }
+        if (!Objects.equals(group.getOwnerId(), userId) && !isInGroup(groupId, userId)) {
+            throw new ServiceException("您不在该群组中，无权执行当前操作");
+        }
+        return group;
+    }
+
+    private Group requireOwner(Long groupId, Long userId) {
+        Group group = requireGroupAccessible(groupId, userId);
+        if (!Objects.equals(group.getOwnerId(), userId)) {
+            throw new ServiceException("只有群主才能执行该操作");
+        }
+        return group;
     }
 }

@@ -28,11 +28,26 @@ public interface GroupUserService extends IService<GroupUser> {
     void addUsers(GroupUserOperateDTO dto);
 
     /**
-     * 踢用户出群
+     * 将用户移出群聊，仅群主可用
      *
      * @param dto 操作DTO
      */
     void removeUsers(GroupUserOperateDTO dto);
+
+    /**
+     * 群主移除指定成员
+     *
+     * @param groupId 群组ID
+     * @param userId  用户ID
+     */
+    void kickUser(Long groupId, Long userId);
+
+    /**
+     * 当前登录用户退出群聊
+     *
+     * @param groupId 群组ID
+     */
+    void exitGroup(Long groupId);
 
     /**
      * 检查用户是否在群组中
@@ -44,7 +59,7 @@ public interface GroupUserService extends IService<GroupUser> {
     boolean isInGroup(Long groupId, Long userId);
 
     /**
-     * 获取非群组成员列表（全站用户 - 群组已存在成员）
+     * 获取非群组成员列表
      *
      * @param groupId 群组ID
      * @return 非成员列表
