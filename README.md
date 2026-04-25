@@ -2,6 +2,8 @@
 
 一个面向个人藏书管理、借阅协作、社区分享与 AI 阅读辅助的全栈智能书库项目。
 
+项目的重点不只是“把图书录入系统做完整”，而是把图书元数据、阅读记录、摘要生成、向量检索和自然语言推荐串成一条真正可运行的 RAG 链路，让“我的藏书”可以被语义理解、相似召回和自然语言检索。
+
 本仓库采用前后端一体的 monorepo 结构：
 
 - 后端：Spring Boot 3 + Spring Cloud Alibaba 微服务
@@ -9,7 +11,15 @@
 - AI 检索：Spring AI + PostgreSQL + pgvector + `zhparser`
 - 本地依赖：MySQL、Redis、Nacos、RabbitMQ、PostgreSQL
 
-项目目标不是只做“图书录入”，而是把个人书架、群组借阅、统计分析和智能推荐串成一套完整的阅读管理系统。
+项目目标不是只做“图书录入”，而是把个人书架、群组借阅、统计分析和 RAG 驱动的智能推荐串成一套完整的阅读管理系统。
+
+## 项目亮点
+
+- 不是通用聊天机器人，而是围绕“个人藏书 / 群组借阅 / 阅读场景”落地的垂直 RAG
+- 既支持基于书名、作者、关键词的普通检索，也支持“想看一本讲女性成长的现实主义小说”这类自然语言推荐
+- 不是只做向量库演示，而是完整实现了“摘要生成 -> 向量化 -> 混合检索 -> 结果重排 -> 图书回填”的业务闭环
+- 中文检索不是简单 `LIKE`，而是结合 `pgvector` 向量召回、`zhparser` 中文全文检索和 RRF 重排
+- 推荐结果可以限定在“我的藏书”范围内，适合展示个性化私有书库场景
 
 ## 核心能力
 
@@ -275,28 +285,110 @@ http://localhost:8080/doc.html
 
 ## RAG 与 AI 能力
 
-`wsb-rag` 目前承担以下能力：
+`wsb-rag` 是这个项目最有辨识度的模块。它不是单纯接一个大模型接口，而是把图书数据加工成“可检索、可推荐、可解释”的知识底座，再对外提供推荐与 AI 内容能力。
 
-- 图书 AI 摘要生成
-- 网络书评聚合
-- 相似图书推荐
-- 自然语言推荐
-- 向量化与混合检索
+### 1. RAG 在这个项目里解决什么问题
 
-当前实现特点：
+传统图书管理系统通常只能按书名、作者、ISBN 做精确查询，但真实阅读需求往往是模糊的，例如：
 
-- 向量存储使用 PostgreSQL + pgvector
-- 中文全文检索使用 `zhparser`
-- 异步任务使用 RabbitMQ
-- 向量配置通过 `rag.pgvector.*` 管理
-- 当前默认向量维度为 `1024`
-- 向量表为 `public.book_embeddings`
+- 我想找一本适合入门机器学习的书
+- 我最近想看女性成长主题的小说
+- 给我推荐几本和《活着》气质相近的作品
 
-和代码对应的关键位置：
+这类需求无法只靠关系型数据库字段匹配解决，所以本项目把 RAG 用在“书的理解与召回”上，而不是只做聊天问答：
 
-- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/controller/RagController.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/controller/RagController.java)
-- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/config/RagVectorConfig.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/config/RagVectorConfig.java)
-- [sql/rag/rag_pgvector_init.sql](./sql/rag/rag_pgvector_init.sql)
+- 先让模型为图书生成面向检索的摘要
+- 再把书名、作者、关键词、分类、摘要拆成多个语义片段
+- 把这些片段写入 `pgvector`
+- 查询时同时走向量召回和中文关键词召回
+- 最后再把候选结果重排后返回真实图书对象
+
+也就是说，这里的 RAG 重点是“让书库可被自然语言检索”，而不是“做一个套壳聊天框”。
+
+### 2. 当前已经落地的 RAG 能力
+
+- 图书 AI 摘要生成：为单本书生成适合语义检索的中文摘要
+- 网络书评聚合：搜索外部书评并整理成简短可读的评论摘要
+- 相似图书推荐：根据某本书已有向量内容找相近作品
+- 自然语言推荐：输入一句自然语言，返回符合语义的图书列表
+- 私有书库推荐：支持只在当前用户自己的藏书范围内做推荐
+- 向量化与混合检索：向量召回和关键词召回并行，再做融合排序
+
+### 3. RAG 处理链路
+
+项目里的 RAG 不是同步硬算，而是一条异步流水线：
+
+1. 用户新增图书或触发 AI 处理
+2. `wsb-book` / `wsb-rag` 把摘要任务投递到 RabbitMQ
+3. `RagConsumer` 消费摘要任务，调用大模型生成摘要并写回图书表
+4. 摘要完成后继续投递向量任务
+5. `VectorServiceImpl` 将图书拆成多个片段并写入 `public.book_embeddings`
+6. 用户发起推荐请求时，`RagServiceImpl` 先做查询扩写，再调用混合检索
+7. 检索得到的 `bookId` 再回填成完整图书信息返回给前端
+
+这样设计有两个好处：
+
+- 图书录入和 AI 处理解耦，不会让用户保存图书时长时间阻塞
+- 摘要、向量、推荐可以独立重试，失败时也更容易恢复
+
+### 4. 为什么是 pgvector + zhparser + RabbitMQ
+
+这套组合是为了兼顾“语义理解”和“中文关键词命中”：
+
+- `pgvector`：负责语义相似度检索，解决“表达不同但语义接近”的召回问题
+- `zhparser`：负责中文全文检索，解决书名、作者、主题词等关键词匹配问题
+- `RabbitMQ`：负责把摘要生成和向量化改成异步任务，避免接口阻塞
+- `Redis`：承担书评缓存、任务幂等锁等短期状态
+
+所以它不是单一技术点，而是一套面向中文场景的检索架构。
+
+### 5. 混合检索是怎么做的
+
+当前推荐链路不是“只查向量库”，而是混合召回：
+
+- 查询预处理：`QueryTextAnalyzer` 会抽取关键词并做有限扩写
+- 向量召回：基于 `PgVectorStore` 做 similarity search
+- 关键词召回：基于 `zhparser` 和 SQL 排序规则做中文全文匹配
+- 结果融合：使用 RRF（Reciprocal Rank Fusion）合并多路候选
+- 结果回填：通过 `RemoteBookService` 拿到完整图书 DTO，并按召回顺序返回
+
+这种方案比“纯向量检索”更稳，原因是：
+
+- 精确书名、作者、分类词不会被语义检索稀释
+- 长尾中文表达依然能被全文检索兜住
+- 语义相近但措辞不同的查询，又能被向量召回补足
+
+### 6. 向量入库不是一整本书一条记录
+
+为了提升召回质量，项目没有把一本书粗暴写成一条向量，而是按内容职责拆成多个 chunk：
+
+- `identity`：书名、作者
+- `subject`：关键词、中图分类、主题信息
+- `summary`：AI 生成摘要
+
+不同 chunk 还有不同权重，这样做的目的，是让“书名命中”“主题命中”“摘要命中”在检索时各自发挥作用，而不是互相稀释。
+
+### 7. 为什么说它不只是 Demo
+
+这个 RAG 模块已经和业务模块真正打通，而不是孤立样例：
+
+- 推荐结果来自 `wsb-book` 的真实图书数据
+- 可以限定在某个用户自己的藏书范围内
+- 摘要生成后会回写图书表，参与后续检索
+- 向量状态有 `PENDING / PROCESSING / COMPLETED` 生命周期
+- 死信任务支持重新投递，幂等锁避免重复消费
+
+这意味着它更接近一个“可交付的业务子系统”，而不只是演示 Spring AI 能跑起来。
+
+### 8. 关键实现位置
+
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/controller/RagController.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/controller/RagController.java)：推荐、相似图书、摘要、书评接口
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/RagServiceImpl.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/RagServiceImpl.java)：查询扩写、多路召回、结果重排
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/VectorServiceImpl.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/VectorServiceImpl.java)：向量写入、混合检索、相似图书召回
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/consumer/RagConsumer.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/consumer/RagConsumer.java)：摘要与向量异步任务消费
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/BookAiContentServiceImpl.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/service/impl/BookAiContentServiceImpl.java)：摘要生成与网络书评聚合
+- [wsb-modules/wsb-rag/src/main/java/com/wsb/rag/config/RagVectorConfig.java](./wsb-modules/wsb-rag/src/main/java/com/wsb/rag/config/RagVectorConfig.java)：`PgVectorStore` 配置
+- [sql/rag/rag_pgvector_init.sql](./sql/rag/rag_pgvector_init.sql)：`vector`、`zhparser`、中文检索配置与向量表初始化脚本
 
 ## 常用验证命令
 
