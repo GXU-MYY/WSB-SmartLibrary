@@ -1,7 +1,10 @@
 package com.wsb.user.service;
 
+import cn.dev33.satoken.stp.SaTokenInfo;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.wsb.user.api.dto.UserLoginDTO;
+import com.wsb.user.api.dto.UserNicknameDTO;
 import com.wsb.user.api.dto.UserRemoteDTO;
 import com.wsb.user.domain.User;
 import com.wsb.user.api.dto.UserRegisterDTO;
@@ -19,7 +22,7 @@ public interface UserService extends IService<User> {
 
   UserRemoteDTO getUserInfoByUsername(String username);
 
-  Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName);
+  Page<UserInfoVO> getUserList(Integer page, Integer pageSize, String userName, String phone);
 
   UserInfoVO getUserInfoByUserId(Long userId);
 
@@ -28,4 +31,18 @@ public interface UserService extends IService<User> {
   void sendCaptcha(String telphone);
 
   void existsByIds(List<Long> userIds);
+
+  List<UserNicknameDTO> getUserNicknamesByIds(List<Long> userIds);
+
+  List<UserNicknameDTO> getAllUserNicknames();
+
+  /**
+   * 用户登录
+   */
+  SaTokenInfo login(UserLoginDTO dto);
+
+  /**
+   * 用户注销
+   */
+  void logout();
 }

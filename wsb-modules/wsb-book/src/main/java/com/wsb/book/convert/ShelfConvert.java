@@ -18,6 +18,10 @@ import java.util.List;
 @Mapper(componentModel = "spring")
 public interface ShelfConvert {
 
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     @Mapping(target = "isDeleted", constant = "false")
     Shelf toShelf(ShelfAddDTO dto);
 
@@ -26,5 +30,10 @@ public interface ShelfConvert {
     List<ShelfVO> toShelfVOList(List<Shelf> list);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "shelfType", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     void updateShelfFromDto(ShelfUpdateDTO dto, @MappingTarget Shelf shelf);
 }

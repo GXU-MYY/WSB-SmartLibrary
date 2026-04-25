@@ -1,0 +1,149 @@
+package com.wsb.book.api;
+
+import com.wsb.book.api.dto.BookBorrowCountDTO;
+import com.wsb.book.api.dto.BookRemoteDTO;
+import com.wsb.book.api.dto.CommunityBorrowCreateDTO;
+import com.wsb.book.api.dto.BorrowCategoryStatsDTO;
+import com.wsb.book.api.dto.CategoryCountDTO;
+import com.wsb.book.api.dto.PublicShelfBookDTO;
+import com.wsb.book.api.dto.ShelfRemoteDTO;
+import com.wsb.book.api.dto.UserBookCountDTO;
+import com.wsb.book.api.dto.UserBorrowStatsDTO;
+import com.wsb.common.core.domain.Result;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import com.wsb.book.api.vo.CommunityBorrowFlowVO;
+
+import java.util.List;
+
+/**
+ * 书籍远程调用服务
+ */
+@FeignClient(contextId = "remoteBookService", value = "wsb-book", path = "/v1/inner")
+public interface RemoteBookService {
+
+    /**
+     * 根据ID获取书籍信息
+     */
+    @GetMapping("/book/{bookId}")
+    Result<BookRemoteDTO> getBookById(@PathVariable("bookId") Long bookId);
+
+    /**
+     * 根据ID列表批量获取书籍信息
+     */
+    @GetMapping("/book/batch")
+    Result<List<BookRemoteDTO>> getBooksByIds(@RequestParam("ids") List<Long> bookIds);
+
+    /**
+     * 根据ID获取书架信息
+     */
+    @GetMapping("/shelf/{shelfId}")
+    Result<ShelfRemoteDTO> getShelfById(@PathVariable("shelfId") Long shelfId);
+
+    /**
+     * 根据ID列表批量获取书架信息
+     */
+    @GetMapping("/shelf/batch")
+    Result<List<ShelfRemoteDTO>> getShelfByIds(@RequestParam("ids") List<Long> shelfIds);
+
+    /**
+     * 鏍规嵁鐢ㄦ埛ID鍒楄〃鑾峰彇鍏紑涔︽灦
+     */
+    @GetMapping("/shelf/public")
+    Result<List<ShelfRemoteDTO>> getPublicShelvesByOwners(@RequestParam("user_ids") List<Long> userIds);
+
+    /**
+     * 鏍规嵁鐢ㄦ埛ID鍒楄〃鑾峰彇鍏紑涔︽灦涓殑鍥句功
+     */
+    @GetMapping("/shelf/public/books")
+    Result<List<PublicShelfBookDTO>> getPublicShelfBooksByOwners(@RequestParam("user_ids") List<Long> userIds);
+
+    // ========== 书籍统计相关接口 ==========
+
+    /**
+     * 统计用户拥书数量（批量）
+     */
+    @GetMapping("/book/stats/user-count")
+    Result<List<UserBookCountDTO>> countBooksByUsers(@RequestParam("user_ids") List<Long> userIds);
+
+    /**
+     * 按分类统计书籍数量（指定用户）
+     */
+    @GetMapping("/book/stats/category")
+    Result<List<CategoryCountDTO>> countBooksByCategory(@RequestParam("user_id") Long userId);
+
+    /**
+     * 获取用户拥有的书籍ID列表
+     */
+    @GetMapping("/book/stats/user-books")
+    Result<List<Long>> getBookIdsByOwner(@RequestParam("user_id") Long userId);
+
+    // ========== 借阅统计相关接口 ==========
+
+    /**
+     * 统计书籍借阅次数（批量）
+     */
+    @GetMapping("/borrow/stats/book-count")
+    Result<List<BookBorrowCountDTO>> countBorrowByBooks(@RequestParam("book_ids") List<Long> bookIds);
+
+    /**
+     * 统计用户的借阅数据（用户作为借阅者）
+     */
+    @GetMapping("/borrow/stats/user-borrowed")
+    Result<UserBorrowStatsDTO> getUserBorrowStats(@RequestParam("user_id") Long userId);
+
+    /**
+     * 统计书籍被借出未归还数（owner维度）
+     */
+    @GetMapping("/borrow/stats/owner-unreturned")
+    Result<Integer> countUnreturnedByOwner(@RequestParam("owner_id") Long ownerId);
+
+    /**
+     * 按分类统计借阅数据（指定书籍ID列表）
+     */
+    @GetMapping("/borrow/stats/category")
+    Result<List<BorrowCategoryStatsDTO>> getBorrowStatsByCategory(@RequestParam("book_ids") List<Long> bookIds);
+
+    /**
+     * 获取书籍借阅统计（总数、阅读中、已读）
+     */
+    @GetMapping("/borrow/stats/summary")
+    Result<BorrowCategoryStatsDTO> getBorrowSummary(@RequestParam("book_ids") List<Long> bookIds);
+
+    // ========== RAG 相关接口 ==========
+
+    /**
+     * 获取摘要为空的书籍ID列表
+     */
+    @GetMapping("/book/rag/summary-null")
+    Result<List<Long>> getBooksWithNullSummary();
+
+    /**
+     * 获取未生成向量的书籍ID列表
+     */
+    @GetMapping("/book/rag/embedding-pending")
+    Result<List<Long>> getBooksPendingEmbedding();
+
+    /**
+     * 更新书籍摘要
+     */
+    @PutMapping("/book/rag/{bookId}/summary")
+    Result<Void> updateSummary(@PathVariable("bookId") Long bookId, @RequestParam("summary") String summary);
+
+    /**
+     * 更新书籍向量状态
+     */
+    @PutMapping("/book/rag/{bookId}/embedding-status")
+    Result<Void> updateEmbeddingStatus(@PathVariable("bookId") Long bookId, @RequestParam("status") Integer status);
+
+    /**
+     * 鍒涘缓绀剧兢鍊熼槄娴佺▼
+     */
+    @PostMapping("/borrow/community/flow")
+    Result<CommunityBorrowFlowVO> createCommunityBorrowFlow(@RequestBody CommunityBorrowCreateDTO dto);
+}

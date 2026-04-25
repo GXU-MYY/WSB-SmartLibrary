@@ -3,6 +3,7 @@ package com.wsb.book.domain;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
@@ -40,7 +41,7 @@ public class BookBorrow implements Serializable {
     private Long userId;
 
     /**
-     * 借阅对方姓名
+     * 借阅对象姓名
      */
     private String borrowerName;
 
@@ -50,7 +51,12 @@ public class BookBorrow implements Serializable {
     private LocalDate borrowTime;
 
     /**
-     * 归还日期（NULL表示未归还）
+     * 预计归还日期
+     */
+    private LocalDate dueTime;
+
+    /**
+     * 实际归还日期
      */
     private LocalDate returnTime;
 
@@ -60,18 +66,42 @@ public class BookBorrow implements Serializable {
     private Integer borrowType;
 
     /**
-     * 图书名称（冗余）
+     * 借阅状态：0-借阅中，1-已归还，2-已逾期
+     */
+    private Integer status;
+
+    /**
+     * 图书名称快照
      */
     private String bookName;
 
     /**
-     * 封面URL（冗余）
+     * 封面URL快照
      */
     private String coverUrl;
 
     /**
+     * 社群借阅流ID，用于绑定借入和借出两条记录
+     */
+    @TableField("borrow_flow_id")
+    private String borrowFlowId;
+
+    /**
+     * 群组ID，标记这条借阅记录来源于哪个群组
+     */
+    @TableField("group_id")
+    private Long groupId;
+
+    /**
+     * 借阅申请ID，关联群组借阅申请记录
+     */
+    @TableField("request_id")
+    private Long requestId;
+
+    /**
      * 是否删除
      */
+    @TableLogic
     private Boolean isDeleted;
 
     /**

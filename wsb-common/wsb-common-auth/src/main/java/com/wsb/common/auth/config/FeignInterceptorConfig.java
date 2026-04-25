@@ -1,16 +1,18 @@
 package com.wsb.common.auth.config;
 
-import cn.dev33.satoken.same.SaSameUtil;
+import cn.dev33.satoken.exception.NotWebContextException;
 import cn.dev33.satoken.stp.StpUtil;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Feign拦截器，自动传递鉴权Token
+ * Feign 拦截器，自动透传当前用户 token。
  */
 @Configuration
+@ConditionalOnClass(RequestInterceptor.class)
 public class FeignInterceptorConfig {
 
   @Bean
@@ -18,12 +20,13 @@ public class FeignInterceptorConfig {
     return new RequestInterceptor() {
       @Override
       public void apply(RequestTemplate template) {
-        // 1. 传递用户Token
-        if (StpUtil.isLogin()) {
-          template.header(StpUtil.getTokenName(), StpUtil.getTokenValue());
+        try {
+          if (StpUtil.isLogin()) {
+            template.header(StpUtil.getTokenName(), StpUtil.getTokenValue());
+          }
+        } catch (NotWebContextException ignored) {
+          // MQ consumer and scheduled job threads do not have HttpServletRequest.
         }
-        // 2. 传递Same-Token (服务间内部调用鉴权，如果启用了Sa-Token Same-Token)
-        // template.header(SaSameUtil.SAME_TOKEN, SaSameUtil.getToken());
       }
     };
   }

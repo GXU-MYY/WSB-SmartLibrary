@@ -24,7 +24,6 @@ public class SaTokenConfigure {
         .setAuth(obj -> {
           // 登录校验 -- 拦截所有路由，并排除登录、注册、验证码等开放接口
           SaRouter.match("/**")
-              .notMatch("/auth/**") // 旧版登录路径(保留兼容)
               .notMatch("/v1/admin/login") // 登录
               .notMatch("/v1/admin/register") // 注册
               .notMatch("/v1/admin/passwd") // 忘记密码

@@ -5,14 +5,22 @@ import com.wsb.book.api.dto.BookAddDTO;
 import com.wsb.book.api.dto.BookUpdateDTO;
 import com.wsb.book.api.vo.BookAddVO;
 import com.wsb.book.api.vo.BookVO;
+import com.wsb.book.api.vo.IsbnBookVO;
 import com.wsb.book.api.vo.MyBookVO;
+import com.wsb.book.api.vo.RecentBookVO;
 import com.wsb.book.domain.Book;
+import com.wsb.book.response.AliyunIsbnResponse;
+import com.wsb.book.response.GoogleBooksResponse;
+import org.apache.commons.lang3.StringUtils;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -21,6 +29,13 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring")
 public interface BookConverter {
 
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "embeddingStatus", ignore = true)
+    @Mapping(target = "isLentOut", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     Book toBook(BookAddDTO dto);
 
     BookAddVO toBookAddVO(Book book);
@@ -28,6 +43,8 @@ public interface BookConverter {
     BookVO toBookVO(Book book);
 
     MyBookVO toMyBookVO(Book book);
+
+    RecentBookVO toRecentBookVO(Book book);
 
     default Page<BookVO> toVOPage(Page<Book> bookPage) {
         Page<BookVO> voPage = new Page<>(bookPage.getCurrent(), bookPage.getSize(), bookPage.getTotal());
@@ -38,5 +55,133 @@ public interface BookConverter {
     }
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "isOnShelf", ignore = true)
+    @Mapping(target = "isBorrowed", ignore = true)
+    @Mapping(target = "isLentOut", ignore = true)
+    @Mapping(target = "userId", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "embeddingStatus", ignore = true)
+    @Mapping(target = "createTime", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     void updateBookFromDto(BookUpdateDTO dto, @MappingTarget Book book);
+
+    /**
+     * 阿里云 ISBN 响应转换为 IsbnBookVO
+     */
+    @Mapping(source = "pubDate", target = "publishDate")
+    @Mapping(source = "page", target = "pageCount")
+    @Mapping(target = "summary", ignore = true)
+    @Mapping(source = "img", target = "coverUrl")
+    @Mapping(source = "pubPlace", target = "pubPlace")
+    @Mapping(source = "cipTxt", target = "cip")
+    @Mapping(source = "yinci", target = "impression")
+    @Mapping(source = "format", target = "bookFormat")
+    @Mapping(source = "genus", target = "clc")
+    @Mapping(target = "subtitle", ignore = true)
+    IsbnBookVO toIsbnBookVO(AliyunIsbnResponse.BookDetail detail);
+
+    /**
+     * 阿里云转换后清理关键词格式
+     */
+    @AfterMapping
+    default void afterAliyunMapping(AliyunIsbnResponse.BookDetail detail, @MappingTarget IsbnBookVO vo) {
+        if (detail != null && StringUtils.isNotBlank(detail.getKeyword())) {
+            vo.setKeyword(cleanKeyword(detail.getKeyword()));
+        }
+    }
+
+    /**
+     * Google Books 响应转换为 IsbnBookVO
+     */
+    @Mapping(source = "publishedDate", target = "publishDate")
+    @Mapping(target = "summary", ignore = true)
+    @Mapping(target = "author", ignore = true)
+    @Mapping(target = "pageCount", ignore = true)
+    @Mapping(target = "keyword", ignore = true)
+    @Mapping(target = "coverUrl", ignore = true)
+    @Mapping(target = "isbn", ignore = true)
+    @Mapping(target = "isbn10", ignore = true)
+    @Mapping(target = "price", ignore = true)
+    @Mapping(target = "pubPlace", ignore = true)
+    @Mapping(target = "binding", ignore = true)
+    @Mapping(target = "cip", ignore = true)
+    @Mapping(target = "edition", ignore = true)
+    @Mapping(target = "impression", ignore = true)
+    @Mapping(target = "bookFormat", ignore = true)
+    @Mapping(target = "clc", ignore = true)
+    IsbnBookVO toIsbnBookVO(GoogleBooksResponse.VolumeInfo volumeInfo);
+
+    /**
+     * Google Books 转换后处理列表、封面和 ISBN
+     */
+    @AfterMapping
+    default void afterGoogleMapping(GoogleBooksResponse.VolumeInfo volumeInfo, @MappingTarget IsbnBookVO vo) {
+        if (volumeInfo == null) {
+            return;
+        }
+        vo.setAuthor(joinList(volumeInfo.getAuthors()));
+        if (volumeInfo.getPageCount() != null) {
+            vo.setPageCount(String.valueOf(volumeInfo.getPageCount()));
+        }
+        vo.setKeyword(joinList(volumeInfo.getCategories()));
+        if (volumeInfo.getImageLinks() != null) {
+            String coverUrl = StringUtils.defaultIfBlank(
+                    volumeInfo.getImageLinks().getThumbnail(),
+                    volumeInfo.getImageLinks().getSmallThumbnail()
+            );
+            if (StringUtils.isNotBlank(coverUrl)) {
+                vo.setCoverUrl(coverUrl.replaceFirst("^http://", "https://"));
+            }
+        }
+        if (volumeInfo.getIndustryIdentifiers() != null) {
+            for (GoogleBooksResponse.IndustryIdentifier identifier : volumeInfo.getIndustryIdentifiers()) {
+                if ("ISBN_13".equals(identifier.getType())) {
+                    vo.setIsbn(identifier.getIdentifier());
+                } else if ("ISBN_10".equals(identifier.getType())) {
+                    vo.setIsbn10(identifier.getIdentifier());
+                }
+            }
+        }
+    }
+
+    /**
+     * 清理关键词字符串并统一分隔符
+     */
+    private static String cleanKeyword(String keyword) {
+        if (StringUtils.isBlank(keyword)) {
+            return null;
+        }
+        String normalized = keyword.replaceAll("^\\|+|\\|+$", "");
+        return normalizeDelimitedText(normalized);
+    }
+
+    /**
+     * 将字符串列表用逗号拼接
+     */
+    default String joinList(List<String> list) {
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        return normalizeDelimitedText(String.join(",", list));
+    }
+
+    /**
+     * 统一外部数据的分隔符为逗号，并去除空项
+     */
+    private static String normalizeDelimitedText(String text) {
+        if (StringUtils.isBlank(text)) {
+            return null;
+        }
+
+        String normalized = text
+                .replaceAll("\\s*[|，、;；]\\s*", ",")
+                .replaceAll("\\s*[-－–—]\\s*", ",");
+
+        String result = Arrays.stream(normalized.split(","))
+                .map(String::trim)
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .collect(Collectors.joining(","));
+        return StringUtils.defaultIfBlank(result, null);
+    }
 }

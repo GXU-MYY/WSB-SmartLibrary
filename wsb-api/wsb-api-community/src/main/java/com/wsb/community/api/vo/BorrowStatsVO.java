@@ -1,0 +1,62 @@
+package com.wsb.community.api.vo;
+
+import lombok.Data;
+
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.List;
+
+/**
+ * 借阅统计VO
+ */
+@Data
+public class BorrowStatsVO implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * 总数
+     */
+    private Integer total;
+
+    /**
+     * 阅读中
+     */
+    private Integer reading;
+
+    /**
+     * 已读
+     */
+    private Integer read;
+
+    /**
+     * 分类统计列表
+     */
+    private List<CategoryStatsVO> classifyList;
+
+    @Data
+    public static class CategoryStatsVO implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * 分类名称
+         */
+        private String category;
+
+        /**
+         * 总数
+         */
+        private Integer total;
+
+        /**
+         * 阅读中
+         */
+        private Integer reading;
+
+        /**
+         * 已读
+         */
+        private Integer read;
+    }
+}
