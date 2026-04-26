@@ -47,17 +47,17 @@ public class VectorServiceImpl implements VectorService {
     @Transactional(rollbackFor = Exception.class)
     public void storeEmbedding(Long bookId, BookRemoteDTO metadata) {
         if (bookId == null) {
-            throw new ServiceException("book id must not be null");
+            throw new ServiceException("图书ID不能为空");
         }
 
         List<Document> documents = buildDocuments(bookId, metadata);
         if (documents.isEmpty()) {
-            throw new ServiceException("embedding content must not be empty");
+            throw new ServiceException("向量化内容不能为空");
         }
 
         deleteEmbedding(bookId);
         pgVectorStore.add(documents);
-        log.info("stored pgvector embeddings: bookId={}, chunks={}", bookId, documents.size());
+        log.info("已写入 pgvector 向量分片: bookId={}, chunks={}", bookId, documents.size());
     }
 
     @Override
@@ -86,7 +86,7 @@ public class VectorServiceImpl implements VectorService {
         mergeRrfScores(scores, bestRanks, keywordRanks, properties.getKeywordScoreWeight());
 
         log.info(
-                "hybrid recall completed: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
+                "混合召回完成: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
                 query,
                 vectorRanks.size(),
                 keywordRanks.size(),
@@ -122,7 +122,7 @@ public class VectorServiceImpl implements VectorService {
                     .filter(Objects::nonNull)
                     .toList();
         } catch (RuntimeException e) {
-            log.warn("similar book recall failed: bookId={}", bookId, e);
+            log.warn("相似图书召回失败: bookId={}", bookId, e);
             return List.of();
         }
     }
@@ -135,7 +135,7 @@ public class VectorServiceImpl implements VectorService {
 
         int deleted = bookEmbeddingMapper.deleteByBookId(qualifiedTableName(), bookId.toString());
         if (deleted > 0) {
-            log.info("deleted pgvector embeddings: bookId={}, rows={}", bookId, deleted);
+            log.info("已删除 pgvector 向量分片: bookId={}, rows={}", bookId, deleted);
         }
     }
 
@@ -146,7 +146,9 @@ public class VectorServiceImpl implements VectorService {
         }
 
         addDocument(documents, bookId, book, CHUNK_IDENTITY, 4, buildIdentityText(book));
-        addDocument(documents, bookId, book, CHUNK_SUBJECT, 3, buildSubjectText(book));
+        if (hasSubjectChunk(book)) {
+            addDocument(documents, bookId, book, CHUNK_SUBJECT, 3, buildSubjectText(book));
+        }
         addDocument(documents, bookId, book, CHUNK_SUMMARY, 1, buildSummaryText(book));
         return documents;
     }
@@ -180,6 +182,11 @@ public class VectorServiceImpl implements VectorService {
         appendField(sb, "书名", book.getTitle());
         appendField(sb, "摘要", book.getSummary());
         return sb.toString();
+    }
+
+    private boolean hasSubjectChunk(BookRemoteDTO book) {
+        return book != null
+                && (StringUtils.isNotBlank(book.getKeyword()) || StringUtils.isNotBlank(book.getClc()));
     }
 
     private void appendField(StringBuilder sb, String fieldName, String value) {
@@ -248,7 +255,7 @@ public class VectorServiceImpl implements VectorService {
         try {
             return searchVectorBookRanks(query, candidateLimit, bookIdFilter);
         } catch (RuntimeException e) {
-            log.warn("vector recall failed, fallback to keyword recall only: query={}", query, e);
+            log.warn("向量召回失败，回退为仅关键词召回: query={}", query, e);
             return List.of();
         }
     }
@@ -268,7 +275,7 @@ public class VectorServiceImpl implements VectorService {
                     .filter(rank -> rank.bookId() != null)
                     .toList();
         } catch (RuntimeException e) {
-            log.warn("keyword recall failed, fallback to vector recall only: query={}", query, e);
+            log.warn("关键词召回失败，回退为仅向量召回: query={}", query, e);
             return List.of();
         }
     }
@@ -406,7 +413,7 @@ public class VectorServiceImpl implements VectorService {
 
     private String safeIdentifier(String identifier) {
         if (StringUtils.isBlank(identifier) || !identifier.matches("[A-Za-z0-9_]+")) {
-            throw new ServiceException("invalid pgvector identifier: " + identifier);
+            throw new ServiceException("非法的 pgvector 标识符: " + identifier);
         }
         return identifier;
     }
