@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
+import com.wsb.rag.dto.RecommendedBookPreviewDTO;
 import com.wsb.rag.service.BookAiContentService;
 import com.wsb.rag.service.RagService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,9 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * RAG 接口控制器
- */
 @Tag(name = "智能推荐")
 @Slf4j
 @RestController
@@ -31,13 +29,14 @@ public class RagController {
 
     private static final int MIN_LIMIT = 1;
     private static final int MAX_LIMIT = 20;
+    private static final String DEFAULT_SIMILAR_LIMIT = "4";
 
     private final RagService ragService;
     private final BookAiContentService bookAiContentService;
     private final RemoteBookService remoteBookService;
 
-    @Operation(summary = "智能推荐", description = "自然语言查询推荐书籍")
-    @PostMapping("/recommend")
+    @Operation(summary = "智能推荐", description = "自然语言查询推荐图书")
+    @GetMapping("/recommend")
     public Result<List<BookRemoteDTO>> recommend(
             @RequestParam("query") String query,
             @RequestParam(value = "limit", defaultValue = "10") Integer limit,
@@ -52,24 +51,30 @@ public class RagController {
         return Result.success(ragService.recommend(query, limit, ownerId));
     }
 
-    @Operation(summary = "相似图书", description = "获取与指定书籍相似的其他书籍")
+    @Operation(summary = "推荐图书预览", description = "推荐入口使用的受限图书详情")
+    @GetMapping("/books/{bookId}/preview")
+    public Result<RecommendedBookPreviewDTO> getRecommendedBookPreview(@PathVariable Long bookId) {
+        return Result.success(ragService.getRecommendedBookPreview(bookId));
+    }
+
+    @Operation(summary = "相似图书", description = "获取与指定图书相似的其他图书")
     @GetMapping("/similar/{bookId}")
     public Result<List<BookRemoteDTO>> getSimilar(
             @PathVariable Long bookId,
-            @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
+            @RequestParam(value = "limit", defaultValue = DEFAULT_SIMILAR_LIMIT) Integer limit) {
         if (!isValidLimit(limit)) {
             return Result.error(400, buildLimitErrorMessage());
         }
         return Result.success(ragService.getSimilarBooks(bookId, limit));
     }
 
-    @Operation(summary = "生成AI摘要", description = "为指定书籍生成 AI 摘要")
+    @Operation(summary = "生成 AI 摘要", description = "为指定图书生成 AI 摘要")
     @PostMapping("/summary/{bookId}")
     public Result<String> generateSummary(@PathVariable Long bookId) {
         return Result.success(bookAiContentService.generateSummary(bookId));
     }
 
-    @Operation(summary = "获取AI摘要", description = "获取指定书籍的 AI 摘要")
+    @Operation(summary = "获取 AI 摘要", description = "获取指定图书的 AI 摘要")
     @GetMapping("/summary/{bookId}")
     public Result<String> getSummary(@PathVariable Long bookId) {
         var result = remoteBookService.getBookById(bookId);
@@ -82,22 +87,22 @@ public class RagController {
     @Operation(summary = "聚合网络书评", description = "搜索并聚合网络书评")
     @PostMapping("/reviews/{bookId}")
     public Result<String> aggregateReviews(@PathVariable Long bookId) {
-        log.info("收到聚合网络书评请求: bookId={}", bookId);
+        log.info("received review aggregation request: bookId={}", bookId);
         var result = remoteBookService.getBookById(bookId);
         if (result.getData() == null) {
-            return Result.success("书籍不存在");
+            return Result.success("图书不存在");
         }
 
         BookRemoteDTO book = result.getData();
         String reviews = bookAiContentService.aggregateReviews(bookId, book.getTitle(), book.getAuthor());
-        log.info("返回聚合网络书评结果: bookId={}", bookId);
+        log.info("review aggregation completed: bookId={}", bookId);
         return Result.success(reviews);
     }
 
-    @Operation(summary = "获取聚合网络书评", description = "优先返回 Redis 中已缓存的聚合书评")
+    @Operation(summary = "获取聚合书评", description = "优先返回已缓存的聚合书评")
     @GetMapping("/reviews/{bookId}")
     public Result<String> getAggregatedReviews(@PathVariable Long bookId) {
-        log.info("读取聚合网络书评缓存: bookId={}", bookId);
+        log.info("read cached review digest: bookId={}", bookId);
         return Result.success(bookAiContentService.getCachedReviewDigest(bookId));
     }
 

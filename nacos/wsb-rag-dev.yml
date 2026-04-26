@@ -74,7 +74,3 @@ rag:
   recommend:
     min-candidates: ${RAG_RECOMMEND_MIN_CANDIDATES:30}
     candidate-multiplier: ${RAG_RECOMMEND_CANDIDATE_MULTIPLIER:3}
-    llm-rerank-enabled: ${RAG_LLM_RERANK_ENABLED:true}
-    llm-rerank-max-candidates: ${RAG_LLM_RERANK_MAX_CANDIDATES:20}
-    rerank-model: ${RAG_RERANK_MODEL:deepseek-chat}
-    rerank-timeout-seconds: ${RAG_RERANK_TIMEOUT_SECONDS:20}

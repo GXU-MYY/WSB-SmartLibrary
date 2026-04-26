@@ -5,6 +5,8 @@ import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
 import com.wsb.common.core.exception.ServiceException;
 import com.wsb.rag.config.RagRecommendProperties;
+import com.wsb.rag.dto.RecommendedBookPreviewDTO;
+import com.wsb.rag.service.BookAiContentService;
 import com.wsb.rag.service.RagService;
 import com.wsb.rag.service.VectorService;
 import com.wsb.rag.util.QueryTextAnalyzer;
@@ -38,6 +40,7 @@ public class RagServiceImpl implements RagService {
     private final VectorService vectorService;
     private final RabbitTemplate rabbitTemplate;
     private final RagRecommendProperties recommendProperties;
+    private final BookAiContentService bookAiContentService;
 
     @Value("${rag.exchange}")
     private String exchange;
@@ -60,12 +63,11 @@ public class RagServiceImpl implements RagService {
             return List.of();
         }
 
-        int candidateLimit = resolveRecommendCandidateLimit(limit);
         List<String> expandedQueries = QueryTextAnalyzer.expandQueries(
                 query, recommendProperties.getMaxExpandedQueries());
         List<Long> bookIds = ownerId == null
-                ? searchExpandedQueries(expandedQueries, candidateLimit, Set.of())
-                : searchOwnedBooks(expandedQueries, candidateLimit, ownerId);
+                ? searchExpandedQueries(expandedQueries, limit, Set.of())
+                : searchOwnedBooks(expandedQueries, limit, ownerId);
         if (bookIds.isEmpty()) {
             return List.of();
         }
@@ -84,6 +86,30 @@ public class RagServiceImpl implements RagService {
         }
 
         return fetchBooksInOrder(bookIds);
+    }
+
+    @Override
+    public RecommendedBookPreviewDTO getRecommendedBookPreview(Long bookId) {
+        if (bookId == null) {
+            return null;
+        }
+
+        Result<BookRemoteDTO> result = remoteBookService.getBookById(bookId);
+        BookRemoteDTO book = result.getData();
+        if (book == null) {
+            return null;
+        }
+
+        RecommendedBookPreviewDTO preview = new RecommendedBookPreviewDTO();
+        preview.setId(book.getId());
+        preview.setTitle(book.getTitle());
+        preview.setCoverUrl(book.getCoverUrl());
+        preview.setAuthor(book.getAuthor());
+        preview.setPublisher(book.getPublisher());
+        preview.setIsbn(StringUtils.defaultIfBlank(book.getIsbn(), book.getIsbn10()));
+        preview.setSummary(book.getSummary());
+        preview.setReviewDigest(bookAiContentService.getCachedReviewDigest(bookId));
+        return preview;
     }
 
     @Override
@@ -135,12 +161,14 @@ public class RagServiceImpl implements RagService {
             return List.of();
         }
 
+        int candidateLimit = resolveRecommendCandidateLimit(limit);
         Map<Long, Double> scores = new HashMap<>();
         Map<Long, Integer> bestRanks = new HashMap<>();
         for (int queryIndex = 0; queryIndex < queries.size(); queryIndex++) {
             String expandedQuery = queries.get(queryIndex);
             double queryWeight = queryIndex == 0 ? 1.0 : 0.75;
-            List<Long> rankedIds = vectorService.searchSimilar(expandedQuery, limit, bookIdFilter);
+            List<Long> rankedIds = vectorService.searchSimilar(
+                    expandedQuery, candidateLimit, candidateLimit, bookIdFilter);
             for (int rank = 0; rank < rankedIds.size(); rank++) {
                 Long bookId = rankedIds.get(rank);
                 if (bookId == null) {

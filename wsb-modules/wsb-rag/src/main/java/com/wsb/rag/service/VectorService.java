@@ -38,6 +38,17 @@ public interface VectorService {
     List<Long> searchSimilar(String query, int limit, Set<Long> bookIdFilter);
 
     /**
+     * Similarity search with an explicit recall size.
+     *
+     * @param query          query text
+     * @param limit          max ids to return
+     * @param candidateLimit recall size used inside hybrid search
+     * @param bookIdFilter   allowed book ids
+     * @return ranked book ids
+     */
+    List<Long> searchSimilar(String query, int limit, int candidateLimit, Set<Long> bookIdFilter);
+
+    /**
      * 根据书籍ID获取相似书籍
      *
      * @param bookId 书籍ID

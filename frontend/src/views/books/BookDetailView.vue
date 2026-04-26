@@ -15,8 +15,13 @@ import {
   onShelf,
   updateReadingRecord,
 } from '@/api/book'
-import { aggregateReviews, getAiSummary, getReviewDigest, getSimilarBooks } from '@/api/rag'
-import BookCard from '@/components/BookCard.vue'
+import {
+  aggregateReviews,
+  getAiSummary,
+  getReviewDigest,
+  getSimilarBooks,
+  SIMILAR_BOOK_LIMIT,
+} from '@/api/rag'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
@@ -24,9 +29,9 @@ import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import type { Book, CollectBook, ReadingRecord, Shelf } from '@/types/models'
 import {
-  buildBookCard,
   formatCurrency,
   formatDate,
+  initialsFromName,
   parseTagList,
   readingStatusLabel,
   resolvePictureUrl,
@@ -101,7 +106,7 @@ const loadPage = async () => {
       await Promise.allSettled([
         getBookDetail(bookId.value),
         getReadingRecords(bookId.value),
-        getSimilarBooks(bookId.value, 4),
+        getSimilarBooks(bookId.value, SIMILAR_BOOK_LIMIT),
         getMyBookCollects(),
         getShelves(),
         getBookShelves(bookId.value),
@@ -394,6 +399,7 @@ onMounted(loadPage)
             <p class="copy-block__body copy-block__body--preserve">{{ reviewDigest || '暂未聚合。' }}</p>
             <div class="copy-block__footer">
               <button
+                v-if="!reviewDigest || reviewDigest.length === 0"
                 class="button button--ghost copy-block__trigger"
                 type="button"
                 :disabled="reviewLoading"
@@ -407,27 +413,26 @@ onMounted(loadPage)
 
         <SectionPanel title="相似图书" hint="来自 RAG 相似检索结果，适合继续扩展阅读链路。">
           <div class="similar-grid">
-            <BookCard
+            <button
               v-for="item in similarBooks"
               :key="item.id"
-              mobile-minimal
-              :book="
-                buildBookCard({
-                  id: item.id,
-                  title: item.title,
-                  author: item.author,
-                  coverUrl: item.coverUrl,
-                  summary: item.summary,
-                  badge: '相似',
-                })
-              "
+              class="surface-card compact-book-card"
+              type="button"
+              @click="router.push({ name: 'book-preview', params: { id: item.id } })"
             >
-              <template #actions>
-                <button class="button button--ghost" type="button" @click="router.push(`/books/${item.id}`)">
-                  打开
-                </button>
-              </template>
-            </BookCard>
+              <div class="compact-book-card__cover">
+                <img
+                  v-if="resolvePictureUrl(item.coverUrl)"
+                  :src="resolvePictureUrl(item.coverUrl)"
+                  :alt="item.title"
+                  loading="lazy"
+                />
+                <div v-else class="compact-book-card__placeholder serif-title">
+                  {{ initialsFromName(item.title) }}
+                </div>
+              </div>
+              <p class="compact-book-card__title">{{ item.title }}</p>
+            </button>
 
             <EmptyState v-if="similarBooks.length === 0" title="暂时还没有相似图书" />
           </div>
@@ -580,8 +585,12 @@ onMounted(loadPage)
   align-items: start;
 }
 
-.detail-grid > * {
-  grid-column: span 6;
+.detail-grid > :first-child {
+  grid-column: span 5;
+}
+
+.detail-grid > :last-child {
+  grid-column: span 7;
 }
 
 .copy-block {
@@ -625,8 +634,71 @@ onMounted(loadPage)
 
 .similar-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.compact-book-card {
+  display: grid;
+  grid-template-rows: auto minmax(2.7em, auto);
+  gap: 10px;
+  height: 100%;
+  padding: 12px;
+  border: 0;
+  text-align: left;
+  background: var(--sl-surface);
+  color: inherit;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.compact-book-card:hover,
+.compact-book-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px rgba(31, 95, 107, 0.16);
+}
+
+.compact-book-card:focus-visible {
+  outline: 3px solid rgba(31, 95, 107, 0.2);
+  outline-offset: 4px;
+}
+
+.compact-book-card__cover {
+  overflow: hidden;
+  aspect-ratio: 5 / 6;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(31, 95, 107, 0.18), rgba(201, 119, 46, 0.24));
+}
+
+.compact-book-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.compact-book-card__placeholder {
+  display: grid;
+  place-items: end start;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.6rem;
+}
+
+.compact-book-card__title {
+  margin: 0;
+  min-height: 2.7em;
+  font-size: 0.98rem;
+  line-height: 1.35;
+  color: var(--sl-ink);
+  text-align: center;
+  font-family: 'STSong', 'SimSun', serif;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 @media (max-width: 1200px) {
@@ -647,6 +719,10 @@ onMounted(loadPage)
 
   .detail-hero__attach {
     grid-template-columns: 1fr;
+  }
+
+  .similar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

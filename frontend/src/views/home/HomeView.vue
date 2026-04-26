@@ -324,7 +324,7 @@ onMounted(loadDashboard)
               :key="book.id"
               class="surface-card compact-book-card"
               type="button"
-              @click="router.push(`/books/${book.id}`)"
+              @click="router.push({ name: 'book-preview', params: { id: book.id } })"
             >
               <div class="compact-book-card__cover">
                 <img

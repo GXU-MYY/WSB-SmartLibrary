@@ -18,6 +18,9 @@ public class BookRemoteDTO implements Serializable {
     private String subtitle;
     private String author;
     private String summary;
+    private String publisher;
+    private String isbn;
+    private String isbn10;
     private String keyword;
     private String label;
     private String clc;

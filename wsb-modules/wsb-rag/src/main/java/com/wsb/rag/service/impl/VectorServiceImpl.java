@@ -28,9 +28,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * 基于 pgvector 的向量数据库服务。
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -50,17 +47,17 @@ public class VectorServiceImpl implements VectorService {
     @Transactional(rollbackFor = Exception.class)
     public void storeEmbedding(Long bookId, BookRemoteDTO metadata) {
         if (bookId == null) {
-            throw new ServiceException("图书ID不能为空");
+            throw new ServiceException("book id must not be null");
         }
 
         List<Document> documents = buildDocuments(bookId, metadata);
         if (documents.isEmpty()) {
-            throw new ServiceException("向量内容不能为空");
+            throw new ServiceException("embedding content must not be empty");
         }
 
         deleteEmbedding(bookId);
         pgVectorStore.add(documents);
-        log.info("已写入 pgvector 向量: bookId={}, chunks={}", bookId, documents.size());
+        log.info("stored pgvector embeddings: bookId={}, chunks={}", bookId, documents.size());
     }
 
     @Override
@@ -70,22 +67,32 @@ public class VectorServiceImpl implements VectorService {
 
     @Override
     public List<Long> searchSimilar(String query, int limit, Set<Long> bookIdFilter) {
+        return searchSimilar(query, limit, resolveCandidateLimit(limit), bookIdFilter);
+    }
+
+    @Override
+    public List<Long> searchSimilar(String query, int limit, int candidateLimit, Set<Long> bookIdFilter) {
         if (StringUtils.isBlank(query) || limit <= 0) {
             return List.of();
         }
 
-        int candidateLimit = resolveCandidateLimit(limit);
+        int safeCandidateLimit = Math.max(candidateLimit, limit);
         Map<Long, Double> scores = new HashMap<>();
         Map<Long, Integer> bestRanks = new HashMap<>();
-        List<BookRank> vectorRanks = safeSearchVectorBookRanks(query, candidateLimit, bookIdFilter);
-        List<BookRank> keywordRanks = searchKeywordBookRanks(query, candidateLimit, bookIdFilter);
+        List<BookRank> vectorRanks = safeSearchVectorBookRanks(query, safeCandidateLimit, bookIdFilter);
+        List<BookRank> keywordRanks = searchKeywordBookRanks(query, safeCandidateLimit, bookIdFilter);
 
         mergeRrfScores(scores, bestRanks, vectorRanks, properties.getVectorScoreWeight());
         mergeRrfScores(scores, bestRanks, keywordRanks, properties.getKeywordScoreWeight());
 
-        log.info("混合检索召回统计: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
-                query, vectorRanks.size(), keywordRanks.size(), scores.size(),
-                bookIdFilter == null ? 0 : bookIdFilter.size());
+        log.info(
+                "hybrid recall completed: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
+                query,
+                vectorRanks.size(),
+                keywordRanks.size(),
+                scores.size(),
+                bookIdFilter == null ? 0 : bookIdFilter.size()
+        );
 
         return scores.entrySet()
                 .stream()
@@ -103,20 +110,21 @@ public class VectorServiceImpl implements VectorService {
             return List.of();
         }
 
-        String content = findContentByBookId(bookId);
-        if (StringUtils.isBlank(content)) {
-            log.warn("未找到可用于相似推荐的向量内容: bookId={}", bookId);
+        try {
+            return bookEmbeddingMapper.searchSimilarBookRanks(
+                            qualifiedTableName(),
+                            bookId,
+                            resolveCandidateLimit(limit + 1),
+                            limit
+                    )
+                    .stream()
+                    .map(BookRankRow::getBookId)
+                    .filter(Objects::nonNull)
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("similar book recall failed: bookId={}", bookId, e);
             return List.of();
         }
-
-        return safeSearchVectorBookRanks(content, resolveCandidateLimit(limit + 1), Set.of())
-                .stream()
-                .map(BookRank::bookId)
-                .filter(Objects::nonNull)
-                .filter(id -> !id.equals(bookId))
-                .distinct()
-                .limit(limit)
-                .toList();
     }
 
     @Override
@@ -127,7 +135,7 @@ public class VectorServiceImpl implements VectorService {
 
         int deleted = bookEmbeddingMapper.deleteByBookId(qualifiedTableName(), bookId.toString());
         if (deleted > 0) {
-            log.info("已删除 pgvector 向量: bookId={}, rows={}", bookId, deleted);
+            log.info("deleted pgvector embeddings: bookId={}, rows={}", bookId, deleted);
         }
     }
 
@@ -240,7 +248,7 @@ public class VectorServiceImpl implements VectorService {
         try {
             return searchVectorBookRanks(query, candidateLimit, bookIdFilter);
         } catch (RuntimeException e) {
-            log.warn("向量召回失败，回退到关键词检索: query={}", query, e);
+            log.warn("vector recall failed, fallback to keyword recall only: query={}", query, e);
             return List.of();
         }
     }
@@ -260,11 +268,10 @@ public class VectorServiceImpl implements VectorService {
                     .filter(rank -> rank.bookId() != null)
                     .toList();
         } catch (RuntimeException e) {
-            log.warn("关键词召回失败，回退为纯向量检索: query={}", query, e);
+            log.warn("keyword recall failed, fallback to vector recall only: query={}", query, e);
             return List.of();
         }
     }
-
 
     private Filter.Expression buildBookIdFilterExpression(Set<Long> bookIdFilter) {
         if (bookIdFilter == null || bookIdFilter.isEmpty()) {
@@ -386,17 +393,6 @@ public class VectorServiceImpl implements VectorService {
         }
     }
 
-    private String findContentByBookId(Long bookId) {
-        List<String> contents = bookEmbeddingMapper.findContentsByBookId(
-                qualifiedTableName(),
-                bookId.toString(),
-                CHUNK_IDENTITY,
-                CHUNK_SUBJECT,
-                CHUNK_SUMMARY
-        );
-        return contents.isEmpty() ? null : String.join(" ", contents);
-    }
-
     private double resolveRankScore(BookRankRow row) {
         if (row == null || row.getRankScore() == null) {
             return 1.0;
@@ -410,7 +406,7 @@ public class VectorServiceImpl implements VectorService {
 
     private String safeIdentifier(String identifier) {
         if (StringUtils.isBlank(identifier) || !identifier.matches("[A-Za-z0-9_]+")) {
-            throw new ServiceException("非法的 pgvector 标识符配置: " + identifier);
+            throw new ServiceException("invalid pgvector identifier: " + identifier);
         }
         return identifier;
     }

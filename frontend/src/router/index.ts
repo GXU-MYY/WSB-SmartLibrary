@@ -59,6 +59,13 @@ const router = createRouter({
           meta: { title: '图书详情' },
         },
         {
+          path: 'preview/books/:id',
+          name: 'book-preview',
+          alias: ['recommend/books/:id'],
+          component: () => import('@/views/books/RecommendBookPreviewView.vue'),
+          meta: { title: '图书预览' },
+        },
+        {
           path: 'borrow',
           name: 'borrow',
           component: () => import('@/views/borrow/BorrowView.vue'),
@@ -117,7 +124,7 @@ router.beforeEach((to) => {
 })
 
 router.afterEach((to) => {
-  const title = typeof to.meta.title === 'string' ? to.meta.title : '智能书包'
+  const title = typeof to.meta.title === 'string' ? to.meta.title : '智能图书馆'
   document.title = `${title} | ${appTitle}`
 })
 

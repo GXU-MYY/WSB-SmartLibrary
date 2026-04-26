@@ -423,10 +423,24 @@ export interface BookRemote {
   subtitle?: string
   author?: string
   summary?: string
+  publisher?: string
+  isbn?: string
+  isbn10?: string
   keyword?: string
   label?: string
   coverUrl?: string
   embeddingStatus?: number
+}
+
+export interface RecommendBookPreview {
+  id: number
+  title: string
+  coverUrl?: string
+  author?: string
+  publisher?: string
+  isbn?: string
+  summary?: string
+  reviewDigest?: string
 }
 
 export interface UploadPictureResult {

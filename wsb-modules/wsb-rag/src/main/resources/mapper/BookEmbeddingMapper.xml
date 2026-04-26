@@ -14,18 +14,6 @@
         WHERE metadata->>'bookId' = #{bookId}
     </delete>
 
-    <select id="findContentsByBookId" resultType="java.lang.String">
-        SELECT content
-        FROM ${tableName}
-        WHERE metadata->>'bookId' = #{bookId}
-        ORDER BY CASE metadata->>'chunkType'
-            WHEN #{identityChunkType} THEN 0
-            WHEN #{subjectChunkType} THEN 1
-            WHEN #{summaryChunkType} THEN 2
-            ELSE 9
-        END
-    </select>
-
     <select id="searchKeywordBookRanks" resultMap="BookRankRowMap">
         WITH q AS (
             SELECT websearch_to_tsquery('public.wsb_zhcfg', #{query}) AS ts_query,
@@ -77,6 +65,36 @@
           )
         GROUP BY metadata->>'bookId'
         ORDER BY rank_score DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchSimilarBookRanks" resultMap="BookRankRowMap">
+        WITH source_chunks AS (
+            SELECT embedding,
+                   coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision AS chunk_weight
+            FROM ${tableName}
+            WHERE (metadata->>'bookId')::bigint = #{bookId}
+        ),
+        chunk_knn AS (
+            SELECT (candidate.metadata->>'bookId')::bigint AS book_id,
+                   (1 - (candidate.embedding &lt;=&gt; source.embedding))
+                   * (1 + (coalesce(nullif(candidate.metadata->>'chunkWeight', ''), '1')::double precision - 1) * 0.10)
+                   * (1 + (source.chunk_weight - 1) * 0.05) AS rank_score
+            FROM source_chunks source
+            CROSS JOIN LATERAL (
+                SELECT metadata, embedding
+                FROM ${tableName}
+                WHERE metadata->>'bookId' IS NOT NULL
+                  AND (metadata->>'bookId')::bigint &lt;&gt; #{bookId}
+                ORDER BY embedding &lt;=&gt; source.embedding
+                LIMIT #{candidateLimit}
+            ) candidate
+        )
+        SELECT book_id,
+               MAX(rank_score) AS rank_score
+        FROM chunk_knn
+        GROUP BY book_id
+        ORDER BY rank_score DESC, book_id ASC
         LIMIT #{limit}
     </select>
 </mapper>
