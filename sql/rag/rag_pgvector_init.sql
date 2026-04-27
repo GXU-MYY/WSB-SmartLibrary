@@ -30,6 +30,9 @@ CREATE INDEX IF NOT EXISTS book_embeddings_embedding_idx
 CREATE INDEX IF NOT EXISTS book_embeddings_book_id_idx
     ON public.book_embeddings ((metadata->>'bookId'));
 
+CREATE INDEX IF NOT EXISTS book_embeddings_canonical_key_idx
+    ON public.book_embeddings ((metadata->>'canonicalBookKey'));
+
 DROP INDEX IF EXISTS public.book_embeddings_content_fts_idx;
 
 CREATE INDEX IF NOT EXISTS book_embeddings_content_zh_fts_idx
