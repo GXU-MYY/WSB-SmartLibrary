@@ -31,7 +31,7 @@
         ),
         raw AS (
             SELECT (metadata->>'bookId')::bigint AS book_id,
-                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || metadata->>'bookId') AS canonical_key,
+                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || (metadata->>'bookId')) AS canonical_key,
                    ts_rank_cd(to_tsvector('public.wsb_zhcfg', coalesce(content, '')), q.ts_query)
                    + CASE WHEN content ILIKE q.pattern ESCAPE '\' THEN 0.50 ELSE 0 END
                    + CASE WHEN metadata->>'title' ILIKE q.pattern ESCAPE '\' THEN 1.20 ELSE 0 END
@@ -97,13 +97,13 @@
         WITH source_chunks AS (
             SELECT embedding,
                    coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision AS chunk_weight,
-                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || metadata->>'bookId') AS source_key
+                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || (metadata->>'bookId')) AS source_key
             FROM ${tableName}
             WHERE (metadata->>'bookId')::bigint = #{bookId}
         ),
         chunk_knn AS (
             SELECT (candidate.metadata->>'bookId')::bigint AS book_id,
-                   coalesce(nullif(candidate.metadata->>'canonicalBookKey', ''), 'BOOK:' || candidate.metadata->>'bookId') AS canonical_key,
+                   coalesce(nullif(candidate.metadata->>'canonicalBookKey', ''), 'BOOK:' || (candidate.metadata->>'bookId')) AS canonical_key,
                    (1 - (candidate.embedding &lt;=&gt; source.embedding))
                    * (1 + (coalesce(nullif(candidate.metadata->>'chunkWeight', ''), '1')::double precision - 1) * 0.10)
                    * (1 + (source.chunk_weight - 1) * 0.05) AS rank_score
