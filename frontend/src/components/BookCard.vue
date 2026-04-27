@@ -60,7 +60,10 @@ const handleOpen = () => {
 
       <div class="book-card__copy">
         <h3>{{ book.title }}</h3>
-        <p class="book-card__author">{{ book.author || '作者待补充' }}</p>
+        <p class="book-card__meta">
+          <span>{{ book.author || '作者待补充' }}</span>
+          <template v-if="book.publisher"> · {{ book.publisher }}</template>
+        </p>
         <p v-if="book.summary" class="book-card__summary">{{ book.summary }}</p>
         <p v-if="book.secondary" class="book-card__secondary">{{ book.secondary }}</p>
       </div>
@@ -171,10 +174,19 @@ const handleOpen = () => {
 .book-card__copy h3 {
   font-size: 1.3rem;
   line-height: 1.1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   transition: color 180ms ease;
 }
 
-.book-card__author,
+.book-card__meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.book-card__meta,
 .book-card__secondary {
   color: var(--sl-ink-soft);
 }
@@ -216,7 +228,7 @@ const handleOpen = () => {
   font-size: 1.12rem;
 }
 
-.book-card--compact .book-card__author,
+.book-card--compact .book-card__meta,
 .book-card--compact .book-card__secondary {
   font-size: 0.92rem;
 }
@@ -261,7 +273,7 @@ const handleOpen = () => {
     line-height: 1.2;
   }
 
-  .book-card--mobile-minimal .book-card__author {
+  .book-card--mobile-minimal .book-card__meta {
     font-size: 0.86rem;
     line-height: 1.35;
   }

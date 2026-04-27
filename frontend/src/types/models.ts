@@ -116,6 +116,7 @@ export interface BookCardModel {
   id: number | string
   title: string
   author?: string
+  publisher?: string
   coverUrl?: string
   summary?: string
   secondary?: string

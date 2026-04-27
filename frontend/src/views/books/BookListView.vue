@@ -1002,9 +1002,8 @@ onMounted(() => {
               id: book.id,
               title: book.title,
               author: book.author,
+              publisher: book.publisher,
               coverUrl: book.coverUrl,
-              summary: book.summary,
-              secondary: `${formatCurrency(book.price)} · ${book.publisher || '出版社待补充'}`,
               badge: book.isBorrowed
                 ? '借阅中'
                 : book.isLentOut
