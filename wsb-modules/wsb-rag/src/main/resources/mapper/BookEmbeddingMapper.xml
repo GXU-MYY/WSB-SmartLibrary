@@ -14,13 +14,24 @@
         WHERE metadata->>'bookId' = #{bookId}
     </delete>
 
+    <delete id="deleteByCanonicalKey">
+        DELETE FROM ${tableName}
+        WHERE metadata->>'canonicalBookKey' = #{canonicalKey}
+    </delete>
+
+    <select id="countByCanonicalKey" resultType="int">
+        SELECT COUNT(*) FROM ${tableName}
+        WHERE metadata->>'canonicalBookKey' = #{canonicalKey}
+    </select>
+
     <select id="searchKeywordBookRanks" resultMap="BookRankRowMap">
         WITH q AS (
             SELECT websearch_to_tsquery('public.wsb_zhcfg', #{query}) AS ts_query,
                    #{pattern} AS pattern
-        )
-        SELECT (metadata->>'bookId')::bigint AS book_id,
-               MAX(
+        ),
+        raw AS (
+            SELECT (metadata->>'bookId')::bigint AS book_id,
+                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || metadata->>'bookId') AS canonical_key,
                    ts_rank_cd(to_tsvector('public.wsb_zhcfg', coalesce(content, '')), q.ts_query)
                    + CASE WHEN content ILIKE q.pattern ESCAPE '\' THEN 0.50 ELSE 0 END
                    + CASE WHEN metadata->>'title' ILIKE q.pattern ESCAPE '\' THEN 1.20 ELSE 0 END
@@ -37,46 +48,62 @@
                    + CASE WHEN metadata->>'clc' ILIKE #{queryPattern} ESCAPE '\' THEN 0.30 ELSE 0 END
                    </foreach>
                    + (coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision * 0.05)
-               ) AS rank_score
-        FROM ${tableName}, q
-        WHERE metadata->>'bookId' IS NOT NULL
-        <if test="bookIds != null and bookIds.size() > 0">
-          AND (metadata->>'bookId')::bigint IN
-            <foreach collection="bookIds" item="bookId" open="(" separator="," close=")">
-                #{bookId}
-            </foreach>
-        </if>
-          AND (
-              q.ts_query @@ to_tsvector('public.wsb_zhcfg', coalesce(content, ''))
-              OR content ILIKE q.pattern ESCAPE '\'
-              OR metadata->>'title' ILIKE q.pattern ESCAPE '\'
-              OR metadata->>'author' ILIKE q.pattern ESCAPE '\'
-              OR metadata->>'keyword' ILIKE q.pattern ESCAPE '\'
-              OR metadata->>'clcCategory' ILIKE q.pattern ESCAPE '\'
-              OR metadata->>'clc' ILIKE q.pattern ESCAPE '\'
-              <foreach collection="queryPatterns" item="queryPattern">
-              OR content ILIKE #{queryPattern} ESCAPE '\'
-              OR metadata->>'title' ILIKE #{queryPattern} ESCAPE '\'
-              OR metadata->>'author' ILIKE #{queryPattern} ESCAPE '\'
-              OR metadata->>'keyword' ILIKE #{queryPattern} ESCAPE '\'
-              OR metadata->>'clcCategory' ILIKE #{queryPattern} ESCAPE '\'
-              OR metadata->>'clc' ILIKE #{queryPattern} ESCAPE '\'
-              </foreach>
-          )
-        GROUP BY metadata->>'bookId'
-        ORDER BY rank_score DESC
+                   AS row_score
+            FROM ${tableName}, q
+            WHERE metadata->>'bookId' IS NOT NULL
+            <if test="bookIds != null and bookIds.size() > 0">
+              AND (metadata->>'bookId')::bigint IN
+                <foreach collection="bookIds" item="bookId" open="(" separator="," close=")">
+                    #{bookId}
+                </foreach>
+            </if>
+              AND (
+                  q.ts_query @@ to_tsvector('public.wsb_zhcfg', coalesce(content, ''))
+                  OR content ILIKE q.pattern ESCAPE '\'
+                  OR metadata->>'title' ILIKE q.pattern ESCAPE '\'
+                  OR metadata->>'author' ILIKE q.pattern ESCAPE '\'
+                  OR metadata->>'keyword' ILIKE q.pattern ESCAPE '\'
+                  OR metadata->>'clcCategory' ILIKE q.pattern ESCAPE '\'
+                  OR metadata->>'clc' ILIKE q.pattern ESCAPE '\'
+                  <foreach collection="queryPatterns" item="queryPattern">
+                  OR content ILIKE #{queryPattern} ESCAPE '\'
+                  OR metadata->>'title' ILIKE #{queryPattern} ESCAPE '\'
+                  OR metadata->>'author' ILIKE #{queryPattern} ESCAPE '\'
+                  OR metadata->>'keyword' ILIKE #{queryPattern} ESCAPE '\'
+                  OR metadata->>'clcCategory' ILIKE #{queryPattern} ESCAPE '\'
+                  OR metadata->>'clc' ILIKE #{queryPattern} ESCAPE '\'
+                  </foreach>
+              )
+        ),
+        deduped AS (
+            SELECT canonical_key, MAX(row_score) AS rank_score
+            FROM raw
+            GROUP BY canonical_key
+        )
+        SELECT r.book_id, d.rank_score
+        FROM deduped d
+        JOIN LATERAL (
+            SELECT r2.book_id
+            FROM raw r2
+            WHERE r2.canonical_key = d.canonical_key
+            ORDER BY r2.book_id DESC
+            LIMIT 1
+        ) r ON true
+        ORDER BY d.rank_score DESC
         LIMIT #{limit}
     </select>
 
     <select id="searchSimilarBookRanks" resultMap="BookRankRowMap">
         WITH source_chunks AS (
             SELECT embedding,
-                   coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision AS chunk_weight
+                   coalesce(nullif(metadata->>'chunkWeight', ''), '1')::double precision AS chunk_weight,
+                   coalesce(nullif(metadata->>'canonicalBookKey', ''), 'BOOK:' || metadata->>'bookId') AS source_key
             FROM ${tableName}
             WHERE (metadata->>'bookId')::bigint = #{bookId}
         ),
         chunk_knn AS (
             SELECT (candidate.metadata->>'bookId')::bigint AS book_id,
+                   coalesce(nullif(candidate.metadata->>'canonicalBookKey', ''), 'BOOK:' || candidate.metadata->>'bookId') AS canonical_key,
                    (1 - (candidate.embedding &lt;=&gt; source.embedding))
                    * (1 + (coalesce(nullif(candidate.metadata->>'chunkWeight', ''), '1')::double precision - 1) * 0.10)
                    * (1 + (source.chunk_weight - 1) * 0.05) AS rank_score
@@ -89,12 +116,23 @@
                 ORDER BY embedding &lt;=&gt; source.embedding
                 LIMIT #{candidateLimit}
             ) candidate
+        ),
+        deduped AS (
+            SELECT canonical_key, MAX(rank_score) AS rank_score
+            FROM chunk_knn
+            WHERE canonical_key NOT IN (SELECT DISTINCT source_key FROM source_chunks)
+            GROUP BY canonical_key
         )
-        SELECT book_id,
-               MAX(rank_score) AS rank_score
-        FROM chunk_knn
-        GROUP BY book_id
-        ORDER BY rank_score DESC, book_id ASC
+        SELECT ck.book_id, d.rank_score
+        FROM deduped d
+        JOIN LATERAL (
+            SELECT ck2.book_id
+            FROM chunk_knn ck2
+            WHERE ck2.canonical_key = d.canonical_key
+            ORDER BY ck2.book_id DESC
+            LIMIT 1
+        ) ck ON true
+        ORDER BY d.rank_score DESC, ck.book_id ASC
         LIMIT #{limit}
     </select>
 </mapper>

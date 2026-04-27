@@ -63,4 +63,12 @@ public interface VectorService {
      * @param bookId 书籍ID
      */
     void deleteEmbedding(Long bookId);
+
+    /**
+     * 检查指定 canonical key 的向量是否已存在
+     *
+     * @param canonicalKey 规范化图书标识
+     * @return 是否已存在向量
+     */
+    boolean existsByCanonicalKey(String canonicalKey);
 }

@@ -80,6 +80,14 @@ public class RagConsumer {
                 return;
             }
 
+            String canonicalKey = resolveCanonicalKey(book, bookId);
+            if (vectorService.existsByCanonicalKey(canonicalKey)) {
+                log.info("canonicalKey 向量已存在，跳过重复向量化: bookId={}, canonicalKey={}", bookId, canonicalKey);
+                safeUpdateEmbeddingStatus(bookId, EmbeddingStatus.COMPLETED);
+                needResetPending = false;
+                return;
+            }
+
             requireSuccess(remoteBookService.updateEmbeddingStatus(bookId, EmbeddingStatus.PROCESSING),
                 "更新图书向量处理中状态失败: bookId=" + bookId);
 
@@ -95,6 +103,16 @@ public class RagConsumer {
                 safeUpdateEmbeddingStatus(bookId, EmbeddingStatus.PENDING);
             }
         }
+    }
+
+    private String resolveCanonicalKey(BookRemoteDTO book, Long bookId) {
+        if (StringUtils.isNotBlank(book.getIsbn())) {
+            return "ISBN:" + book.getIsbn();
+        }
+        if (StringUtils.isNotBlank(book.getIsbn10())) {
+            return "ISBN:" + book.getIsbn10();
+        }
+        return "BOOK:" + bookId;
     }
 
     private void runWithInflightLock(String keyPrefix, Long bookId, Task task) {

@@ -10,6 +10,10 @@ public interface BookEmbeddingMapper {
 
     int deleteByBookId(@Param("tableName") String tableName, @Param("bookId") String bookId);
 
+    int deleteByCanonicalKey(@Param("tableName") String tableName, @Param("canonicalKey") String canonicalKey);
+
+    int countByCanonicalKey(@Param("tableName") String tableName, @Param("canonicalKey") String canonicalKey);
+
     List<BookRankRow> searchKeywordBookRanks(@Param("tableName") String tableName,
                                              @Param("query") String query,
                                              @Param("pattern") String pattern,

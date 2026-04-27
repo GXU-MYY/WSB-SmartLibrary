@@ -55,9 +55,10 @@ public class VectorServiceImpl implements VectorService {
             throw new ServiceException("向量化内容不能为空");
         }
 
-        deleteEmbedding(bookId);
+        String canonicalKey = resolveCanonicalKey(metadata, bookId);
+        deleteByCanonicalKey(canonicalKey);
         pgVectorStore.add(documents);
-        log.info("已写入 pgvector 向量分片: bookId={}, chunks={}", bookId, documents.size());
+        log.info("已写入 pgvector 向量分片: bookId={}, canonicalKey={}, chunks={}", bookId, canonicalKey, documents.size());
     }
 
     @Override
@@ -139,6 +140,31 @@ public class VectorServiceImpl implements VectorService {
         }
     }
 
+    @Override
+    public boolean existsByCanonicalKey(String canonicalKey) {
+        if (StringUtils.isBlank(canonicalKey)) {
+            return false;
+        }
+        return bookEmbeddingMapper.countByCanonicalKey(qualifiedTableName(), canonicalKey) > 0;
+    }
+
+    private void deleteByCanonicalKey(String canonicalKey) {
+        int deleted = bookEmbeddingMapper.deleteByCanonicalKey(qualifiedTableName(), canonicalKey);
+        if (deleted > 0) {
+            log.info("已按 canonicalKey 删除旧向量: canonicalKey={}, rows={}", canonicalKey, deleted);
+        }
+    }
+
+    private String resolveCanonicalKey(BookRemoteDTO book, Long bookId) {
+        if (StringUtils.isNotBlank(book.getIsbn())) {
+            return "ISBN:" + book.getIsbn();
+        }
+        if (StringUtils.isNotBlank(book.getIsbn10())) {
+            return "ISBN:" + book.getIsbn10();
+        }
+        return "BOOK:" + bookId;
+    }
+
     private List<Document> buildDocuments(Long bookId, BookRemoteDTO book) {
         List<Document> documents = new ArrayList<>();
         if (book == null) {
@@ -202,6 +228,7 @@ public class VectorServiceImpl implements VectorService {
     private Map<String, Object> buildMetadata(Long bookId, BookRemoteDTO metadata, String chunkType, int chunkWeight) {
         Map<String, Object> metadataMap = new LinkedHashMap<>();
         metadataMap.put("bookId", bookId);
+        metadataMap.put("canonicalBookKey", resolveCanonicalKey(metadata, bookId));
         metadataMap.put("chunkType", chunkType);
         metadataMap.put("chunkWeight", chunkWeight);
         if (metadata == null) {
@@ -234,20 +261,24 @@ public class VectorServiceImpl implements VectorService {
 
         List<Document> documents = pgVectorStore.similaritySearch(searchRequestBuilder.build());
 
-        Map<Long, Double> rankedBooks = new HashMap<>();
+        Map<String, Double> canonicalScores = new HashMap<>();
+        Map<String, Long> canonicalToBookId = new HashMap<>();
         for (Document document : documents) {
             Long bookId = extractBookId(document);
             if (bookId == null) {
                 continue;
             }
-            rankedBooks.merge(bookId, resolveVectorBoost(document), Math::max);
+            String canonicalKey = extractCanonicalKey(document);
+            double boost = resolveVectorBoost(document);
+            canonicalScores.merge(canonicalKey, boost, Math::max);
+            canonicalToBookId.merge(canonicalKey, bookId, (a, b) -> Math.max(a, b));
         }
 
-        return rankedBooks.entrySet()
+        return canonicalScores.entrySet()
                 .stream()
-                .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder())
+                .sorted(Map.Entry.<String, Double>comparingByValue(Comparator.reverseOrder())
                         .thenComparing(Map.Entry::getKey))
-                .map(entry -> new BookRank(entry.getKey(), entry.getValue()))
+                .map(entry -> new BookRank(canonicalToBookId.get(entry.getKey()), entry.getValue()))
                 .toList();
     }
 
@@ -356,6 +387,18 @@ public class VectorServiceImpl implements VectorService {
             return parseBookId(text);
         }
         return null;
+    }
+
+    private String extractCanonicalKey(Document document) {
+        if (document == null || document.getMetadata() == null) {
+            return "";
+        }
+        Object value = document.getMetadata().get("canonicalBookKey");
+        if (value instanceof String text && StringUtils.isNotBlank(text)) {
+            return text;
+        }
+        Long bookId = extractBookId(document);
+        return bookId != null ? "BOOK:" + bookId : "";
     }
 
     private double extractChunkWeight(Document document) {
