@@ -41,6 +41,7 @@ import {
 import { notifyError, notifySuccess } from '@/utils/notify'
 
 const router = useRouter()
+const PAGE_SIZE_OPTIONS = [10, 20, 30]
 
 const loading = ref(false)
 const creatingBook = ref(false)
@@ -70,8 +71,9 @@ const shelfDeleteTarget = ref<Shelf | null>(null)
 
 const pagination = reactive({
   current: 1,
-  size: 8,
+  size: 10,
   total: 0,
+  pages: 1,
 })
 
 const filters = reactive({
@@ -296,7 +298,10 @@ const loadBooks = async () => {
 
     const normalized = normalizePage(result)
     books.value = normalized.records
+    pagination.current = normalized.current
+    pagination.size = normalized.size
     pagination.total = normalized.total
+    pagination.pages = normalized.pages
   } finally {
     loading.value = false
   }
@@ -315,6 +320,20 @@ const handleResetFilters = async () => {
   filters.keyword = ''
   filters.classify = ''
   filters.shelfId = ''
+  pagination.current = 1
+  await loadBooks()
+}
+
+const handlePageChange = async (page: number) => {
+  if (page < 1 || page > pagination.pages || page === pagination.current) {
+    return
+  }
+
+  pagination.current = page
+  await loadBooks()
+}
+
+const handlePageSizeChange = async () => {
   pagination.current = 1
   await loadBooks()
 }
@@ -952,6 +971,39 @@ onMounted(() => {
           </button>
         </div>
       </div>
+      <div v-if="pagination.total > 0" class="pagination-bar books-pagination">
+        <div class="books-pagination__meta">
+          <p class="pagination-bar__info">
+            第 {{ pagination.current }} / {{ Math.max(pagination.pages, 1) }} 页 · 共 {{ pagination.total }} 本
+          </p>
+          <label class="books-pagination__size">
+            <span>每页</span>
+            <select v-model.number="pagination.size" @change="handlePageSizeChange">
+              <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">
+                {{ size }} 本
+              </option>
+            </select>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button
+            class="button button--ghost"
+            type="button"
+            :disabled="pagination.current <= 1 || loading"
+            @click="handlePageChange(pagination.current - 1)"
+          >
+            上一页
+          </button>
+          <button
+            class="button button--ghost"
+            type="button"
+            :disabled="pagination.current >= pagination.pages || loading"
+            @click="handlePageChange(pagination.current + 1)"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
     </SectionPanel>
 
     <SectionPanel class="books-list-panel" title="图书清单">
@@ -1036,6 +1088,39 @@ onMounted(() => {
           v-if="!loading && books.length === 0"
           title="当前筛选下没有图书"
         />
+      </div>
+      <div v-if="pagination.total > 0" class="pagination-bar books-pagination books-pagination--list">
+        <div class="books-pagination__meta">
+          <p class="pagination-bar__info">
+            第 {{ pagination.current }} / {{ Math.max(pagination.pages, 1) }} 页 · 共 {{ pagination.total }} 本
+          </p>
+          <label class="books-pagination__size">
+            <span>每页</span>
+            <select v-model.number="pagination.size" @change="handlePageSizeChange">
+              <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">
+                {{ size }} 本
+              </option>
+            </select>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button
+            class="button button--ghost"
+            type="button"
+            :disabled="pagination.current <= 1 || loading"
+            @click="handlePageChange(pagination.current - 1)"
+          >
+            上一页
+          </button>
+          <button
+            class="button button--ghost"
+            type="button"
+            :disabled="pagination.current >= pagination.pages || loading"
+            @click="handlePageChange(pagination.current + 1)"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </SectionPanel>
 
@@ -1657,6 +1742,10 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
+.books-filter-panel > .books-pagination:not(.books-pagination--list) {
+  display: none;
+}
+
 .books-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1683,6 +1772,41 @@ onMounted(() => {
   padding: 0 8px;
   font-size: 0.88rem;
   white-space: nowrap;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.pagination-bar__info {
+  margin: 0;
+  color: var(--sl-ink-soft);
+}
+
+.books-pagination {
+  margin-top: 18px;
+}
+
+.books-pagination__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.books-pagination__size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--sl-ink-soft);
+  font-size: 0.92rem;
+}
+
+.books-pagination__size select {
+  min-width: 92px;
 }
 
 .summary-lock-note {
@@ -2203,6 +2327,11 @@ onMounted(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .pagination-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .detail-card__meta,
   .field-grid,
   .inline-composer {
@@ -2236,6 +2365,15 @@ onMounted(() => {
 
   .books-filter-toolbar__button {
     min-width: 0;
+  }
+
+  .books-pagination__meta,
+  .books-pagination__size {
+    width: 100%;
+  }
+
+  .books-pagination__size {
+    justify-content: space-between;
   }
 
   .books-list-panel :deep(.section-panel__head) {
