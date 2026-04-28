@@ -28,6 +28,6 @@
 | 向量库    | distinct bookId                        | 364                                                                                       |
 | 向量库    | distinct canonicalBookKey (calculated) | 364                                                                                       |
 | RAG 评估 | 初始候选查询集                                | 15 条语义查询（5 个主题）                                                                           |
-| RAG 评估 | 论文主查询集                                 | 12 条语义查询（5 个主题）                                                                           |
+| RAG 评估 | 论文主查询集                                 | 11 条语义查询（5 个主题）                                                                           |
 | RAG 评估 | 评估粒度                                   | 作品级（规范化标题优先，ISBN 兜底）                                                                      |
 | RAG 评估 | 标注方式                                   | 基于 pooled top-N 候选结果的人工相关性标注                                                              |
