@@ -29,7 +29,6 @@ const recommendedBooks = ref<BookCardModel[]>([])
 
 const recommendationForm = reactive({
   query: '',
-  mineOnly: false,
 })
 
 const displayedRecentBooks = computed(() => recentBooks.value.slice(0, 4))
@@ -129,7 +128,7 @@ const handleRecommend = async () => {
   recommendationLoading.value = true
 
   try {
-    const result = await recommendBooks(recommendationForm.query.trim(), 20, recommendationForm.mineOnly)
+    const result = await recommendBooks(recommendationForm.query.trim(), 20)
     recommendedBooks.value = result.slice(0, 20).map((book) => ({
       id: book.id,
       title: book.title,
@@ -261,47 +260,19 @@ onMounted(loadDashboard)
       </SectionPanel>
 
       <SectionPanel
-        title="AI 选书助手"
+        title="AI推荐"
         hint="输入主题、场景或读者画像，让 RAG 服务帮你找到方向接近的图书。"
       >
-        <template #actions>
-          <button
-            class="recommend-scope-toggle"
-            :class="{ 'recommend-scope-toggle--active': recommendationForm.mineOnly }"
-            type="button"
-            :aria-pressed="recommendationForm.mineOnly"
-            @click="recommendationForm.mineOnly = !recommendationForm.mineOnly"
-          >
-            <span class="recommend-scope-toggle__label">仅我的书库</span>
-            <span class="recommend-scope-toggle__track" aria-hidden="true">
-              <span class="recommend-scope-toggle__thumb" />
-            </span>
-          </button>
-        </template>
         <div class="field">
           <div class="recommend-row">
-            <div class="recommend-input-shell">
             <input
               id="recommend-query"
               v-model="recommendationForm.query"
               type="text"
-              aria-label="AI 选书助手输入框"
+              aria-label="AI推荐输入框"
               placeholder="试试：系统性思维、历史传记"
               @keyup.enter="handleRecommend"
             />
-              <button
-                class="recommend-inline-toggle"
-                :class="{ 'recommend-inline-toggle--active': recommendationForm.mineOnly }"
-                type="button"
-                :aria-pressed="recommendationForm.mineOnly"
-                @click="recommendationForm.mineOnly = !recommendationForm.mineOnly"
-              >
-                <span class="recommend-inline-toggle__copy">仅我的书库</span>
-                <span class="recommend-inline-toggle__track" aria-hidden="true">
-                  <span class="recommend-inline-toggle__thumb" />
-                </span>
-              </button>
-            </div>
             <button
               class="button button--primary"
               type="button"
@@ -311,10 +282,6 @@ onMounted(loadDashboard)
               {{ recommendationLoading ? '生成中...' : '生成推荐' }}
             </button>
           </div>
-          <label class="recommend-toggle">
-            <input v-model="recommendationForm.mineOnly" type="checkbox" />
-            <span>仅我的书库</span>
-          </label>
         </div>
 
         <div class="compact-book-grid ai-book-grid">
@@ -460,7 +427,7 @@ onMounted(loadDashboard)
   width: 100%;
   border: 1px solid var(--sl-line);
   border-radius: var(--sl-radius-md);
-  padding: 12px 162px 12px 14px;
+  padding: 12px 14px;
   background: var(--sl-input-bg);
   color: var(--sl-ink);
   transition: border-color 180ms ease, box-shadow 180ms ease;
@@ -477,85 +444,6 @@ onMounted(loadDashboard)
   width: min(100%, 560px);
   grid-template-columns: minmax(0, 1fr) 120px;
   gap: 12px;
-}
-
-.recommend-input-shell {
-  position: relative;
-  min-width: 0;
-}
-
-.recommend-toggle {
-  display: none;
-}
-
-.recommend-scope-toggle {
-  display: none;
-}
-
-.recommend-inline-toggle {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid rgba(31, 95, 107, 0.22);
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(31, 95, 107, 0.18), rgba(31, 95, 107, 0.1));
-  color: #1f5f6b;
-  cursor: pointer;
-  transform: translateY(-50%);
-  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-}
-
-.recommend-inline-toggle:hover,
-.recommend-inline-toggle:focus-visible {
-  border-color: rgba(31, 95, 107, 0.34);
-  background: linear-gradient(135deg, rgba(31, 95, 107, 0.24), rgba(31, 95, 107, 0.16));
-  box-shadow: 0 0 0 3px rgba(31, 95, 107, 0.12);
-  outline: none;
-}
-
-.recommend-inline-toggle--active {
-  border-color: rgba(31, 95, 107, 0.38);
-  background: linear-gradient(135deg, rgba(31, 95, 107, 0.32), rgba(31, 95, 107, 0.24));
-  color: #154954;
-}
-
-.recommend-inline-toggle__copy {
-  font-size: 0.88rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.recommend-inline-toggle__track {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  width: 32px;
-  height: 18px;
-  padding: 2px;
-  border-radius: 999px;
-  background: rgba(31, 95, 107, 0.3);
-  transition: background 180ms ease;
-}
-
-.recommend-inline-toggle--active .recommend-inline-toggle__track {
-  background: rgba(31, 95, 107, 0.72);
-}
-
-.recommend-inline-toggle__thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(31, 95, 107, 0.22);
-  transition: transform 180ms ease;
-}
-
-.recommend-inline-toggle--active .recommend-inline-toggle__thumb {
-  transform: translateX(14px);
 }
 
 .ai-book-grid {

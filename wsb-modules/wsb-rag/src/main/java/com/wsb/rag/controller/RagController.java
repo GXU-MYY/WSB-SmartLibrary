@@ -1,6 +1,5 @@
 package com.wsb.rag.controller;
 
-import cn.dev33.satoken.stp.StpUtil;
 import com.wsb.book.api.RemoteBookService;
 import com.wsb.book.api.dto.BookRemoteDTO;
 import com.wsb.common.core.domain.Result;
@@ -39,16 +38,11 @@ public class RagController {
     @GetMapping("/recommend")
     public Result<List<BookRemoteDTO>> recommend(
             @RequestParam("query") String query,
-            @RequestParam(value = "limit", defaultValue = "10") Integer limit,
-            @RequestParam(value = "mineOnly", defaultValue = "false") Boolean mineOnly) {
+            @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
         if (!isValidLimit(limit)) {
             return Result.error(400, buildLimitErrorMessage());
         }
-        if (Boolean.TRUE.equals(mineOnly) && !StpUtil.isLogin()) {
-            return Result.error(401, "请先登录后再查看我的推荐");
-        }
-        Long ownerId = Boolean.TRUE.equals(mineOnly) ? StpUtil.getLoginIdAsLong() : null;
-        return Result.success(ragService.recommend(query, limit, ownerId));
+        return Result.success(ragService.recommend(query, limit));
     }
 
     @Operation(summary = "推荐图书预览", description = "推荐入口使用的受限图书详情")

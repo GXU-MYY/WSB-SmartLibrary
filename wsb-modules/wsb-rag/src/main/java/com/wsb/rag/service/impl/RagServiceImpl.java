@@ -58,16 +58,14 @@ public class RagServiceImpl implements RagService {
     private String embeddingQueue;
 
     @Override
-    public List<BookRemoteDTO> recommend(String query, int limit, Long ownerId) {
+    public List<BookRemoteDTO> recommend(String query, int limit) {
         if (StringUtils.isBlank(query) || limit <= 0) {
             return List.of();
         }
 
         List<String> expandedQueries = QueryTextAnalyzer.expandQueries(
                 query, recommendProperties.getMaxExpandedQueries());
-        List<Long> bookIds = ownerId == null
-                ? searchExpandedQueries(expandedQueries, limit, Set.of())
-                : searchOwnedBooks(expandedQueries, limit, ownerId);
+        List<Long> bookIds = searchExpandedQueries(expandedQueries, limit);
         if (bookIds.isEmpty()) {
             return List.of();
         }
@@ -141,22 +139,7 @@ public class RagServiceImpl implements RagService {
         return count;
     }
 
-    private List<Long> searchOwnedBooks(List<String> queries, int limit, Long ownerId) {
-        List<Long> ownedBookIds = remoteBookService.getBookIdsByOwner(ownerId).getData();
-        if (ownedBookIds == null || ownedBookIds.isEmpty()) {
-            return List.of();
-        }
-
-        Set<Long> ownedBookIdSet = ownedBookIds.stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toUnmodifiableSet());
-        if (ownedBookIdSet.isEmpty()) {
-            return List.of();
-        }
-        return searchExpandedQueries(queries, limit, ownedBookIdSet);
-    }
-
-    private List<Long> searchExpandedQueries(List<String> queries, int limit, Set<Long> bookIdFilter) {
+    private List<Long> searchExpandedQueries(List<String> queries, int limit) {
         if (queries == null || queries.isEmpty()) {
             return List.of();
         }
@@ -168,7 +151,7 @@ public class RagServiceImpl implements RagService {
             String expandedQuery = queries.get(queryIndex);
             double queryWeight = queryIndex == 0 ? 1.0 : 0.75;
             List<Long> rankedIds = vectorService.searchSimilar(
-                    expandedQuery, candidateLimit, candidateLimit, bookIdFilter);
+                    expandedQuery, candidateLimit, candidateLimit, Set.of());
             for (int rank = 0; rank < rankedIds.size(); rank++) {
                 Long bookId = rankedIds.get(rank);
                 if (bookId == null) {
