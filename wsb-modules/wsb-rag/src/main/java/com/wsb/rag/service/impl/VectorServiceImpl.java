@@ -80,11 +80,17 @@ public class VectorServiceImpl implements VectorService {
         int safeCandidateLimit = Math.max(candidateLimit, limit);
         Map<Long, Double> scores = new HashMap<>();
         Map<Long, Integer> bestRanks = new HashMap<>();
-        List<BookRank> vectorRanks = safeSearchVectorBookRanks(query, safeCandidateLimit, bookIdFilter);
-        List<BookRank> keywordRanks = searchKeywordBookRanks(query, safeCandidateLimit, bookIdFilter);
+        double vectorWeight = properties.getVectorScoreWeight();
+        double keywordWeight = properties.getKeywordScoreWeight();
+        List<BookRank> vectorRanks = vectorWeight > 0
+                ? safeSearchVectorBookRanks(query, safeCandidateLimit, bookIdFilter)
+                : List.of();
+        List<BookRank> keywordRanks = keywordWeight > 0
+                ? searchKeywordBookRanks(query, safeCandidateLimit, bookIdFilter)
+                : List.of();
 
-        mergeRrfScores(scores, bestRanks, vectorRanks, properties.getVectorScoreWeight());
-        mergeRrfScores(scores, bestRanks, keywordRanks, properties.getKeywordScoreWeight());
+        mergeRrfScores(scores, bestRanks, vectorRanks, vectorWeight);
+        mergeRrfScores(scores, bestRanks, keywordRanks, keywordWeight);
 
         log.info(
                 "混合召回完成: query={}, vectorHits={}, keywordHits={}, mergedHits={}, ownerFilterSize={}",
@@ -356,6 +362,9 @@ public class VectorServiceImpl implements VectorService {
 
     private void mergeRrfScores(Map<Long, Double> scores, Map<Long, Integer> bestRanks,
                                 List<BookRank> ranks, double sourceWeight) {
+        if (sourceWeight <= 0 || ranks == null || ranks.isEmpty()) {
+            return;
+        }
         int rank = 1;
         for (BookRank item : ranks) {
             if (item.bookId() == null) {
