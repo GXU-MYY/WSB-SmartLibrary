@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import PageIntro from '@/components/PageIntro.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import type { BookRank, BorrowStats, CollectStats, PersonalStats, UserRank } from '@/types/models'
 import { normalizePage } from '@/utils/format'
@@ -110,10 +111,6 @@ const loadStatistics = async () => {
 }
 
 const handleBookRankPageChange = async (page: number) => {
-  if (page < 1 || page > bookRankPagination.pages || page === bookRankPagination.current) {
-    return
-  }
-
   rankLoading.value = true
   try {
     await loadBookRank(page)
@@ -123,10 +120,6 @@ const handleBookRankPageChange = async (page: number) => {
 }
 
 const handleUserRankPageChange = async (page: number) => {
-  if (page < 1 || page > userRankPagination.pages || page === userRankPagination.current) {
-    return
-  }
-
   rankLoading.value = true
   try {
     await loadUserRank(page)
@@ -199,30 +192,16 @@ onMounted(loadStatistics)
             </table>
           </div>
 
-          <div class="pagination-bar">
-            <p class="pagination-bar__info">
-              第 {{ bookRankPagination.current }} / {{ Math.max(bookRankPagination.pages, 1) }} 页 · 共
-              {{ bookRankPagination.total }} 条
-            </p>
-            <div class="inline-actions">
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="bookRankPagination.current <= 1 || rankLoading"
-                @click="handleBookRankPageChange(bookRankPagination.current - 1)"
-              >
-                上一页
-              </button>
-              <button
-                class="button button--secondary"
-                type="button"
-                :disabled="bookRankPagination.current >= bookRankPagination.pages || rankLoading"
-                @click="handleBookRankPageChange(bookRankPagination.current + 1)"
-              >
-                下一页
-              </button>
-            </div>
-          </div>
+          <PaginationBar
+            :current="bookRankPagination.current"
+            :page-size="RANK_PAGE_SIZE"
+            :page-sizes="[]"
+            :total="bookRankPagination.total"
+            :disabled="rankLoading"
+            hide-page-size
+            unit="条"
+            @update:current="handleBookRankPageChange"
+          />
         </div>
         <EmptyState v-else title="图书排行还未生成" />
       </SectionPanel>
@@ -255,30 +234,16 @@ onMounted(loadStatistics)
             </table>
           </div>
 
-          <div class="pagination-bar">
-            <p class="pagination-bar__info">
-              第 {{ userRankPagination.current }} / {{ Math.max(userRankPagination.pages, 1) }} 页 · 共
-              {{ userRankPagination.total }} 条
-            </p>
-            <div class="inline-actions">
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="userRankPagination.current <= 1 || rankLoading"
-                @click="handleUserRankPageChange(userRankPagination.current - 1)"
-              >
-                上一页
-              </button>
-              <button
-                class="button button--secondary"
-                type="button"
-                :disabled="userRankPagination.current >= userRankPagination.pages || rankLoading"
-                @click="handleUserRankPageChange(userRankPagination.current + 1)"
-              >
-                下一页
-              </button>
-            </div>
-          </div>
+          <PaginationBar
+            :current="userRankPagination.current"
+            :page-size="RANK_PAGE_SIZE"
+            :page-sizes="[]"
+            :total="userRankPagination.total"
+            :disabled="rankLoading"
+            hide-page-size
+            unit="条"
+            @update:current="handleUserRankPageChange"
+          />
         </div>
         <EmptyState v-else title="用户排行还未生成" />
       </SectionPanel>
@@ -341,18 +306,6 @@ onMounted(loadStatistics)
   font-weight: 800;
 }
 
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.pagination-bar__info {
-  margin: 0;
-  color: var(--sl-ink-soft);
-}
-
 @media (max-width: 1200px) {
   .statistics-layout > * {
     grid-column: span 12 !important;
@@ -364,9 +317,5 @@ onMounted(loadStatistics)
     grid-template-columns: 1fr;
   }
 
-  .pagination-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>

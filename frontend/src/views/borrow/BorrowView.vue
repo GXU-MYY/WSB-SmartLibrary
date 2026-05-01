@@ -15,6 +15,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import PageIntro from '@/components/PageIntro.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import type { BorrowRecord, BorrowSummary, IsbnBook, MyBookList, PageResult, Shelf } from '@/types/models'
@@ -67,7 +68,7 @@ const canReturnBorrowRecord = (record: BorrowRecord) =>
 
 const pagination = reactive({
   current: 1,
-  size: 10,
+  size: 5,
   total: 0,
   pages: 1,
 })
@@ -332,10 +333,6 @@ const handleFilterChange = async () => {
 }
 
 const handlePageChange = async (page: number) => {
-  if (page < 1 || page > pagination.pages || page === pagination.current) {
-    return
-  }
-
   loading.value = true
   try {
     await loadBorrowRecords(page)
@@ -617,29 +614,16 @@ onMounted(loadPage)
             </article>
           </div>
 
-          <div class="pagination-bar">
-            <p class="pagination-bar__info">
-              第 {{ pagination.current }} / {{ Math.max(pagination.pages, 1) }} 页 · 共 {{ pagination.total }} 条
-            </p>
-            <div class="inline-actions">
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="pagination.current <= 1 || loading"
-                @click="handlePageChange(pagination.current - 1)"
-              >
-                上一页
-              </button>
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="pagination.current >= pagination.pages || loading"
-                @click="handlePageChange(pagination.current + 1)"
-              >
-                下一页
-              </button>
-            </div>
-          </div>
+          <PaginationBar
+            :current="pagination.current"
+            :page-size="pagination.size"
+            :page-sizes="[]"
+            :total="pagination.total"
+            :disabled="loading"
+            hide-page-size
+            unit="条"
+            @update:current="handlePageChange"
+          />
         </div>
 
         <EmptyState
@@ -1008,19 +992,6 @@ onMounted(loadPage)
   color: #b4583e;
 }
 
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.pagination-bar__info {
-  margin: 0;
-  color: var(--sl-ink-soft);
-}
-
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -1134,7 +1105,6 @@ onMounted(loadPage)
     justify-content: flex-start;
   }
 
-  .pagination-bar,
   .dialog-actions {
     flex-direction: column;
     align-items: stretch;

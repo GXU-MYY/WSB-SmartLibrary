@@ -21,6 +21,7 @@ import { getUsers } from '@/api/user'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
@@ -606,10 +607,10 @@ const requestStatusClass = (status: number) => ({
   'is-rejected': status === REJECTED_STATUS,
 })
 const changeIncomingRequestPage = (nextPage: number) => {
-  incomingRequestPage.value = Math.min(Math.max(1, nextPage), incomingRequestTotalPages.value)
+  incomingRequestPage.value = Math.max(1, Math.min(nextPage, incomingRequestTotalPages.value))
 }
 const changeOutgoingRequestPage = (nextPage: number) => {
-  outgoingRequestPage.value = Math.min(Math.max(1, nextPage), outgoingRequestTotalPages.value)
+  outgoingRequestPage.value = Math.max(1, Math.min(nextPage, outgoingRequestTotalPages.value))
 }
 
 watch(selectedGroupId, async (groupId) => {
@@ -853,25 +854,15 @@ onMounted(loadPage)
                       </table>
                     </div>
 
-                    <div class="request-pagination">
-                      <button
-                        class="button button--ghost"
-                        type="button"
-                        :disabled="incomingRequestPage === 1"
-                        @click="changeIncomingRequestPage(incomingRequestPage - 1)"
-                      >
-                        上一页
-                      </button>
-                      <span>第 {{ incomingRequestPage }} / {{ incomingRequestTotalPages }} 页</span>
-                      <button
-                        class="button button--ghost"
-                        type="button"
-                        :disabled="incomingRequestPage === incomingRequestTotalPages"
-                        @click="changeIncomingRequestPage(incomingRequestPage + 1)"
-                      >
-                        下一页
-                      </button>
-                    </div>
+                    <PaginationBar
+                      :current="incomingRequestPage"
+                      :page-size="REQUESTS_PAGE_SIZE"
+                      :page-sizes="[]"
+                      :total="incomingRequests.length"
+                      hide-page-size
+                      unit="条"
+                      @update:current="changeIncomingRequestPage"
+                    />
                   </div>
 
                   <EmptyState v-else title="还没有收到借阅申请" />
@@ -920,25 +911,15 @@ onMounted(loadPage)
                       </table>
                     </div>
 
-                    <div class="request-pagination">
-                      <button
-                        class="button button--ghost"
-                        type="button"
-                        :disabled="outgoingRequestPage === 1"
-                        @click="changeOutgoingRequestPage(outgoingRequestPage - 1)"
-                      >
-                        上一页
-                      </button>
-                      <span>第 {{ outgoingRequestPage }} / {{ outgoingRequestTotalPages }} 页</span>
-                      <button
-                        class="button button--ghost"
-                        type="button"
-                        :disabled="outgoingRequestPage === outgoingRequestTotalPages"
-                        @click="changeOutgoingRequestPage(outgoingRequestPage + 1)"
-                      >
-                        下一页
-                      </button>
-                    </div>
+                    <PaginationBar
+                      :current="outgoingRequestPage"
+                      :page-size="REQUESTS_PAGE_SIZE"
+                      :page-sizes="[]"
+                      :total="outgoingRequests.length"
+                      hide-page-size
+                      unit="条"
+                      @update:current="changeOutgoingRequestPage"
+                    />
                   </div>
 
                   <EmptyState v-else title="你还没有发起借阅申请" />
@@ -1617,14 +1598,6 @@ onMounted(loadPage)
   font-weight: 700;
 }
 
-.request-pagination {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  color: var(--sl-ink-soft);
-}
-
 .request-table {
   width: 100%;
   min-width: 780px;
@@ -1956,11 +1929,6 @@ onMounted(loadPage)
   .workspace-head__actions,
   .desk-dialog__head-actions {
     justify-content: flex-start;
-  }
-
-  .request-pagination {
-    justify-content: space-between;
-    flex-wrap: wrap;
   }
 
   .invite-dialog {

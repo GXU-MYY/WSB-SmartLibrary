@@ -8,6 +8,7 @@ import { recommendBooks } from '@/api/rag'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import MetricCard from '@/components/MetricCard.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import type { BookCardModel, PersonalStats, ReadingRecord, RecentBook } from '@/types/models'
@@ -231,29 +232,16 @@ onMounted(loadDashboard)
             </table>
           </div>
 
-          <div class="reading-pagination">
-            <p class="reading-pagination__info">
-              第 {{ readingPage }} / {{ readingTotalPages }} 页 · 共 {{ readingRecords.length }} 条
-            </p>
-            <div class="inline-actions">
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="readingPage <= 1"
-                @click="changeReadingPage(readingPage - 1)"
-              >
-                上一页
-              </button>
-              <button
-                class="button button--ghost"
-                type="button"
-                :disabled="readingPage >= readingTotalPages"
-                @click="changeReadingPage(readingPage + 1)"
-              >
-                下一页
-              </button>
-            </div>
-          </div>
+          <PaginationBar
+            :current="readingPage"
+            :page-size="READING_PAGE_SIZE"
+            :page-sizes="[]"
+            :total="readingRecords.length"
+            :disabled="loading"
+            hide-page-size
+            unit="条"
+            @update:current="changeReadingPage"
+          />
         </template>
 
         <EmptyState v-else title="阅读轨迹还没开始" />
@@ -546,19 +534,6 @@ onMounted(loadDashboard)
   color: var(--sl-ink-soft);
 }
 
-.reading-pagination {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.reading-pagination__info {
-  margin: 0;
-  color: var(--sl-ink-soft);
-}
-
 @media (max-width: 1080px) {
   .home-grid > * {
     grid-column: span 12 !important;
@@ -576,11 +551,6 @@ onMounted(loadDashboard)
 
   .recommend-row {
     grid-template-columns: 1fr;
-  }
-
-  .reading-pagination {
-    flex-direction: column;
-    align-items: stretch;
   }
 
   .reading-table__placeholder {

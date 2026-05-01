@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { deleteCollect, getMyBookCollects } from '@/api/book'
@@ -7,6 +7,7 @@ import BookCard from '@/components/BookCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import LoadingState from '@/components/LoadingState.vue'
 import PageIntro from '@/components/PageIntro.vue'
+import PaginationBar from '@/components/PaginationBar.vue'
 import SectionPanel from '@/components/SectionPanel.vue'
 import { useRegisterPageRefresh } from '@/composables/usePageRefresh'
 import type { CollectBook } from '@/types/models'
@@ -19,6 +20,8 @@ const loading = ref(false)
 const removingCollectId = ref<number | null>(null)
 const keyword = ref('')
 const bookCollects = ref<CollectBook[]>([])
+const COLLECTION_PAGE_SIZE = 10
+const collectionPage = ref(1)
 
 const normalizedKeyword = computed(() => keyword.value.trim().toLowerCase())
 const filteredBookCollects = computed(() => {
@@ -31,6 +34,10 @@ const filteredBookCollects = computed(() => {
   )
 })
 const currentTotal = computed(() => filteredBookCollects.value.length)
+const pagedCollections = computed(() => {
+  const start = (collectionPage.value - 1) * COLLECTION_PAGE_SIZE
+  return filteredBookCollects.value.slice(start, start + COLLECTION_PAGE_SIZE)
+})
 
 const loadCollections = async () => {
   loading.value = true
@@ -44,6 +51,11 @@ const loadCollections = async () => {
 
 const handleReset = () => {
   keyword.value = ''
+  collectionPage.value = 1
+}
+
+const handleCollectionPageChange = (page: number) => {
+  collectionPage.value = page
 }
 
 const openBookDetail = (bookId: number) => {
@@ -61,6 +73,10 @@ const handleRemoveBookCollect = async (collect: CollectBook) => {
     removingCollectId.value = null
   }
 }
+
+watch(keyword, () => {
+  collectionPage.value = 1
+})
 
 useRegisterPageRefresh(loadCollections)
 
@@ -100,7 +116,7 @@ onMounted(loadCollections)
       <template v-else>
         <div v-if="filteredBookCollects.length" class="collection-book-grid">
           <BookCard
-            v-for="book in filteredBookCollects"
+            v-for="book in pagedCollections"
             :key="book.id"
             compact
             interactive
@@ -133,8 +149,19 @@ onMounted(loadCollections)
           </BookCard>
         </div>
 
+        <PaginationBar
+          v-if="currentTotal > 0"
+          :current="collectionPage"
+          :page-size="COLLECTION_PAGE_SIZE"
+          :page-sizes="[]"
+          :total="currentTotal"
+          hide-page-size
+          unit="本"
+          @update:current="handleCollectionPageChange"
+        />
+
         <EmptyState
-          v-else
+          v-if="!loading && filteredBookCollects.length === 0"
           title="还没有收藏图书"
           description="在图书详情页点亮星标后，收藏的图书会出现在这里。"
         />

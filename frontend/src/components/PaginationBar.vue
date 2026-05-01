@@ -8,8 +8,10 @@ const props = withDefaults(
     pageSizes: number[]
     total: number
     disabled?: boolean
+    hidePageSize?: boolean
+    unit?: string
   }>(),
-  { disabled: false },
+  { disabled: false, hidePageSize: false, unit: '本' },
 )
 
 const emit = defineEmits<{
@@ -71,10 +73,10 @@ const onJump = (e: Event) => {
 
 <template>
   <div class="pagination-bar" :class="{ 'pagination-bar--disabled': disabled }">
-    <span class="pagination-bar__total">共 {{ total }} 本</span>
+    <span class="pagination-bar__total">共 {{ total }} {{ unit }}</span>
 
-    <select class="pagination-bar__sizes" :value="pageSize" :disabled="disabled" @change="onSizeChange">
-      <option v-for="s in pageSizes" :key="s" :value="s">{{ s }}本/页</option>
+    <select v-if="!hidePageSize" class="pagination-bar__sizes" :value="pageSize" :disabled="disabled" @change="onSizeChange">
+      <option v-for="s in pageSizes" :key="s" :value="s">{{ s }}{{ unit }}/页</option>
     </select>
 
     <div class="pagination-bar__nav">
