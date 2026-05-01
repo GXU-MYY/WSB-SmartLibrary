@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import {
   createBook,
@@ -41,6 +41,7 @@ import {
 } from '@/utils/format'
 import { notifyError, notifySuccess } from '@/utils/notify'
 
+const route = useRoute()
 const router = useRouter()
 const PAGE_SIZE_OPTIONS = [10, 20, 30]
 
@@ -314,6 +315,7 @@ const loadPage = async () => {
 
 const handleApplyFilters = async () => {
   pagination.current = 1
+  router.replace({ query: { ...route.query, page: undefined } })
   await loadBooks()
 }
 
@@ -322,17 +324,20 @@ const handleResetFilters = async () => {
   filters.classify = ''
   filters.shelfId = ''
   pagination.current = 1
+  router.replace({ query: {} })
   await loadBooks()
 }
 
 const handlePageChange = async (page: number) => {
   pagination.current = page
+  router.replace({ query: { ...route.query, page: page > 1 ? page : undefined } })
   await loadBooks()
 }
 
 const handlePageSizeChange = async (size: number) => {
   pagination.size = size
   pagination.current = 1
+  router.replace({ query: { ...route.query, size: size !== 10 ? size : undefined, page: undefined } })
   await loadBooks()
 }
 
@@ -918,6 +923,10 @@ onUnmounted(() => {
 useRegisterPageRefresh(loadPage)
 
 onMounted(() => {
+  const qPage = Number(route.query.page)
+  if (qPage > 0) pagination.current = qPage
+  const qSize = Number(route.query.size)
+  if (qSize > 0) pagination.size = qSize
   loadPage()
 })
 </script>

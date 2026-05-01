@@ -144,12 +144,12 @@ watch(
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(calc(100vw - 24px), var(--sl-max-width));
+  width: min(100vw, var(--sl-max-width));
   z-index: 30;
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 14px 16px;
+  padding: 14px clamp(12px, 2vw, 18px);
 }
 
 .main-layout__brand {
@@ -254,7 +254,7 @@ watch(
   top: 82px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(calc(100vw - 24px), var(--sl-max-width));
+  width: min(100vw, var(--sl-max-width));
   z-index: 29;
   max-height: calc(100vh - 96px);
   overflow: auto;
@@ -320,7 +320,7 @@ watch(
   }
 
   .main-layout__topbar {
-    padding: 12px 14px;
+    padding: 12px clamp(10px, 2vw, 14px);
     gap: 12px;
   }
 
@@ -369,14 +369,14 @@ watch(
 
   .main-layout__topbar {
     top: 8px;
-    width: min(calc(100vw - 16px), var(--sl-max-width));
-    padding: 10px 12px;
+    width: min(100vw, var(--sl-max-width));
+    padding: 10px clamp(8px, 2vw, 12px);
     min-width: 0;
   }
 
   .main-layout__mobile-sheet {
     top: 74px;
-    width: min(calc(100vw - 16px), var(--sl-max-width));
+    width: min(100vw, var(--sl-max-width));
     max-height: calc(100vh - 86px);
     padding: 14px;
   }

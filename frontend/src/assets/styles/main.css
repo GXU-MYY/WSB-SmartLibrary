@@ -177,7 +177,8 @@ h4,
 }
 
 .page-shell {
-  width: min(var(--sl-max-width), calc(100vw - 32px));
+  width: 100%;
+  max-width: var(--sl-max-width);
   margin: 0 auto;
 }
 
@@ -571,22 +572,12 @@ a:focus-visible {
   }
 }
 
-@media (max-width: 1024px) {
-  .page-shell {
-    width: min(var(--sl-max-width), calc(100vw - 20px));
-  }
-}
-
 @media (max-width: 720px) {
   .page-shell,
   .page-stack,
   .page-grid,
   .surface-card {
     min-width: 0;
-  }
-
-  .page-shell {
-    width: min(var(--sl-max-width), calc(100vw - 16px));
   }
 
   .button {
